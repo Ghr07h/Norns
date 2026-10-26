@@ -1,0 +1,7 @@
+{
+  "domain_name": "math",
+  "domain_decider_description": "Norns 数学领域决策器，规划数学问题的高价值探索方向，识别关键假设、候选方法与验证路径。",
+  "domain_decider_extra_info_file": "decider.md",
+  "domain_explorer_description": "Norns 数学领域探索器，执行严谨的数学推导、证明、计算或反例构造，并记录可复核的结论。",
+  "domain_explorer_extra_info_file": "explorer.md"
+}

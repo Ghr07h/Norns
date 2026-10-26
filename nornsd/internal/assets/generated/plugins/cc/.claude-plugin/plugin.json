@@ -1,0 +1,10 @@
+{
+  "name": "norns",
+  "version": "1.0.0",
+  "description": "遵循 Norns Protocol 运行开放任务求解 Loop",
+  "author": {
+    "name": "Ghr07h",
+    "email": "49585390+Ghr07h@users.noreply.github.com",
+    "url": "https://github.com/ghr07h/norns"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "norns",
+  "protocol_version": 2,
+  "status": "stable",
+  "language": "zh-CN",
+  "specification": "protocol.md"
+}

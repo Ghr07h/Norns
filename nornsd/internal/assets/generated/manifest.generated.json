@@ -1,0 +1,13 @@
+{
+  "protocol_version": 2,
+  "generator_version": 1,
+  "files": {
+    "plugins/cc/.claude-plugin/plugin.json": "sha256:5dd442b3c37a6ef9e949dcd5f185d8b45c1001632c90d17667a65e9297f5de10",
+    "plugins/cc/agents/coordinator.md": "sha256:82695a2d34f7ca95b14add8d6354d1998ea04d5158a85e791fac05cf64784073",
+    "plugins/cc/agents/decider.md": "sha256:8c27ca74b1303d686dd5b788dc54de73798fb1129ebc6c5a569ce27e84ca90bc",
+    "plugins/cc/agents/explorer.md": "sha256:90d6dd997726e0d21dbe32ea792b987614a1739654956580d576bf9a9bbf1b6c",
+    "plugins/cc/settings.json": "sha256:d78617fd3b06bd667e30a0fd6e811a7c3d78b9a4b1a25867a9aac6cc513533b4",
+    "plugins/cc/skills/norns-loop/SKILL.md": "sha256:7a5970be48bd8eca839bf1aec64e010fca292a12b8e21dce3bdc016dcf1bb315",
+    "plugins/cc/skills/norns-loop/references/protocol.md": "sha256:ba4582a6249a718647fbdc8d284a2a17775b990f96e6ee091a0545db5f472480"
+  }
+}

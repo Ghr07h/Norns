@@ -1,0 +1,38 @@
+{
+  "env": {
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "180000",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
+    "CLAUDE_CODE_NO_FLICKER": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_BUG_COMMAND": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "IS_SANDBOX": "1"
+  },
+  "skillOverrides": {
+    "keybindings-help": "off",
+    "antcode-skill": "user-invocable-only",
+    "claude-api": "off",
+    "code-review": "off",
+    "dataviz": "off",
+    "deep-research": "off",
+    "feedback": "off",
+    "fewer-permission-prompts": "off",
+    "huamei-aigc-for-article": "user-invocable-only",
+    "init": "user-invocable-only",
+    "loop": "off",
+    "review": "off",
+    "run": "off",
+    "security-review": "off",
+    "simplify": "off",
+    "skill-yuque-cli-guide": "user-invocable-only",
+    "update-config": "off",
+    "verify": "off"
+  },
+  "skipWebFetchPreflight": true,
+  "disableAllHooks": false
+}

@@ -1,0 +1,45 @@
+# nornsd Agent 配置 schema 版本。
+VERSION: 1
+
+# LLM API 基础地址。
+LLM_URL: "https://example.com"
+# LLM API 访问密钥。
+LLM_KEY: "replace-with-secret"
+# Claude Code 使用的主模型。
+LLM_MODEL: "model-name"
+# 快速模型；留空时复用 LLM_MODEL。
+LLM_FAST_MODEL: ""
+
+# 是否启用 Norns 模式；与命令行参数冲突时以此配置为准。
+NORNS_ENABLE: true
+# nornsd server 监听地址与端口；与命令行参数冲突时以此配置为准。
+NORNS_SERVER_HOST: "0.0.0.0"
+NORNS_SERVER_PORT: 28081
+# nornsd server 的 Bearer Token；请替换为高强度随机值。
+NORNS_SERVER_TOKEN: "replace-with-a-long-random-token"
+
+# Norns Task 的额定 Exploration 并发数。
+NORNS_MAX_CONCURRENT_EXPLORATIONS: 3
+# running Exploration 的超时问询周期，单位为秒。
+NORNS_EXPLORATION_TIMEOUT: 1200
+# 是否允许 Coordinator 在必要时向人类提问并等待实时回答；建议交互式 agent 开启，server 关闭。
+NORNS_ALLOW_HUMAN_INTERVENTION: false
+
+# 领域知识目录；非空时读取其中的 meta.json 并根据元信息生成领域专属的 Decider 和 Explorer SubAgent。
+NORNS_CUSTOM_DOMAIN_DIR: ""
+# 追加到临时 Norns Plugin 的自定义 Skill 目录。
+NORNS_CUSTOM_SKILLS_DIR: ""
+# 追加到临时 Norns Plugin 的自定义 Agent 目录。
+NORNS_CUSTOM_AGENTS_DIR: ""
+
+# 复制到 Runtime 临时 nornsd-custom Plugin 的普通自定义 Agent 目录。
+CUSTOM_AGENTS_DIR: ""
+# 复制到 Runtime 临时 nornsd-custom Plugin 的普通自定义 Skill 目录。
+CUSTOM_SKILLS_DIR: ""
+# 直接传给 Agent CLI 的现有 Plugin 目录；保持列表顺序，可以为空或包含多个目录。
+CUSTOM_PLUGIN_DIRS: []
+
+# Agent 可执行命令及固定参数；省略时使用 claude 作为默认值，多段命令及参数使用列表格式添加。
+AGENT_EXEC:
+  - "claude"
+  # - "--debug"

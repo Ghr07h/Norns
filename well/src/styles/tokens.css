@@ -1,0 +1,30 @@
+:root {
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #202526;
+  background: #f3f5f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0;
+  --ink: #202526;
+  --muted: #687276;
+  --faint: #8d979a;
+  --line: #dce2df;
+  --line-strong: #c8d0cd;
+  --surface: #ffffff;
+  --surface-soft: #f7f9f8;
+  --surface-hover: #eef2f0;
+  --accent: #087b70;
+  --accent-strong: #05665d;
+  --accent-soft: #e2f3ef;
+  --blue: #28679e;
+  --blue-soft: #e8f0f7;
+  --green: #397c4c;
+  --green-soft: #e7f3ea;
+  --amber: #916400;
+  --amber-soft: #fbf0d5;
+  --red: #b13e38;
+  --red-soft: #fae9e7;
+  --shadow-dialog: 0 20px 64px rgb(26 40 36 / 20%);
+  --toolbar-height: 58px;
+  --sidebar-width: 336px;
+}

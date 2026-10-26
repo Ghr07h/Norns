@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Validate artifacts installed in the plain-Claude benchmark image."""
+
+import importlib
+import os
+from pathlib import Path
+import py_compile
+import shutil
+import subprocess
+import sys
+
+import yaml
+
+
+NODE_VERSION = "v" + os.environ.get("NORNS_IMAGE_NODE_VERSION", "24.22.1")
+CLAUDE_CODE_VERSION = os.environ.get("NORNS_IMAGE_CLAUDE_CODE_VERSION", "2.1.199")
+TEMPLATE_PATH = Path("/norns/config/agent.example.yaml")
+REQUIRED_COMMANDS = (
+    "python3", "node", "npm", "claude", "norns", "nornsd",
+    "curl", "wget", "git", "jq", "rg", "tmux", "nc", "socat",
+    "nmap", "sqlmap", "hydra", "john", "dirb", "gobuster", "nikto",
+    "nuclei", "katana", "naabu", "ffuf", "dalfox", "chromium", "playwright-cli",
+)
+REQUIRED_MODULES = (
+    "yaml", "pwnlib", "pymongo", "pyftpdlib", "paramiko", "cryptography",
+    "dns", "bs4", "requests", "dirsearch",
+)
+REQUIRED_DOMAIN_PATHS = (
+    "/norns/domain/redteam/norns_domain_agents/meta.json",
+    "/norns/domain/redteam/norns_domain_agents/decider.md",
+    "/norns/domain/redteam/norns_domain_agents/explorer.md",
+    "/norns/domain/redteam/skills/pentest-tools/SKILL.md",
+)
+
+
+def fail(message: str) -> None:
+    print(f"[FAIL] {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def command_output(argv: list[str]) -> str:
+    try:
+        result = subprocess.run(argv, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        fail(f"command failed: {' '.join(argv)}: {error}")
+    return (result.stdout or result.stderr).strip()
+
+
+def main() -> int:
+    missing = [name for name in REQUIRED_COMMANDS if not shutil.which(name)]
+    if missing:
+        fail(f"missing commands: {', '.join(missing)}")
+    if command_output(["node", "--version"]) != NODE_VERSION:
+        fail(f"unexpected Node.js version; expected {NODE_VERSION}")
+    if not command_output(["claude", "--version"]).startswith(CLAUDE_CODE_VERSION):
+        fail(f"unexpected Claude Code version; expected {CLAUDE_CODE_VERSION}")
+    command_output(["norns", "version"])
+    command_output(["nornsd", "version"])
+    for name in REQUIRED_MODULES:
+        importlib.import_module(name)
+    for path in ("/norns/bin/benchmark.py", "/usr/local/bin/benchmark-entrypoint"):
+        py_compile.compile(path, doraise=True)
+    config = yaml.safe_load(TEMPLATE_PATH.read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or config.get("VERSION") != 1:
+        fail(f"invalid template: {TEMPLATE_PATH}")
+    missing_paths = [path for path in REQUIRED_DOMAIN_PATHS if not Path(path).is_file()]
+    if missing_paths:
+        fail(f"missing redteam files: {', '.join(missing_paths)}")
+    workspace = Path("/workspace")
+    if not workspace.is_dir() or not os.access(workspace, os.W_OK):
+        fail("/workspace is missing or not writable")
+    print("redteam plain-Claude benchmark image verification: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

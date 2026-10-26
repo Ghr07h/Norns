@@ -1,0 +1,49 @@
+{
+  "task": {
+    "id": "task_00000001-0000-4000-8000-000000000001",
+    "purpose": "Investigate"
+  },
+  "graph": {
+    "cognitions": [
+      {
+        "id": "cog_00000001-0000-4000-8000-000000000001",
+        "content": "Subject information",
+        "created_at": "2026-10-12T08:30:00Z"
+      },
+      {
+        "id": "cog_00000003-0000-4000-8000-000000000003",
+        "content": "Evidence found",
+        "created_at": "2026-10-12T08:30:00Z",
+        "origin_ref": "exp_00000001-0000-4000-8000-000000000001",
+        "task_purpose_relevant": true
+      }
+    ],
+    "explorations": [
+      {
+        "id": "exp_00000001-0000-4000-8000-000000000001",
+        "content": "Inspect evidence",
+        "status": "running",
+        "source_cognitions": [
+          "cog_00000001-0000-4000-8000-000000000001",
+          "cog_00000002-0000-4000-8000-000000000002"
+        ]
+      }
+    ]
+  },
+  "global_cognitions": [
+    {
+      "id": "cog_00000002-0000-4000-8000-000000000002",
+      "content": "Shared context",
+      "created_at": "2026-10-12T08:30:00Z"
+    }
+  ],
+  "todo_explorations": [],
+  "running_explorations": [
+    {
+      "id": "exp_00000001-0000-4000-8000-000000000001",
+      "title": "Inspect",
+      "duration_seconds": 0
+    }
+  ],
+  "generated_at": "2026-10-12T08:30:00Z"
+}

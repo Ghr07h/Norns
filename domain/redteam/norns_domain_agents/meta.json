@@ -1,0 +1,7 @@
+{
+  "domain_name": "redteam",
+  "domain_decider_description": "Norns 的红队领域决策器，用于决策与网络安全、漏洞挖掘、红蓝攻防、CTF 等领域相关的任务的探索方向，基于当前探索状态给出下一步决策。",
+  "domain_decider_extra_info_file": "decider.md",
+  "domain_explorer_description": "Norns 的红队领域探索者，执行一个与网络安全、漏洞挖掘、红蓝攻防等领域相关的探索方向，记录新认知并提交探索结果。",
+  "domain_explorer_extra_info_file": "explorer.md"
+}
