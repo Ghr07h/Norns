@@ -37,13 +37,21 @@ type logState struct {
 var subjectLogs sync.Map
 
 type rawEnvelope struct {
-	RawSeq    uint64          `json:"raw_seq"`
-	Timestamp time.Time       `json:"timestamp"`
-	RuntimeID string          `json:"runtime_id"`
-	Stream    string          `json:"stream"`
-	Kind      string          `json:"kind"`
-	Payload   json.RawMessage `json:"payload"`
+	RawSeq     uint64          `json:"raw_seq"`
+	Timestamp  time.Time       `json:"timestamp"`
+	RuntimeID  string          `json:"runtime_id"`
+	Stream     string          `json:"stream"`
+	Kind       string          `json:"kind"`
+	Payload    json.RawMessage `json:"payload"`
+	Projection *rawProjection  `json:"projection,omitempty"`
 }
+
+type rawProjection struct {
+	Type            string `json:"type"`
+	ResumeSessionID string `json:"resume_session_id,omitempty"`
+}
+
+const sessionResumedEventType = "runtime.session_resumed"
 
 func New(store *storesqlite.Store, subjectPath, subjectID, runtimeID string) *Logger {
 	logPath := filepath.Join(subjectPath, ".nornsd", "log")
@@ -69,7 +77,7 @@ func (l *Logger) Record(ctx context.Context, stream, kind string, payload json.R
 	if err != nil {
 		return MessageResult{}, err
 	}
-	record := rawEnvelope{seq, now.UTC(), l.runtimeID, stream, kind, payload}
+	record := rawEnvelope{RawSeq: seq, Timestamp: now.UTC(), RuntimeID: l.runtimeID, Stream: stream, Kind: kind, Payload: payload}
 	if err = appendJSONLine(l.rawPath, record); err != nil {
 		return MessageResult{}, err
 	}
@@ -79,6 +87,36 @@ func (l *Logger) Record(ctx context.Context, stream, kind string, payload json.R
 // RecordSessionResumed preserves a replayed startup result in the raw log while
 // projecting it as Runtime lifecycle metadata instead of a new turn.
 func (l *Logger) RecordSessionResumed(ctx context.Context, payload json.RawMessage, resumeSessionID string, now time.Time) error {
+	if _, err := sessionResumedPayload(payload, resumeSessionID, l.runtimeID); err != nil {
+		return err
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	rawSeq, err := l.store.NextRawSeq(ctx, l.subjectID)
+	if err != nil {
+		return err
+	}
+	record := rawEnvelope{
+		RawSeq:    rawSeq,
+		Timestamp: now.UTC(),
+		RuntimeID: l.runtimeID,
+		Stream:    "stdout",
+		Kind:      "agent_message",
+		Payload:   payload,
+		Projection: &rawProjection{
+			Type:            sessionResumedEventType,
+			ResumeSessionID: resumeSessionID,
+		},
+	}
+	if err = appendJSONLine(l.rawPath, record); err != nil {
+		return err
+	}
+	_, err = l.projectRecordLocked(ctx, record)
+	return err
+}
+
+func sessionResumedPayload(payload json.RawMessage, resumeSessionID, runtimeID string) (map[string]any, error) {
 	var envelope struct {
 		Subtype        string `json:"subtype"`
 		SessionID      string `json:"session_id"`
@@ -94,21 +132,11 @@ func (l *Logger) RecordSessionResumed(ctx context.Context, payload json.RawMessa
 		} `json:"origin"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
-		return err
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	rawSeq, err := l.store.NextRawSeq(ctx, l.subjectID)
-	if err != nil {
-		return err
-	}
-	record := rawEnvelope{RawSeq: rawSeq, Timestamp: now.UTC(), RuntimeID: l.runtimeID, Stream: "stdout", Kind: "agent_message", Payload: payload}
-	if err = appendJSONLine(l.rawPath, record); err != nil {
-		return err
+		return nil, err
 	}
 	eventPayload := map[string]any{
 		"resume_session_id": resumeSessionID,
-		"session_id":        l.runtimeID,
+		"session_id":        runtimeID,
 		"subtype":           envelope.Subtype,
 		"is_error":          envelope.IsError,
 		"num_turns":         envelope.NumTurns,
@@ -132,16 +160,27 @@ func (l *Logger) RecordSessionResumed(ctx context.Context, payload json.RawMessa
 	if envelope.Origin.Kind != "" {
 		eventPayload["origin_kind"] = envelope.Origin.Kind
 	}
-	_, projected, err := l.store.ProjectRaw(ctx, l.subjectID, l.runtimeID, rawSeq, 1, record.Timestamp, func(uint64) []storesqlite.ProjectedEvent {
-		return []storesqlite.ProjectedEvent{{Type: "runtime.session_resumed", Source: "runtime", Payload: eventPayload}}
+	return eventPayload, nil
+}
+
+func (l *Logger) projectSessionResumedRecordLocked(ctx context.Context, record rawEnvelope) (MessageResult, error) {
+	eventPayload, err := sessionResumedPayload(record.Payload, record.Projection.ResumeSessionID, record.RuntimeID)
+	if err != nil {
+		return MessageResult{}, err
+	}
+	_, projected, err := l.store.ProjectRaw(ctx, l.subjectID, record.RuntimeID, record.RawSeq, 1, record.Timestamp, func(uint64) []storesqlite.ProjectedEvent {
+		return []storesqlite.ProjectedEvent{{Type: sessionResumedEventType, Source: "runtime", Payload: eventPayload}}
 	})
 	if err != nil {
-		return err
+		return MessageResult{}, err
 	}
+	result := MessageResult{projectionChanged: projected}
 	if projected {
-		return syncReadableLocked(ctx, l.store, l.readablePath, l.subjectID, l.state)
+		if err = syncReadableLocked(ctx, l.store, l.readablePath, l.subjectID, l.state); err != nil {
+			return MessageResult{}, err
+		}
 	}
-	return nil
+	return result, nil
 }
 
 func (l *Logger) Event(ctx context.Context, eventType, source string, payload any, now time.Time) (domain.Event, error) {
@@ -200,6 +239,14 @@ type toolReference struct {
 }
 
 func (l *Logger) projectRecordLocked(ctx context.Context, record rawEnvelope) (MessageResult, error) {
+	if record.Projection != nil {
+		switch record.Projection.Type {
+		case sessionResumedEventType:
+			return l.projectSessionResumedRecordLocked(ctx, record)
+		default:
+			return MessageResult{}, fmt.Errorf("unsupported raw projection %q", record.Projection.Type)
+		}
+	}
 	if record.Stream != "stdout" || record.Kind != "agent_message" {
 		_, _, err := l.store.ProjectRaw(ctx, l.subjectID, record.RuntimeID, record.RawSeq, 0, record.Timestamp, func(uint64) []storesqlite.ProjectedEvent { return nil })
 		return MessageResult{}, err
@@ -474,6 +521,12 @@ func ReplayRaw(ctx context.Context, store *storesqlite.Store, subjectPath, subje
 			if record.RawSeq == 0 || record.RawSeq <= previous || record.RuntimeID == "" || record.Stream == "" || record.Kind == "" || !json.Valid(record.Payload) {
 				return fmt.Errorf("invalid raw log envelope after byte %d", offset)
 			}
+			if record.Projection == nil {
+				record.Projection, err = legacyRawProjection(ctx, store, subjectID, record)
+				if err != nil {
+					return fmt.Errorf("inspect raw sequence %d projection: %w", record.RawSeq, err)
+				}
+			}
 			projection, projectErr := logger.projectRecordLocked(ctx, record)
 			if projectErr != nil {
 				err = projectErr
@@ -502,6 +555,32 @@ func ReplayRaw(ctx context.Context, store *storesqlite.Store, subjectPath, subje
 		logger.state.initialized = true
 	}
 	return nil
+}
+
+func legacyRawProjection(ctx context.Context, store *storesqlite.Store, subjectID string, record rawEnvelope) (*rawProjection, error) {
+	if record.Stream != "stdout" || record.Kind != "agent_message" {
+		return nil, nil
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(record.Payload, &envelope) != nil || envelope.Type != "result" {
+		return nil, nil
+	}
+	events, err := store.ListRawProjectionEvents(ctx, subjectID, record.RawSeq)
+	if err != nil {
+		return nil, err
+	}
+	if len(events) != 1 || events[0].Type != sessionResumedEventType || events[0].Source != "runtime" {
+		return nil, nil
+	}
+	var payload struct {
+		ResumeSessionID string `json:"resume_session_id"`
+	}
+	if err = json.Unmarshal(events[0].Payload, &payload); err != nil {
+		return nil, fmt.Errorf("decode legacy session resume projection: %w", err)
+	}
+	return &rawProjection{Type: sessionResumedEventType, ResumeSessionID: payload.ResumeSessionID}, nil
 }
 
 func bytesTrimNewline(line []byte) []byte {

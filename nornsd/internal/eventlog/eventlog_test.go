@@ -85,6 +85,124 @@ func TestRawProjectionIsAtomicAndReplayIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestSessionResumedProjectionReplays(t *testing.T) {
+	ctx := context.Background()
+	store, subjectID, runtimeID := projectionStore(t)
+	root := t.TempDir()
+	logger := New(store, root, subjectID, runtimeID)
+	resumeSessionID := "00000000-0000-4000-8000-000000000001"
+	raw := json.RawMessage(`{"type":"result","subtype":"success","session_id":"agent-session","is_error":false,"num_turns":0,"origin":{"kind":"task-notification"},"usage":{"input_tokens":0,"output_tokens":0},"result":"completed"}`)
+
+	if err := logger.RecordSessionResumed(ctx, raw, resumeSessionID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	rawData, err := os.ReadFile(filepath.Join(root, ".nornsd", "log", "raw.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record rawEnvelope
+	if err = json.Unmarshal(bytes.TrimSpace(rawData), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Projection == nil || record.Projection.Type != sessionResumedEventType || record.Projection.ResumeSessionID != resumeSessionID {
+		t.Fatalf("raw projection metadata=%#v", record.Projection)
+	}
+	if err = ReplayRaw(ctx, store, root, subjectID); err != nil {
+		t.Fatal(err)
+	}
+	assertSessionResumedEvent(t, store, subjectID, runtimeID, resumeSessionID)
+}
+
+func TestReplayProjectsMarkedSessionResumedAfterInterruptedWrite(t *testing.T) {
+	ctx := context.Background()
+	store, subjectID, runtimeID := projectionStore(t)
+	root := t.TempDir()
+	resumeSessionID := "00000000-0000-4000-8000-000000000001"
+	raw := json.RawMessage(`{"type":"result","subtype":"success","is_error":false,"num_turns":0,"origin":{"kind":"task-notification"},"usage":{"input_tokens":0,"output_tokens":0}}`)
+	rawSeq, err := store.NextRawSeq(ctx, subjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := rawEnvelope{
+		RawSeq:    rawSeq,
+		Timestamp: time.Now().UTC(),
+		RuntimeID: runtimeID,
+		Stream:    "stdout",
+		Kind:      "agent_message",
+		Payload:   raw,
+		Projection: &rawProjection{
+			Type:            sessionResumedEventType,
+			ResumeSessionID: resumeSessionID,
+		},
+	}
+	if err = appendJSONLine(filepath.Join(root, ".nornsd", "log", "raw.jsonl"), record); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = ReplayRaw(ctx, store, root, subjectID); err != nil {
+		t.Fatal(err)
+	}
+	assertSessionResumedEvent(t, store, subjectID, runtimeID, resumeSessionID)
+}
+
+func TestReplayPreservesLegacySessionResumedProjection(t *testing.T) {
+	ctx := context.Background()
+	store, subjectID, runtimeID := projectionStore(t)
+	root := t.TempDir()
+	logger := New(store, root, subjectID, runtimeID)
+	resumeSessionID := "00000000-0000-4000-8000-000000000001"
+	raw := json.RawMessage(`{"type":"result","subtype":"success","is_error":false,"num_turns":0,"origin":{"kind":"task-notification"},"usage":{"input_tokens":0,"output_tokens":0}}`)
+
+	if err := logger.RecordSessionResumed(ctx, raw, resumeSessionID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	rawPath := filepath.Join(root, ".nornsd", "log", "raw.jsonl")
+	rawData, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy map[string]any
+	if err = json.Unmarshal(bytes.TrimSpace(rawData), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	delete(legacy, "projection")
+	rawData, err = json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawData = append(rawData, '\n')
+	if err = os.WriteFile(rawPath, rawData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = ReplayRaw(ctx, store, root, subjectID); err != nil {
+		t.Fatal(err)
+	}
+	assertSessionResumedEvent(t, store, subjectID, runtimeID, resumeSessionID)
+}
+
+func assertSessionResumedEvent(t *testing.T, store *storesqlite.Store, subjectID, runtimeID, resumeSessionID string) {
+	t.Helper()
+	events, err := store.ListEvents(context.Background(), subjectID, 10, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != sessionResumedEventType || events[0].Source != "runtime" {
+		t.Fatalf("events=%#v", events)
+	}
+	var payload struct {
+		ResumeSessionID string `json:"resume_session_id"`
+		SessionID       string `json:"session_id"`
+		OriginKind      string `json:"origin_kind"`
+	}
+	if err = json.Unmarshal(events[0].Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.ResumeSessionID != resumeSessionID || payload.SessionID != runtimeID || payload.OriginKind != "task-notification" {
+		t.Fatalf("session resumed payload=%s", events[0].Payload)
+	}
+}
+
 func TestProjectionIdentifiesMainAndDomainSubagents(t *testing.T) {
 	ctx := context.Background()
 	store, subjectID, runtimeID := projectionStore(t)

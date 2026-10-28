@@ -1139,6 +1139,26 @@ type ProjectedEvent struct {
 	Payload any
 }
 
+// ListRawProjectionEvents returns the stable Events previously derived from a
+// raw record. Replay uses this to recognize projections written by older
+// versions whose raw envelope did not preserve the projection kind.
+func (s *Store) ListRawProjectionEvents(ctx context.Context, subjectID string, rawSeq uint64) ([]domain.Event, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT seq,type,timestamp,runtime_id,source,payload_json FROM events WHERE subject_id=? AND origin_raw_seq=? ORDER BY origin_index`, subjectID, rawSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := []domain.Event{}
+	for rows.Next() {
+		event, scanErr := scanEvent(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
 // ProjectRaw writes all Events derived from a raw record and advances its
 // checkpoint in one transaction. build receives the first allocated Event
 // sequence so payloads may reference another Event from the same raw record.
