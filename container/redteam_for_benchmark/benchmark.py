@@ -200,8 +200,10 @@ def _setup_process_log() -> Path | None:
     except OSError as error:
         log.warning("过程日志落盘失败(只走 terminal): %s (%s)", path, error)
         return None
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"))
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
     handler.setLevel(logging.INFO)
     log.addHandler(handler)            # 镜像到文件;log 仍向 root(StreamHandler→stdout)传播
     log.info("过程日志写入: %s(追加模式)", path)
