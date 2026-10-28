@@ -1,9 +1,12 @@
 package cc
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -51,6 +54,182 @@ func TestPublishIncludesNornsPluginMetadata(t *testing.T) {
 	}
 	if metadata.Name != "norns" {
 		t.Fatalf("Plugin name = %q, want norns", metadata.Name)
+	}
+}
+
+func TestPublishedUgrepGuard(t *testing.T) {
+	subject := t.TempDir()
+	pluginPath, _, err := Publish(subject, "runtime-ugrep-guard", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(pluginPath, "hooks", "pretooluse_ugrep_guard.sh")
+	if !supportsUgrepGuard(runtime.GOOS) {
+		if _, statErr := os.Stat(hook); !os.IsNotExist(statErr) {
+			t.Fatalf("ugrep guard must not be published on %s", runtime.GOOS)
+		}
+		return
+	}
+	if _, err = os.Stat(hook); err != nil {
+		t.Fatalf("published ugrep guard: %v", err)
+	}
+	if _, err = os.Stat(filepath.Join(pluginPath, "hooks", "hooks.json")); err != nil {
+		t.Fatalf("published hook registration: %v", err)
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is required to exercise the Claude Code hook")
+	}
+
+	tests := []struct {
+		name    string
+		payload any
+		deny    bool
+	}{
+		{
+			name: "c-03 bounded repeats",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -oE '"[^"]{0,40}(init|password|setup|validate)[^"]{0,40}"' /tmp/initpage.js`},
+			},
+			deny: true,
+		},
+		{
+			name: "alternation remains inside quoted pattern",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -E 'a.{0,12}(x|y).{0,11}b' input.txt | head`},
+			},
+			deny: true,
+		},
+		{
+			name: "bare ugrep",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `ugrep -E 'a.{0,12}b.{0,11}c' input.txt`},
+			},
+			deny: true,
+		},
+		{
+			name: "backslash does not bypass a function",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `\grep -E 'a.{0,12}b.{0,11}c' input.txt`},
+			},
+			deny: true,
+		},
+		{
+			name: "unparseable command uses fallback",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -E 'a.{0,12}b.{0,11}c input.txt`},
+			},
+			deny: true,
+		},
+		{
+			name: "one range",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -E 'a.{0,100}b' input.txt`},
+			},
+		},
+		{
+			name: "exact counts",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -E 'a.{20}b.{30}c' input.txt`},
+			},
+		},
+		{
+			name: "independent grep segments",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `grep -E 'a.{0,40}' a.txt | grep -E 'b.{0,40}' b.txt`},
+			},
+		},
+		{
+			name: "explicit GNU grep",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `/usr/bin/grep -E 'a.{0,100}b.{0,100}c' input.txt`},
+			},
+		},
+		{
+			name: "command bypasses shell function",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": `command grep -E 'a.{0,100}b.{0,100}c' input.txt`},
+			},
+		},
+		{
+			name: "other tool",
+			payload: map[string]any{
+				"tool_name":  "Grep",
+				"tool_input": map[string]any{"pattern": `a.{0,100}b.{0,100}c`},
+			},
+		},
+		{
+			name: "non-string command",
+			payload: map[string]any{
+				"tool_name":  "Bash",
+				"tool_input": map[string]any{"command": 42},
+			},
+		},
+		{name: "malformed payload", payload: "not-an-object"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input, marshalErr := json.Marshal(test.payload)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			cmd := exec.Command(shell, hook)
+			cmd.Stdin = bytes.NewReader(input)
+			output, runErr := cmd.Output()
+			if runErr != nil {
+				t.Fatalf("run guard: %v", runErr)
+			}
+			if !test.deny {
+				if len(output) != 0 {
+					t.Fatalf("guard denied safe command: %s", output)
+				}
+				return
+			}
+			var response struct {
+				HookSpecificOutput struct {
+					HookEventName            string `json:"hookEventName"`
+					PermissionDecision       string `json:"permissionDecision"`
+					PermissionDecisionReason string `json:"permissionDecisionReason"`
+				} `json:"hookSpecificOutput"`
+			}
+			if unmarshalErr := json.Unmarshal(output, &response); unmarshalErr != nil {
+				t.Fatalf("decode deny response: %v; output=%s", unmarshalErr, output)
+			}
+			decision := response.HookSpecificOutput
+			if decision.HookEventName != "PreToolUse" || decision.PermissionDecision != "deny" {
+				t.Fatalf("unexpected deny response: %s", output)
+			}
+			if !strings.Contains(decision.PermissionDecisionReason, "/usr/bin/grep") {
+				t.Fatalf("deny response lacks remediation: %s", output)
+			}
+		})
+	}
+}
+
+func TestSupportsUgrepGuard(t *testing.T) {
+	for _, test := range []struct {
+		goos string
+		want bool
+	}{
+		{"linux", true},
+		{"darwin", true},
+		{"windows", false},
+		{"freebsd", false},
+	} {
+		if got := supportsUgrepGuard(test.goos); got != test.want {
+			t.Errorf("supportsUgrepGuard(%q) = %t, want %t", test.goos, got, test.want)
+		}
 	}
 }
 

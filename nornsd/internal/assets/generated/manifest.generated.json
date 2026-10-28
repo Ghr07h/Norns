@@ -6,6 +6,8 @@
     "plugins/cc/agents/coordinator.md": "sha256:82695a2d34f7ca95b14add8d6354d1998ea04d5158a85e791fac05cf64784073",
     "plugins/cc/agents/decider.md": "sha256:8c27ca74b1303d686dd5b788dc54de73798fb1129ebc6c5a569ce27e84ca90bc",
     "plugins/cc/agents/explorer.md": "sha256:90d6dd997726e0d21dbe32ea792b987614a1739654956580d576bf9a9bbf1b6c",
+    "plugins/cc/hooks/hooks.json": "sha256:9048ca4bcbbcbf0e4def80d42f3f6f53b0e436ad4136c44e32154fc6bf1aa7b5",
+    "plugins/cc/hooks/pretooluse_ugrep_guard.sh": "sha256:cea8b052eaf17b92107081e850ee190f057da6a20f7089cedc37feccdd32f29e",
     "plugins/cc/settings.json": "sha256:d78617fd3b06bd667e30a0fd6e811a7c3d78b9a4b1a25867a9aac6cc513533b4",
     "plugins/cc/skills/norns-loop/SKILL.md": "sha256:7a5970be48bd8eca839bf1aec64e010fca292a12b8e21dce3bdc016dcf1bb315",
     "plugins/cc/skills/norns-loop/references/protocol.md": "sha256:ba4582a6249a718647fbdc8d284a2a17775b990f96e6ee091a0545db5f472480"

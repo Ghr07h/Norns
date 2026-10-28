@@ -1,0 +1,17 @@
+{
+  "description": "Protect Claude Code versions with the embedded ugrep bounded-repeat OOM bug",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse_ugrep_guard.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

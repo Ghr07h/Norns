@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -67,6 +68,11 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 	defer os.RemoveAll(stage)
 	if err := copyEmbedded(stage); err != nil {
 		return "", "", err
+	}
+	if !supportsUgrepGuard(runtime.GOOS) {
+		if err := os.RemoveAll(filepath.Join(stage, "hooks")); err != nil {
+			return "", "", fmt.Errorf("remove unsupported Claude Code hooks: %w", err)
+		}
 	}
 	maxConcurrent := 3
 	explorationTimeoutSeconds := 1200
@@ -181,6 +187,10 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 	_ = os.RemoveAll(old)
 	sum := sha256.Sum256(b)
 	return current, "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func supportsUgrepGuard(goos string) bool {
+	return goos == "linux" || goos == "darwin"
 }
 
 func generateDomainAgent(stage, sourceName, targetName, agentName, description, extraInfo string) error {

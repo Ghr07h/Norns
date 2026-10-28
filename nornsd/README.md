@@ -6,6 +6,8 @@ nornsd 可以独立批量驱动普通 Agent，也可以通过 `--norns` 启用�
 
 正式运行路径为 Go 单一可执行文件与 Claude Code CLI 2.1.199，不依赖 Python 或 Claude Agent SDK。运行前需要确保 `claude` 可执行文件版本为 `2.1.199`；启用 Norns 模式时，还需要在 PATH 或 nornsd 同目录提供支持 protocol v2 的 `norns`。
 
+Norns Plugin 在 Linux 和 macOS 上使用 POSIX `sh`/`awk` PreToolUse hook，拦截 Bash 工具中由 shell snapshot shadow 到 Claude Code 内嵌 ugrep 7.5.0 的危险 `grep` 正则；其他系统不会发布该 hook。两个 bounded repeat（例如同一模式内出现两次 `{0,40}`）会触发旧版 ugrep 的正则编译内存爆炸；显式使用 `/usr/bin/grep`、Claude Code 内置 Grep 工具，或者改用 `awk` 不会命中此拦截。Claude Code 2.1.235 已通过升级内嵌 ugrep 修复该问题，但固定使用 2.1.199 的 Runtime 必须保留此 hook。
+
 ## 工作模式
 
 - `nornsd server` 是主要的批量管理方式。调用方通过 HTTP API 创建多个 Subject 和 Runtime，nornsd 使用稳定 FIFO 和全局并发槽驱动执行。
