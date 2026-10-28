@@ -1552,6 +1552,14 @@ class RoundQueueScheduler:
                 }
             if task.status == "unresolvable":
                 entry["status"] = "unresolvable"
+            entry["cumulative_score"] = max(
+                int(entry.get("cumulative_score") or 0),
+                max(
+                    (int(attempt.get("cumulative_score") or 0)
+                     for attempt in task.attempts),
+                    default=0,
+                ),
+            )
             entry["queue_status"] = task.status
             entry["attempts"] = list(task.attempts)
             entries.append(entry)
