@@ -98,7 +98,8 @@ it("warns without blocking connections that share a Server Root", async () => {
 
   renderPage();
 
-  await waitFor(() => expect(screen.getAllByText("识别到重复的 Server Root 记录")).toHaveLength(2));
+  await waitFor(() => expect(screen.getAllByText("重复的 Server Root 记录")).toHaveLength(2));
+  for (const badge of screen.getAllByText("重复的 Server Root 记录")) expect(badge).toHaveClass("status-warning");
   for (const button of screen.getAllByRole("button", { name: "进入工作区" })) expect(button).toBeEnabled();
 });
 
