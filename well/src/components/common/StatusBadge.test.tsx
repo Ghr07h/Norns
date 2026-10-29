@@ -10,11 +10,16 @@ beforeAll(async () => {
 it("uses semantic colors for normal, advisory, and blocking states", () => {
   render(<>
     <StatusBadge value="online" />
+    <StatusBadge value="idle" />
+    <StatusBadge value="using" />
     <StatusBadge value="duplicate_identity" />
     <StatusBadge value="identity_changed" />
   </>);
 
   expect(screen.getByText("在线")).toHaveClass("status-ok");
+  expect(screen.getByText("空闲")).toHaveClass("status-ok");
+  expect(screen.getByText("使用中")).toHaveClass("status-info");
+  expect(screen.getByText("使用中").querySelector(".lucide-activity")).toBeInTheDocument();
   expect(screen.getByText("重复的 Server Root 记录")).toHaveClass("status-warning");
   expect(screen.getByText("目标服务已改变")).toHaveClass("status-danger");
 });
