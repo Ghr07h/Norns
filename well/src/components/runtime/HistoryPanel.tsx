@@ -7,14 +7,10 @@ import { getRuntime, listRuntimesPage } from "../../api/commands";
 import { keys } from "../../api/query-keys";
 import { CopyButton } from "../common/CopyButton";
 import { StatusBadge } from "../common/StatusBadge";
-import { formatTime } from "../../lib/format";
+import { endReasonKey, formatTime } from "../../lib/format";
 
 function ArtifactPath({ label, value, fallback }: { label: string; value: string | null | undefined; fallback: string }) {
   return <div className="artifact-row"><dt>{label}</dt><dd className="mono breakable">{value ?? fallback}{typeof value === "string" && <CopyButton value={value} />}</dd></div>;
-}
-
-function endReasonKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 export function HistoryPanel({ serverId, subjectId, connection }: { serverId: string; subjectId: string; connection: ConnectionInput }) {
@@ -23,9 +19,11 @@ export function HistoryPanel({ serverId, subjectId, connection }: { serverId: st
   const [selected, setSelected] = useState<string | null>(null);
   const history = useInfiniteQuery({ queryKey: keys.runtimes(serverId, subjectId), queryFn: ({ pageParam }) => listRuntimesPage(connection, subjectId, pageParam), initialPageParam: null as string | null, getNextPageParam: (page) => page.next_cursor });
   const detail = useQuery({ queryKey: keys.runtime(serverId, subjectId, selected ?? ""), queryFn: () => getRuntime(connection, subjectId, selected!), enabled: Boolean(selected) });
-  const items = history.data?.pages.flatMap((page) => page.runtimes) ?? [];
+  const newestFirstItems = history.data?.pages.flatMap((page) => page.runtimes) ?? [];
   const reportedTotal = history.data?.pages[0]?.total_count;
-  const totalCount = typeof reportedTotal === "number" && reportedTotal >= items.length ? reportedTotal : items.length;
+  const totalCount = typeof reportedTotal === "number" && reportedTotal >= newestFirstItems.length ? reportedTotal : newestFirstItems.length;
+  const items = [...newestFirstItems].reverse();
+  const firstSequence = totalCount - items.length + 1;
   useEffect(() => { setOpen(false); setSelected(null); }, [subjectId]);
   const artifacts = detail.data?.artifacts ?? undefined;
   const transcriptFallback = artifacts?.transcript_status === "missing" ? t("runtime.transcriptMissing")
@@ -38,11 +36,12 @@ export function HistoryPanel({ serverId, subjectId, connection }: { serverId: st
       {open ? <ChevronDown /> : <ChevronRight />}<strong>{t("runtime.records")}</strong><span>{t("runtime.recordsCount", { count: totalCount })}</span>
     </button>
     {open && <div className="runtime-records">
-      {history.isPending ? <div className="loading-state compact">{t("common.loading")}</div> : items.length === 0 ? <div className="empty-inline compact">{t("common.noData")}</div> : items.map((runtime) => {
+      {history.isPending ? <div className="loading-state compact">{t("common.loading")}</div> : items.length === 0 ? <div className="empty-inline compact">{t("common.noData")}</div> : items.map((runtime, index) => {
         const expanded = selected === runtime.id;
         return <Fragment key={runtime.id}>
           <button type="button" className={`runtime-record ${expanded ? "expanded" : ""}`} aria-expanded={expanded} onClick={() => setSelected(expanded ? null : runtime.id)}>
             {expanded ? <ChevronDown /> : <ChevronRight />}
+            <span className="runtime-record-sequence"><small>{t("runtime.sequence")}</small>{firstSequence + index}</span>
             <span className="runtime-record-id mono" title={runtime.id}>{runtime.id}</span>
             <span className="runtime-record-time"><small>{t("runtime.startedAt")}</small>{formatTime(runtime.started_at ?? runtime.created_at, i18n.language)}</span>
             <span className="runtime-record-time"><small>{t("runtime.endedAt")}</small>{formatTime(runtime.ended_at, i18n.language)}</span>

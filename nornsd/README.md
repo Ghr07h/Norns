@@ -144,7 +144,7 @@ nornsd agent --resume-subject SUBJECT_UUID --resume-session --setting=./agent.ya
 
 `--resume-session` 必须与 `--resume-subject` 一起使用，Subject 必须空闲且至少存在一个历史 Runtime。nornsd 读取最新 Runtime 实际使用的 Session ID，并通过 Claude Code 的 `--resume` 与 `--fork-session` 将上下文派生到新 Runtime ID 对应的新 Session；上一 Session 和 transcript 不会被继续写入。
 
-Claude Code 会为后台任务通知额外输出 `origin.kind=task-notification` 的 `result`。当前进程创建的后台任务可能产生非零 `num_turns` 和 token 用量；恢复 Session 时，上一进程遗留任务的通知则常见零 turn、零 token，而且可能晚于新 Runtime 的首条 instruction 到达。nornsd 只按 `origin.kind` 识别这类通知，保留其结果和诊断字段，但不会将其视为 instruction 完成，也不会减少 `inflight_turns`。
+Claude Code 会为后台任务通知额外输出 `origin.kind=task-notification` 的 `result`。当前进程创建的后台任务可能产生非零 `num_turns` 和 token 用量；恢复 Session 时，上一进程遗留任务的通知则常见零 turn、零 token，而且可能晚于新 Runtime 的首条 instruction 到达。nornsd 只按 `origin.kind` 识别这类通知，保留其结果和诊断字段，但不会将其视为 instruction 完成，也不会减少 `inflight_turns`；它们不会生成额外的 `runtime.session_resumed`，一次 Runtime 恢复只记录一条会话恢复事件。
 
 恢复 Subject 时有以下边界：
 

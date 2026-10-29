@@ -196,6 +196,20 @@ func (l *Logger) Event(ctx context.Context, eventType, source string, payload an
 	return event, nil
 }
 
+// RuntimeFinishedPayload is the public terminal Runtime event contract. Low-level
+// wait failures stay in the lifecycle log; consumers receive the persisted reason.
+func RuntimeFinishedPayload(state domain.RuntimeState, exitCode int, endReason, errorCode string) map[string]any {
+	payload := map[string]any{
+		"state":      state,
+		"exit_code":  exitCode,
+		"end_reason": endReason,
+	}
+	if state == domain.RuntimeError {
+		payload["error_code"] = errorCode
+	}
+	return payload
+}
+
 func appendJSONLine(path string, value any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err

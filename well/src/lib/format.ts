@@ -15,6 +15,10 @@ export function formatBytes(value: number): string {
 
 export function shortId(value: string): string { return value.slice(0, 8); }
 
+export function endReasonKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
 export function errorMessage(error: unknown, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (typeof error === "object" && error) {
     const candidate = error as { code?: string; message?: string; details?: { reason?: unknown } };

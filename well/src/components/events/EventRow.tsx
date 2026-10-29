@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
 import type { PublicEvent } from "../../api/dto";
-import { formatTime, shortId } from "../../lib/format";
+import { endReasonKey, formatTime, shortId } from "../../lib/format";
 
 type AgentInfo = { role: string; name: string };
 
@@ -21,7 +21,7 @@ const EVENT_LABELS: Record<string, [string, string]> = {
   "subject.created": ["创建实体", "Subject created"],
   "runtime.started": ["启动运行时", "Runtime started"],
   "runtime.cancelled": ["取消运行时", "Runtime cancelled"],
-  "runtime.finished": ["完成运行时", "Runtime finished"],
+  "runtime.finished": ["结束运行时", "Runtime ended"],
   "runtime.recovery_notice": ["恢复运行时", "Runtime recovery"],
   "runtime.session_resumed": ["恢复会话", "Session resumed"],
   "instruction.dispatched": ["下发指令", "Instruction dispatched"],
@@ -171,7 +171,9 @@ function StandardEventContent({ event, payload }: { event: PublicEvent; payload:
     case "runtime.finished": {
       const state = stringValue(payload?.state);
       const exitCode = numberValue(payload?.exit_code);
-      return <EventMessage><p>{t("events.messages.runtimeFinished")}</p><div className="event-facts">{state && <EventFact label={t("events.state")}>{t(`status.${state}`, { defaultValue: state })}</EventFact>}{exitCode !== null && <EventFact label={t("events.exitCode")}>{exitCode}</EventFact>}{payload?.wait_error === true && <EventFact label={t("events.waitStatus")}>{t("events.waitError")}</EventFact>}</div></EventMessage>;
+      const endReason = stringValue(payload?.end_reason);
+      const errorCode = stringValue(payload?.error_code);
+      return <EventMessage><p>{t("events.messages.runtimeFinished")}</p><div className="event-facts">{state && <EventFact label={t("events.state")}>{t(`status.${state}`, { defaultValue: state })}</EventFact>}{exitCode !== null && <EventFact label={t("events.exitCode")}>{exitCode}</EventFact>}{endReason && <EventFact label={t("runtime.endReason")}>{t(`runtime.endReasons.${endReasonKey(endReason)}`, { defaultValue: endReason })}</EventFact>}{errorCode && <EventFact label={t("events.errorCode")}><code>{errorCode}</code></EventFact>}</div></EventMessage>;
     }
     case "runtime.recovery_notice": {
       const previous = stringValue(payload?.previous_runtime_id);

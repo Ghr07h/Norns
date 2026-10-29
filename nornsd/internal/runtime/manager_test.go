@@ -152,6 +152,33 @@ done
 	if runtime.State != domain.RuntimeCancelled {
 		t.Fatalf("runtime state=%s", runtime.State)
 	}
+	events, err = owner.Store.ListEvents(ctx, subject.ID, 100, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundFinished := false
+	for _, event := range events {
+		if event.Type != "runtime.finished" {
+			continue
+		}
+		var payload map[string]any
+		if err = json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["state"] != string(domain.RuntimeCancelled) || payload["end_reason"] != "user_graceful_stop" {
+			t.Fatalf("runtime.finished payload=%s", event.Payload)
+		}
+		if _, ok := payload["error_code"]; ok {
+			t.Fatalf("cancelled runtime.finished contains error_code: %s", event.Payload)
+		}
+		if _, ok := payload["wait_error"]; ok {
+			t.Fatalf("runtime.finished contains wait_error: %s", event.Payload)
+		}
+		foundFinished = true
+	}
+	if !foundFinished {
+		t.Fatal("runtime.finished event was not recorded")
+	}
 	var resourceData struct {
 		SampleIntervalMS int64 `json:"memory_sample_interval_ms"`
 	}
@@ -238,7 +265,7 @@ done
 	}
 }
 
-func TestManagedResumeForkIgnoresReplayedStartupResult(t *testing.T) {
+func TestManagedResumeForkRecordsOneResumeEvent(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "fake-cc-resume.sh")
 	source := `#!/bin/sh
@@ -325,7 +352,7 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	resumedCount, resultCount := 0, 0
+	resumedCount, resultCount, notificationCount := 0, 0, 0
 	for _, event := range events {
 		switch event.Type {
 		case "runtime.session_resumed":
@@ -338,15 +365,24 @@ done
 			if err = json.Unmarshal(event.Payload, &payload); err != nil || payload.ResumeSessionID != previousID || payload.SessionID != runtime.ID {
 				t.Fatalf("runtime.session_resumed payload=%s parsed=%#v err=%v", event.Payload, payload, err)
 			}
-			if resumedCount > 1 && payload.OriginKind != "task-notification" {
-				t.Fatalf("delayed replay result has origin_kind=%q: %s", payload.OriginKind, event.Payload)
+			if payload.OriginKind != "" {
+				t.Fatalf("resume handshake has origin_kind=%q: %s", payload.OriginKind, event.Payload)
 			}
 		case "agent.result":
 			resultCount++
+			var payload struct {
+				OriginKind string `json:"origin_kind"`
+			}
+			if err = json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload.OriginKind == "task-notification" {
+				notificationCount++
+			}
 		}
 	}
-	if resumedCount != 4 || resultCount != 1 {
-		t.Fatalf("event counts: runtime.session_resumed=%d agent.result=%d; events=%#v", resumedCount, resultCount, events)
+	if resumedCount != 1 || resultCount != 4 || notificationCount != 3 {
+		t.Fatalf("event counts: runtime.session_resumed=%d agent.result=%d task-notification=%d; events=%#v", resumedCount, resultCount, notificationCount, events)
 	}
 	current, err := owner.Store.GetRuntime(ctx, subject.ID, runtime.ID, false)
 	if err != nil {

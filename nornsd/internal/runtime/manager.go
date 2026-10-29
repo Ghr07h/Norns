@@ -359,7 +359,8 @@ func (m *Manager) handleMessage(mr *managedRuntime, raw json.RawMessage) error {
 	}
 	parsed := json.Unmarshal(raw, &envelope) == nil
 	taskNotificationResult := parsed && envelope.Type == "result" && envelope.Origin.Kind == "task-notification"
-	if mr.resumeStartup && parsed && envelope.Type == "result" && (!mr.instructionSent || taskNotificationResult) {
+	if mr.resumeStartup && parsed && envelope.Type == "result" && !taskNotificationResult && !mr.instructionSent {
+		mr.resumeStartup = false
 		if err := mr.logger.RecordSessionResumed(m.ctx, raw, mr.resumeSessionID, time.Now().UTC()); err != nil {
 			m.projectorHealthy.Store(false)
 			return fmt.Errorf("event projector: %w", err)
@@ -449,6 +450,7 @@ func (m *Manager) finishRuntime(mr *managedRuntime, result process.Result, waitE
 		}
 		_ = m.store.SetRuntimeTerminalWithDetails(context.Background(), mr.subject.ID, mr.runtime.ID, domain.RuntimeError, reason, code, details, now, false)
 		current.State = domain.RuntimeError
+		current.EndReason = &reason
 		current.ErrorCode = &code
 	}
 	processInfo := map[string]any{"identity": mr.identity, "session_id": mr.runtime.ID, "result": result}
@@ -494,7 +496,14 @@ func (m *Manager) finishRuntime(mr *managedRuntime, result process.Result, waitE
 	if repairErr := eventlog.SyncReadable(context.Background(), m.store, mr.path, mr.subject.ID); repairErr != nil {
 		m.projectorHealthy.Store(false)
 	}
-	if _, eventErr := mr.logger.Event(context.Background(), "runtime.finished", "runtime", map[string]any{"state": current.State, "exit_code": result.ExitCode, "wait_error": waitErr != nil}, time.Now().UTC()); eventErr != nil {
+	endReason, errorCode := "", ""
+	if current.EndReason != nil {
+		endReason = *current.EndReason
+	}
+	if current.ErrorCode != nil {
+		errorCode = *current.ErrorCode
+	}
+	if _, eventErr := mr.logger.Event(context.Background(), "runtime.finished", "runtime", eventlog.RuntimeFinishedPayload(current.State, result.ExitCode, endReason, errorCode), time.Now().UTC()); eventErr != nil {
 		m.projectorHealthy.Store(false)
 	}
 	_ = m.store.FinalizeRuntime(context.Background(), mr.subject.ID, mr.runtime.ID, time.Now().UTC())

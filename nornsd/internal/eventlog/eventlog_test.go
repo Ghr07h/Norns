@@ -25,6 +25,24 @@ func TestHasCloseSuccessFindsEmbeddedJSON(t *testing.T) {
 	}
 }
 
+func TestRuntimeFinishedPayloadUsesPersistedTerminalMetadata(t *testing.T) {
+	cancelled := RuntimeFinishedPayload(domain.RuntimeCancelled, 1, "user_graceful_stop", "")
+	if cancelled["end_reason"] != "user_graceful_stop" || cancelled["state"] != domain.RuntimeCancelled {
+		t.Fatalf("cancelled payload=%#v", cancelled)
+	}
+	if _, ok := cancelled["error_code"]; ok {
+		t.Fatalf("cancelled payload unexpectedly contains error_code: %#v", cancelled)
+	}
+	if _, ok := cancelled["wait_error"]; ok {
+		t.Fatalf("public payload unexpectedly contains wait_error: %#v", cancelled)
+	}
+
+	failed := RuntimeFinishedPayload(domain.RuntimeError, 1, "RUNTIME_MEMORY_LIMIT_EXCEEDED", "RUNTIME_MEMORY_LIMIT_EXCEEDED")
+	if failed["end_reason"] != "RUNTIME_MEMORY_LIMIT_EXCEEDED" || failed["error_code"] != "RUNTIME_MEMORY_LIMIT_EXCEEDED" {
+		t.Fatalf("error payload=%#v", failed)
+	}
+}
+
 func TestRawProjectionIsAtomicAndReplayIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store, subjectID, runtimeID := projectionStore(t)

@@ -36,6 +36,23 @@ describe("EventRow", () => {
     expect(screen.queryByText("智能体执行成功。")).not.toBeInTheDocument();
   });
 
+  it("renders a cancelled Runtime with its terminal reason", () => {
+    render(<EventRow event={event("runtime.finished", "runtime", { state: "cancelled", exit_code: 1, end_reason: "user_graceful_stop", wait_error: true })} highlighted={false} onJump={vi.fn()} />);
+    expect(screen.getByText("结束运行时")).toBeInTheDocument();
+    expect(screen.getByText("运行时已结束。")).toBeInTheDocument();
+    expect(screen.getByText("已取消")).toBeInTheDocument();
+    expect(screen.getByText("用户请求优雅终止")).toBeInTheDocument();
+    expect(screen.queryByText("等待状态")).not.toBeInTheDocument();
+    expect(screen.queryByText("等待过程发生错误")).not.toBeInTheDocument();
+  });
+
+  it("renders an error Runtime with its reason and diagnostic code", () => {
+    render(<EventRow event={event("runtime.finished", "runtime", { state: "error", exit_code: 1, end_reason: "RUNTIME_MEMORY_LIMIT_EXCEEDED", error_code: "RUNTIME_MEMORY_LIMIT_EXCEEDED" })} highlighted={false} onJump={vi.fn()} />);
+    expect(screen.getByText("运行时内存超出限制")).toBeInTheDocument();
+    expect(screen.getByText("错误代码")).toBeInTheDocument();
+    expect(screen.getByText("RUNTIME_MEMORY_LIMIT_EXCEEDED")).toBeInTheDocument();
+  });
+
   it("renders agent text as markdown", () => {
     const { container } = render(<EventRow event={event("agent.text", "agent", { text: "**完成**\n\n- 第一项\n- 第二项", agent: { role: "main", name: "Coordinator" } })} highlighted={false} onJump={vi.fn()} />);
     expect(screen.getByText("主智能体 · Coordinator")).toBeInTheDocument();

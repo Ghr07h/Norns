@@ -520,7 +520,7 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			errorDetails = details
 		}
 		_ = owner.Store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, runtimeID, state, reason, code, errorDetails, time.Now().UTC(), true)
-		_, _ = logger.Event(context.Background(), "runtime.finished", "runtime", map[string]any{"state": state, "exit_code": result.ExitCode}, time.Now().UTC())
+		_, _ = logger.Event(context.Background(), "runtime.finished", "runtime", eventlog.RuntimeFinishedPayload(state, result.ExitCode, reason, code), time.Now().UTC())
 		if norns != nil {
 			_, _ = fmt.Fprintln(stderr, "提示：Subject 的 .nornsd/ 目录包含运行配置和 Agent transcript，可能包含访问凭据或敏感内容，请谨慎分享。")
 		}

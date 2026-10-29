@@ -409,7 +409,7 @@ Agent 基础配置模板按类型保存在 `internal/config/templates/<agent>/` 
 - initial input 和后续 instruction 使用控制协议写入 stdin；
 - 只有收到成功 control response 后才确认 instruction 已投递；
 - assistant、tool、result、system 和 diagnostic 映射为 readable Event；
-- 恢复 Session 启动时由 Claude 重放的旧 `result` 保留在 raw log，但投影为 `runtime.session_resumed`，不生成 `agent.result`，也不推进新 Runtime 的 turn。Claude 可能在首条 instruction 发出后才返回多个 `origin.kind=task-notification` 的结果；恢复遗留任务时这些结果常见零 turn、零 token，当前进程创建的后台任务则可能携带非零 `num_turns`、用量和结果文本。nornsd 只按 `origin.kind` 识别通知，不依赖计数或到达时序，运行期间的同类结果也不推进 instruction turn；
+- 恢复 Session 启动时，Claude 的首次握手 `result` 保留在 raw log，并且只投影一条 `runtime.session_resumed`；该结果不生成 `agent.result`，也不推进新 Runtime 的 turn。Claude 可能在首条 instruction 发出后才返回多个 `origin.kind=task-notification` 的结果；恢复遗留任务时这些结果常见零 turn、零 token，当前进程创建的后台任务则可能携带非零 `num_turns`、用量和结果文本。这些通知按普通 `agent.result` 投影，不得生成额外的 `runtime.session_resumed`，也不推进 instruction turn；
 - Runtime waiting/running 由实际 turn 边界驱动，不从普通文本猜测；
 - 进程结束后把 Claude 原生 transcript 归档到对应 Runtime 目录，并记录实际 Session ID、缺失或复制失败诊断；
 
@@ -432,6 +432,10 @@ stop 请求先原子持久化接受，再异步执行。优雅停止设置 deadl
 每个 Agent 输入输出先写带时间和 Runtime ID 的 raw envelope，再投影为 readable JSONL 与数据库 Event。文件写入失败和数据库 Event 失败都按可诊断错误处理，不能静默丢失协议控制状态。
 
 Event 类型保持稳定，payload 可以向后增加字段。Server Token、LLM Key、完整环境和生成 settings 永不进入普通日志、Event 或 API。
+
+`runtime.finished` 的公共 payload 包含 `state`、`exit_code` 和持久化的 `end_reason`；当
+`state=error` 时额外包含 `error_code`。进程等待错误只写入 raw lifecycle 记录，不作为
+面向用户的 Event 字段。
 
 ## 14. 启动恢复
 
