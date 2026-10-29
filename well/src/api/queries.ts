@@ -17,12 +17,13 @@ async function withProbePermit<T>(operation: () => Promise<T>): Promise<T> {
   finally { activeProbes -= 1; probeWaiters.shift()?.(); }
 }
 
-export type ConnectionState = "unknown" | "checking" | "retrying" | "online" | "offline" | "unauthorized" | "incompatible" | "identity_changed" | "duplicate_identity";
+export type ConnectionState = "unknown" | "checking" | "retrying" | "online" | "offline" | "unauthorized" | "incompatible" | "identity_changed";
 
 export interface ProbeResult {
   state: ConnectionState;
   snapshot?: ProbeSnapshot;
   currentRemoteId?: string;
+  duplicateRoot?: boolean;
 }
 
 export function connectionFor(server: ServerRecord): ConnectionInput | null {
@@ -33,8 +34,8 @@ export function connectionFor(server: ServerRecord): ConnectionInput | null {
 function probeState(server: ServerRecord, snapshot: ProbeSnapshot): ProbeResult {
   const remoteId = snapshot.service.server_id;
   if (server.remote_server_id && remoteId && server.remote_server_id !== remoteId) return { state: "identity_changed", snapshot, currentRemoteId: remoteId };
-  if (remoteId && readRegistry().servers.some((item) => item.id !== server.id && item.remote_server_id === remoteId)) return { state: "duplicate_identity", snapshot, currentRemoteId: remoteId };
-  return { state: "online", snapshot, currentRemoteId: remoteId };
+  const duplicateRoot = Boolean(remoteId && readRegistry().servers.some((item) => item.id !== server.id && item.remote_server_id === remoteId));
+  return { state: "online", snapshot, currentRemoteId: remoteId, duplicateRoot };
 }
 
 function classifyError(error: ClientError | null): ConnectionState {

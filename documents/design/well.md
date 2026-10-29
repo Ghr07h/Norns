@@ -49,7 +49,7 @@ Server 是 Well 本地连接记录，不是 nornsd 资源：
 
 规范化 `base_url` 在本地 registry 中唯一。修改 URL 时保留本地记录 ID，但清除其远端 identity、query cache、Event/View cache 和当前选择；只修改名称或 Token 不清理业务缓存。
 
-首次成功连接后绑定 `remote_server_id`。同一 URL 后续返回不同 ID 时进入 `identity_changed`，禁止继续远端修改，直到用户确认并清空本地关联数据。两条连接记录返回同一远端 ID 时，后连接记录进入 `duplicate_identity`，避免通过不同 URL 重复操作同一个 root。
+首次成功连接后绑定 `remote_server_id`。同一 URL 后续返回不同 ID 时进入 `identity_changed`，禁止继续远端修改，直到用户确认并清空本地关联数据。多条连接记录可以绑定同一远端 ID，用于同一 root 的多入口访问、迁移恢复或独立副本；Well 显示“识别到重复的 Server Root 记录”告警，但连接保持在线且不阻止工作区操作。
 
 跨 Server 身份必须组合表示：
 
@@ -70,7 +70,6 @@ Runtime = (local_server_id, subject_id, runtime_id)
 | `unauthorized` | Bearer 认证失败。 |
 | `incompatible` | 非 nornsd 或 API 版本不支持。 |
 | `identity_changed` | URL 后的远端 root 已改变。 |
-| `duplicate_identity` | 另一条记录已绑定同一 root。 |
 
 连接状态是客户端观察，不写回服务端。短暂失败不能删除 Server 或缓存。进入
 Servers 页面时，每条具有 Token 的记录立即开始一轮连接探测；单次探测最长
@@ -101,7 +100,7 @@ Event cache 以 `(server_id, subject_id, seq)` 唯一定位。每个 Subject 跨
 
 以可扫描列表展示所有本地 Server 的名称、URL、连接状态、远端 identity、Profile、容量与 Queue。支持新增、编辑、连接、断开和移除。
 
-多个 Server 的检查独立并发；单个失败不得阻塞其他 Server。identity_changed 和 duplicate_identity 必须显式阻止进入工作区与修改操作。
+多个 Server 的检查独立并发；单个失败不得阻塞其他 Server。`identity_changed` 必须显式阻止进入工作区与修改操作。相同 `remote_server_id` 只产生非阻断告警；各连接的 query、Event/View 缓存和工作区选择继续按本地 Server ID 隔离。
 
 ### 5.2 Server workspace
 

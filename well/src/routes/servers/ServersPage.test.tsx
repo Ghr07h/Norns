@@ -64,7 +64,7 @@ it("clears local state and rebinds a changed target service", async () => {
   expect(await screen.findByRole("status")).toHaveTextContent("已清除 Changed 的本地数据并绑定到新目标服务。");
 });
 
-it("shows why rebinding failed when another record already uses the target", async () => {
+it("rebinds a changed target when another record already uses the same root", async () => {
   window.__WELL_BRIDGE__ = { invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
     if (command === "normalize_server_url") return String(args?.input) as T;
     if (command === "probe_server") return snapshot(NEW_ID) as T;
@@ -80,9 +80,26 @@ it("shows why rebinding failed when another record already uses the target", asy
   fireEvent.click(await screen.findByRole("button", { name: "清除并重新绑定" }));
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "清除并重新绑定" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("该目标服务已被另一个 Server 使用。");
-  expect(readRegistry().servers.find((server) => server.id === changed.server.id)?.remote_server_id).toBe(OLD_ID);
-  expect(await readLatestCachedEvents(changed.server.id, "subject", 10)).toHaveLength(1);
+  await waitFor(() => expect(readRegistry().servers.find((server) => server.id === changed.server.id)?.remote_server_id).toBe(NEW_ID));
+  expect(await readLatestCachedEvents(changed.server.id, "subject", 10)).toHaveLength(0);
+  expect(await screen.findByRole("status")).toHaveTextContent("已清除 Changed 的本地数据并绑定到新目标服务。");
+});
+
+it("warns without blocking connections that share a Server Root", async () => {
+  window.__WELL_BRIDGE__ = { invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+    if (command === "normalize_server_url") return String(args?.input) as T;
+    if (command === "probe_server") return snapshot(OLD_ID) as T;
+    throw new Error(`unexpected command: ${command}`);
+  } };
+  const first = await saveServer({ name: "ECS", baseUrl: "http://ecs.test", password: "secret", rememberPassword: true });
+  const second = await saveServer({ name: "Local", baseUrl: "http://local.test", password: "secret", rememberPassword: true });
+  bindRemoteIdentity(first.server.id, OLD_ID);
+  bindRemoteIdentity(second.server.id, OLD_ID);
+
+  renderPage();
+
+  await waitFor(() => expect(screen.getAllByText("识别到重复的 Server Root 记录")).toHaveLength(2));
+  for (const button of screen.getAllByRole("button", { name: "进入工作区" })) expect(button).toBeEnabled();
 });
 
 it("hides cached capacity when a server probe becomes offline", async () => {

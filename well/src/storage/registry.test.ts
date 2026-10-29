@@ -22,11 +22,13 @@ it("keeps stable local identity and clears remote identity when URL changes", as
   expect(readRegistry().servers).toHaveLength(1);
 });
 
-it("rejects duplicate canonical URLs and remote identities", async () => {
+it("rejects duplicate canonical URLs and allows shared remote identities", async () => {
   const first = await saveServer({ name: "One", baseUrl: "http://one.test", password: "x", rememberPassword: true });
   const second = await saveServer({ name: "Two", baseUrl: "http://two.test", password: "x", rememberPassword: true });
-  bindRemoteIdentity(first.server.id, "550e8400-e29b-41d4-a716-446655440000");
-  expect(() => bindRemoteIdentity(second.server.id, "550e8400-e29b-41d4-a716-446655440000")).toThrow("duplicate_remote_identity");
+  const remoteId = "550e8400-e29b-41d4-a716-446655440000";
+  bindRemoteIdentity(first.server.id, remoteId);
+  bindRemoteIdentity(second.server.id, remoteId);
+  expect(readRegistry().servers.map((server) => server.remote_server_id)).toEqual([remoteId, remoteId]);
   await expect(saveServer({ name: "Again", baseUrl: "http://one.test", password: "x", rememberPassword: true })).rejects.toThrow("duplicate_server_url");
 });
 

@@ -83,13 +83,7 @@ export function updateServer(id: string, patch: Partial<ServerRecord>): ServerRe
   return server;
 }
 
-export function ensureRemoteIdentityAvailable(id: string, remoteId: string): void {
-  const servers = readRegistry().servers;
-  if (servers.some((server) => server.id !== id && server.remote_server_id === remoteId)) throw new Error("duplicate_remote_identity");
-}
-
 export function bindRemoteIdentity(id: string, remoteId: string): ServerRecord {
-  ensureRemoteIdentityAvailable(id, remoteId);
   return updateServer(id, { remote_server_id: remoteId, last_connected_at: new Date().toISOString() });
 }
 

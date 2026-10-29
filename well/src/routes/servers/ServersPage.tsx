@@ -6,7 +6,7 @@ import { Dialog } from "../../components/common/Dialog";
 import { IconButton } from "../../components/common/IconButton";
 import { errorMessage } from "../../lib/format";
 import { clearServerCache } from "../../storage/event-db";
-import { confirmRemoteIdentity, disconnectServer, ensureRemoteIdentityAvailable, removeServer } from "../../storage/registry";
+import { confirmRemoteIdentity, disconnectServer, removeServer } from "../../storage/registry";
 import type { ServerRecord } from "../../storage/registry-schema";
 import { removeServerPreferences } from "../../storage/preferences";
 import { useRegistry } from "../../storage/use-registry";
@@ -53,7 +53,6 @@ export function ServersPage() {
     setIdentityBusy(true);
     setIdentityError("");
     try {
-      ensureRemoteIdentityAvailable(server.id, remoteId);
       await clearServerCache(server.id);
       removeServerPreferences(server.id);
       clearQueries(server.id);

@@ -37,7 +37,7 @@ export function ServerWorkspace() {
   useEffect(() => {
     if (!server || probe.connectionResult.state !== "online") return;
     if (probe.connectionResult.currentRemoteId && !server.remote_server_id) {
-      try { bindRemoteIdentity(server.id, probe.connectionResult.currentRemoteId); } catch { /* duplicate is surfaced by the next probe result */ }
+      bindRemoteIdentity(server.id, probe.connectionResult.currentRemoteId);
     } else if (probe.dataUpdatedAt) markServerConnected(server.id);
   }, [probe.connectionResult.state, probe.connectionResult.currentRemoteId, probe.dataUpdatedAt, server?.id, server?.remote_server_id]);
   const shown = useMemo(() => (subjects.data ?? []).filter((subject) => {
