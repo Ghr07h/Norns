@@ -1,0 +1,22 @@
+well/src/i18n/en.ts
+  h_32bccb164adb56 2
+well/src/i18n/zh.ts
+  h_32bccb164adb56 2
+well/src/routes/servers/ServerDialog.test.tsx
+  h_32bccb164adb56 1-68
+well/src/routes/servers/ServerDialog.tsx
+  h_32bccb164adb56 1-2,5,15-16,22,32-34
+well/src/styles/global.css
+  h_32bccb164adb56 88-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e3eecf2f648788fc02d0d79d4f81256d7960831",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
