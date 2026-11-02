@@ -21,8 +21,8 @@
 
 在进行 1Day 或 NDay 漏洞的验证时，不要仅将当前模型已知的漏洞信息作为组件漏洞测试的范围，模型已知漏洞可能过旧或不全，结合以下方式获取更全面的漏洞信息：
 
-1. Norns CLI 提供了 `websearch` 子命令，在有互联网访问权限的情况下，可用于在搜索引擎中检索带有相关关键词的网页
-2. Norns Pentest 镜像的 nuclei templates 中提供了最新的漏洞 Poc，存储在容器的 `/opt/nuclei-templates` 路径下，可通过 CVE 编号或 Vendor 名称进行检索。
+1. Norns CLI 提供了 `websearch` 插件扩展子命令，在有互联网访问权限的情况下，可用于在搜索引擎中检索带有相关关键词的网页
+2. 如果 Pentest-Tools 环境可用（存在 /.is_pentest_tools_env 文件），则环境的 nuclei templates 中提供了最新的漏洞 Poc，存储在环境的 `/opt/nuclei-templates` 路径下，可通过 CVE 编号或 Vendor 名称进行检索。
 3. 开源组件的 Github issue 中可能带有漏洞信息或未提供 Poc 的脆弱性线索，当模型已知信息、1 和 2 都无法找到漏洞时，可以尝试检索与挖掘。
 
 此外，组件漏洞不仅仅限制在当前组件，组件本身的依赖包或框架也可以作为突破方向。

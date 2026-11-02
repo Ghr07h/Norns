@@ -44,7 +44,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NORNS_IMAGE_NODE_VERSION=${NODE_VERSION} \
-    NORNS_IMAGE_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION}
+    NORNS_IMAGE_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
+    NODE_PATH=/usr/local/lib/node_modules
 
 # Debian 13 trixie slim 使用 DEB822 源文件。
 RUN if [ -n "${APT_SOURCE_BLOCK}" ]; then \
@@ -136,6 +137,7 @@ RUN set -eux; \
     curl -fsSL --retry 5 --retry-delay 3 "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" -o /usr/share/wordlists/common.txt || echo "[warn] common.txt 下载失败"; \
     curl -fsSL --retry 5 --retry-delay 3 "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt" -o /usr/share/wordlists/raft-medium-directories.txt || echo "[warn] raft-medium 下载失败"; \
     curl -fsSL --retry 5 --retry-delay 3 "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt" -o /usr/share/wordlists/top-10000-passwords.txt || echo "[warn] top-10000 下载失败"; \
+    curl -fsSL --retry 5 --retry-delay 3 "https://raw.githubusercontent.com/danielmiessler/SecLists/cb6d7645abf4a2c467bc80f84cf70bda3d60c2d6/Passwords/Honeypot-Captures/SSH-passwords_1000_14d_2026-08_LureScope.txt" -o /usr/share/wordlists/top1000.txt || echo "[warn] top1000 下载失败"; \
     rm -rf /tmp/*
 
 # nuclei 模板库是可选资源，下载失败不阻断镜像构建。
@@ -198,18 +200,24 @@ RUN set -eux; \
     else echo "[warn] 阿里云 CLI 下载失败, 已跳过"; fi; \
     rm -rf /tmp/*
 
-# Playwright Agent CLI 与浏览器。浏览器下载失败为可接受的可选缺失。
+# Playwright Agent CLI、库与浏览器。浏览器下载失败为可接受的可选缺失。
+# NODE_PATH 使 require('playwright') 在任意目录可用(库随 npm 全局安装)。
 RUN set -eux; \
-    npm install -g @playwright/cli@latest; \
+    npm install -g @playwright/cli@latest playwright@latest; \
     for i in $(seq 1 8); do \
         if playwright-cli install-browser --with-deps; then echo "[ok] playwright 浏览器装好"; break; fi; \
         echo "[retry $i] playwright 浏览器下载失败, 清缓存 5s 后重试" >&2; \
         rm -rf /root/.cache/ms-playwright; sleep 5; \
     done; \
+    if playwright install --with-deps chromium; then echo "[ok] playwright 库匹配浏览器就绪"; \
+    else echo "[warn] playwright 库浏览器下载失败, 已跳过(库可用, 脚本可行时改用 apt chromium)"; fi; \
     rm -rf /root/.cache/ms-playwright/cli-update-check.json /tmp/*
 
 # Claude Code 使用项目内固定引擎目录。
 RUN mkdir -p /norns/bin /norns/config /norns/domain/redteam /norns/engine/cc /workspace
+
+# Pentest-Tools 环境标记，SKILL.md 以此文件存在为环境可用标识。
+RUN touch /.is_pentest_tools_env
 
 RUN set -eux; \
     if [ -n "${NPM_REGISTRY}" ]; then \

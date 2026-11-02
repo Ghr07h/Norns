@@ -29,6 +29,16 @@ REQUIRED_DOMAIN_PATHS = (
     "/norns/domain/redteam/norns_domain_agents/explorer.md",
     "/norns/domain/redteam/skills/pentest-tools/SKILL.md",
 )
+# 词表校验为非空(而非仅存在):curl -o 在下载半途失败时可能留下 0 字节文件。
+# john/nmap 两份是 apt 包自带(硬依赖)，其余为 Dockerfile 中下载。
+REQUIRED_WORDLISTS = (
+    "/usr/share/wordlists/common.txt",
+    "/usr/share/wordlists/raft-medium-directories.txt",
+    "/usr/share/wordlists/top-10000-passwords.txt",
+    "/usr/share/wordlists/top1000.txt",
+    "/usr/share/john/password.lst",
+    "/usr/share/nmap/nselib/data/passwords.lst",
+)
 
 
 class Verification:
@@ -88,6 +98,12 @@ def main() -> int:
     )
     verification.check("norns version", lambda: command_output(["norns", "version"]))
     verification.check("nornsd version", lambda: command_output(["nornsd", "version"]))
+    # playwright 库经 npm 全局安装，经 npx 走一遍完整解析路径。
+    # --no-install 防止库缺失时 npx 临时从 registry 拉包，把问题掩盖成"看起来正常"。
+    verification.check(
+        "playwright library via npx",
+        lambda: command_output(["npx", "--no-install", "playwright", "--version"]),
+    )
     for name in REQUIRED_MODULES:
         verification.check(f"Python module: {name}", lambda name=name: import_module(name))
     for path in ("/norns/bin/benchmark.py", "/usr/local/bin/benchmark-entrypoint"):
@@ -109,6 +125,14 @@ def main() -> int:
         verification.check(
             f"required file: {path}",
             lambda path=path: require(Path(path).is_file(), f"missing file: {path}"),
+        )
+    for path in REQUIRED_WORDLISTS:
+        verification.check(
+            f"wordlist: {path}",
+            lambda path=path: require(
+                Path(path).is_file() and Path(path).stat().st_size > 0,
+                f"missing or empty wordlist: {path}",
+            ),
         )
     workspace = Path("/workspace")
     verification.check(
