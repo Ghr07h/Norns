@@ -7,6 +7,7 @@ export default defineConfig({
   server: { strictPort: true, watch: { ignored: ["**/src-tauri/target/**"] } },
   envPrefix: ["VITE_", "TAURI_"],
   test: {
+    css: { include: [/\.css\?raw$/] },
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],

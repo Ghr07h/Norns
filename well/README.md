@@ -50,6 +50,19 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
+## 界面设计
+
+Well 与 Norns Visual 使用一致的冷灰蓝浅色体系：页面底色 `#f3f5f8`、白色内容面板、蓝色交互强调 `#3563c5`，运行状态使用独立的蓝、绿、琥珀、红语义色。
+
+- `src/styles/tokens.css` 维护配色、阴影、圆角和动效参数；基础控件与页面布局分别位于 `global.css`、`workspace.css`。
+- 正文以 15px 为基准，说明和标签使用 12–13px，ID 等技术信息使用 11–12px 等宽字体。
+- 卡片使用轻阴影，悬停和弹窗使用短过渡；系统启用减少动态效果时关闭动画和过渡。
+- 长详情、事件和弹窗正文在各自区域滚动；Subject 虚拟列表的 CSS 行高必须与 `ROW_HEIGHT` 保持一致。
+- 桌面最小窗口为 880×620；修改界面时同时检查中英文、最小窗口、表单、运行时历史和 Norns 视图。
+- Visual 继续在隔离的 iframe 中渲染，不通过更改 sandbox 或注入父页面样式来统一主题。
+
+浏览器预览可运行 `VITE_WELL_DEMO=1 npm run dev`，使用演示数据，不连接真实服务。
+
 ## 构建
 
 ```sh
