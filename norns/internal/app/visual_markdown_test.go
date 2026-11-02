@@ -37,6 +37,34 @@ func TestVisualMarkdownRendersTaskOutcomeReason(t *testing.T) {
 	}
 }
 
+func TestVisualMarkdownRendersExplorationOutcomeReason(t *testing.T) {
+	reason := "Verified **evidence** with `interval arithmetic`.\n\n- Check precision\n- Reproduce bounds\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert(2))"
+	rendered, err := renderVisualMarkdown(loaded{Explorations: []domain.Exploration{
+		{ID: "exp_finished", Content: "Original **content**", Status: "finished", OutcomeReason: &reason},
+		{ID: "exp_running", Content: "Running content", Status: "running"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered["exp_finished"] != "<p>Original <strong>content</strong></p>\n" {
+		t.Fatalf("unexpected rendered Exploration content: %q", rendered["exp_finished"])
+	}
+	result := rendered["exploration-reason:exp_finished"]
+	for _, required := range []string{"<strong>evidence</strong>", "<code>interval arithmetic</code>", "<ul>", "<li>Check precision</li>"} {
+		if !strings.Contains(result, required) {
+			t.Fatalf("rendered Exploration outcome reason omitted %q: %s", required, result)
+		}
+	}
+	for _, forbidden := range []string{"<script", "alert(1)", "javascript:", "alert(2)"} {
+		if strings.Contains(result, forbidden) {
+			t.Fatalf("rendered Exploration outcome reason retained unsafe content %q: %s", forbidden, result)
+		}
+	}
+	if _, exists := rendered["exploration-reason:exp_running"]; exists {
+		t.Fatal("Exploration without an outcome reason unexpectedly has rendered reason content")
+	}
+}
+
 func TestVisualMarkdownDoesNotLoadImages(t *testing.T) {
 	rendered, err := newVisualMarkdownRenderer().Render("![remote](https://example.com/image.png)")
 	if err != nil {

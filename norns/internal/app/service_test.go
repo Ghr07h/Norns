@@ -478,21 +478,122 @@ func TestVisualViewIsSelfContainedAndEscapesUserContent(t *testing.T) {
 	if !strings.Contains(text, `<html lang="en">`) || !strings.Contains(text, `"language":"en"`) {
 		t.Fatalf("Visual did not preserve the requested language: %s", text[:min(len(text), 500)])
 	}
-	for _, required := range []string{`id="norns-data"`, `"kind":"source"`, `"language":"en"`, `runtime_occupied`, `rendered_content`, `Norns Visual Snapshot`, `data-i18n="brand"`, `messages.zh.brand='Norns 可视化快照'`, `id="exploration-task-filter"`, `id="search-toggle"`, `id="viewport"`, `id="task-list"`, `id="exploration-list"`, `id="zoom-value"`, `id="fullscreen"`, `nodeElements=new Map()`, `marker-end`, `Task-Related`, `Output Cognitions`, `tasksTitle:'任务记录'`, `graphTitle:'图记录'`, `explorationsTitle:'探索记录'`, `unachievable:'无法达成'`, `outcomeBadge(task.outcome)`, `function explorationStateLabel`, `outcomeName(item.outcome)`, `String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id)`, `function closeExplorationPanel`, `closeExplorationPanel()`, `foreignObject`, `cognition-bronze`, `node-status-ring`, `graphNodeHeight`, `alignGraphRank`, `edge.kind==='extends'`, `rowGap=72`, `planGraphCurves`, `planSameColumnLanes`, `graphColumnShift`, `graphRoutes`, `graphSplinePath`, `kind:'gutter'`, `kind:'same-column'`, `cognitionChain`, `toSide=cognitionChain?'in'`, `from.y+from.height/2+startOffset`, `Math.min(16,64/(entries.length-1))`, `shoulder=66+lane*18`, `graphEndpointGap=3`, `refX:'10'`, `stroke-width:1.55`, `arrow-relation`, `stroke:#a5aeaa`} {
+	for _, required := range []string{`id="norns-data"`, `"kind":"source"`, `"language":"en"`, `runtime_occupied`, `rendered_content`, `Norns Visual Snapshot`, `data-i18n="brand"`, `messages.zh.brand='Norns 可视化快照'`, `id="exploration-task-filter"`, `id="search-toggle"`, `id="viewport"`, `id="task-list"`, `id="exploration-list"`, `id="zoom-value"`, `id="fullscreen"`, `nodeElements=new Map()`, `marker-end`, `Task-Related`, `Output Cognitions`, `tasksTitle:'任务记录'`, `graphTitle:'图记录'`, `explorationsTitle:'探索记录'`, `unachievable:'无法达成'`, `outcomeBadge(task.outcome)`, `function explorationStateLabel`, `outcomeName(item.outcome)`, `String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id)`, `function closeExplorationPanel`, `closeExplorationPanel()`, `foreignObject`, `cognition-bronze`, `node-status-ring`, `graphNodeHeight`, `alignGraphRank`, `edge.kind==='extends'`, `rowGap=72`, `planGraphCurves`, `planSameColumnLanes`, `graphColumnShift`, `graphRoutes`, `graphCurvePath`, `kind:'gutter'`, `kind:'same-column'`, `nodePortX(from,'out')`, `nodePortX(to,'in')`, `y:from.y+from.height/2`, `graphColumnGap=300,graphArrowGap=8`, `const bend=Math.max(48,(end.x-start.x)*.3)`, `position.x-graphArrowGap`, `graphGutterBow(end.x-start.x)`, `curvePadding=36+Math.max`, `shoulder=Math.min(graphColumnGap-40,graphColumnGap*.55+lane*8)`, `node-selection-outline`, `.node.selected.cognition .node-shape`, `vector-effect:non-scaling-stroke`, `selected.parentNode.append(selected)`, `refX:'10'`, `stroke-width:1.55`, `arrow-relation`, `stroke:#a5aeaa`} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Visual omitted %q", required)
 		}
 	}
-	for _, removed := range []string{`planGraphTracks`, `class:'edge-label'`, `class="legend"`, `id="visible-count"`, `{scroll:true}`, `rowGap=42`, `toSide=sameColumn?'out'`, `stroke-width:1.35`, `rightX=sx+64`, `const order={running:0,todo:1,finished:2}`} {
+	for _, removed := range []string{`startOffset`, `endOffset`, `graphSplinePath`, `graphEndpointGap`, `revealExplorationForGraphNode(node)};`, `if(outputs.length){renderExplorationRelated(item,panel);panel.hidden=false}`, `planGraphTracks`, `class:'edge-label'`, `class="legend"`, `id="visible-count"`, `rowGap=42`, `toSide=sameColumn?'out'`, `stroke-width:1.35`, `rightX=sx+64`, `const order={running:0,todo:1,finished:2}`} {
 		if strings.Contains(text, removed) {
 			t.Fatalf("Visual unexpectedly retained %q", removed)
 		}
+	}
+	for _, required := range []string{`className='task-progress'`, `explorationProgress:`, `details.insertBefore(reason.block,cognitionBlock.block)`, `className='exploration-state'`, `state.append(explorationBadge(item))`, `context.append(explorationBadge(node))`, `function explorationReason`, `renderMarkdown('exploration-reason:'+item.id`, `const reason=explorationReason(item)`, `button.textContent=node?.title||id`, `className='detail-context'`, `output=document.createElement('details')`, `className='related-locate'`, `locateInGraph:'在图谱中定位'`, `id="search-status"`, `id="search-previous"`, `id="search-next"`, `traceSelection?traverse(id,incoming):new Set(incoming.get(id)||[])`, `function fitSelection`, `function createDetailActions`, `function openExplorationOutputs`, `function navigateSearch`, `searchIndex=searchMatches.indexOf(id)`, `const activate=()=>focusNode(node.id)`} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Visual omitted content presentation %q", required)
+		}
+	}
+	for _, required := range []string{`function updateSelectionScope`, `traceSelection=false;applySelection(selectedNodeId);updateSelectionScope();const positions=`, `primary.append(detailAction(t('focusSelection'),fitSelection),mode)`, `mode.setAttribute('data-selection-mode','')`, `updateSelectionScope(section);return section`, `.detail-actions{display:grid;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}`, `.detail-action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))`, `fullChain:'显示完整链路'`, `viewCognitionOutputs:'查看认知产出'`, `detailAction(t('viewCognitionOutputs')`, `actions.className='exploration-output-actions'`, `.exploration-output-actions{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}`} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Visual omitted selection actions or separators %q", required)
+		}
+	}
+	if strings.Contains(text, "focus-selection") {
+		t.Fatal("Visual unexpectedly retained the toolbar focus button")
 	}
 	if strings.Contains(text, malicious) || strings.Contains(text, `<script>globalThis.injected=true</script>`) {
 		t.Fatal("Visual embedded user content as executable markup")
 	}
 	if strings.Contains(text, `src="http`) || strings.Contains(text, `href="http`) {
 		t.Fatal("Visual unexpectedly contains a remote resource URL")
+	}
+}
+
+func TestVisualExplorationAccentFollowsBadge(t *testing.T) {
+	html, err := visualHTML([]byte(`{}`), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`border-left:4px solid var(--exploration-color)`,
+		`.exploration-item.running{--exploration-color:var(--blue)}`,
+		`.exploration-item.todo{--exploration-color:var(--amber)}`,
+		`.exploration-item.finished:not([data-outcome]),.exploration-item.finished[data-outcome="succeeded"]{--exploration-color:var(--green)}`,
+		`.exploration-item.finished[data-outcome="inconclusive"],.exploration-item.finished[data-outcome="unachievable"]{--exploration-color:var(--amber)}`,
+		`.exploration-item.finished[data-outcome="failed"]{--exploration-color:var(--red)}`,
+		`.exploration-item.finished[data-outcome="cancelled"]{--exploration-color:#66716d}`,
+		`.exploration-item.active{border-color:var(--accent);border-left-color:var(--exploration-color)`,
+		`if(item.status==='finished'&&item.outcome)article.dataset.outcome=item.outcome`,
+	} {
+		if !strings.Contains(string(html), required) {
+			t.Fatalf("Visual omitted exploration accent mapping %q", required)
+		}
+	}
+}
+
+func TestVisualResearchThemePreservesGraphSemantics(t *testing.T) {
+	html, err := visualHTML([]byte(`{}`), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`--bg:#f3f5f8`, `--panel-soft:#f7f9fc`, `--accent:#3563c5`, `--accent-soft:#eaf0fd`,
+		`--canvas-bg:#f8fafc`, `--canvas-grid:#e2e8f04d`,
+		`background-color:var(--canvas-bg);background-image:linear-gradient(var(--canvas-grid) 1px,transparent 1px),linear-gradient(90deg,var(--canvas-grid) 1px,transparent 1px)`,
+		`.node{color:#17211f;`,
+		`fill:url(#cognition-bronze);stroke:#955d30`,
+		`fill:url(#cognition-silver);stroke:#7b858c`,
+		`fill:url(#cognition-gold);stroke:#9a7414`,
+		`.node.exploration.running .node-status-ring{stroke:#477dbd}`,
+		`.edge{fill:none;stroke:#a5aeaa;`,
+		`.detail-action[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}`,
+	} {
+		if !strings.Contains(string(html), required) {
+			t.Fatalf("Visual omitted research theme or graph semantics %q", required)
+		}
+	}
+}
+
+func TestVisualKnowledgeGraphViewIsSelfContained(t *testing.T) {
+	html, err := visualHTML([]byte(`{}`), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`id="graph-view-toggle"`, `class="graph-control graph-view-toggle"`,
+		`knowledgeView:'Knowledge graph'`, `knowledgeView:'知识图谱'`,
+		`switchToKnowledge:'切换为知识图谱'`, `switchToPlane:'切换为平面视图'`,
+		`function knowledgeGraphLayout`, `function knowledgeNodeBoundary`, `function knowledgeGraphRoutes`,
+		`function toggleGraphView`, `graphViewStates.set(graphView,{scale,panX,panY})`,
+		`renderGraph({fit:false,preserveSelection:true})`,
+		`graphView==='knowledge'?knowledgeGraphLayout(visible,edges):graphLayout(visible,edges)`,
+		`graphView==='knowledge'?knowledgeGraphRoutes(edges,positions):graphRoutes(edges,positions,curvePlan)`,
+		`if(selection&&nodeElements.has(selection))focusNode(selection)`,
+		`el('graph-view-toggle').addEventListener('click',toggleGraphView)`,
+		`.graph-shell[data-graph-view="knowledge"] .node-port{display:none}`,
+		`stroke-width:calc(var(--graph-edge-width,1px)*1.5)`,
+		`el('graph-shell').style.setProperty('--graph-edge-width',(1/scale)+'px')`,
+	} {
+		if !strings.Contains(string(html), required) {
+			t.Fatalf("Visual omitted knowledge graph behavior %q", required)
+		}
+	}
+	if strings.Contains(string(html), `<script src=`) {
+		t.Fatal("Visual knowledge graph unexpectedly depends on an external script")
+	}
+	buttonStart := strings.Index(string(html), `<button id="graph-view-toggle"`)
+	button := string(html)[buttonStart:]
+	button = button[:strings.Index(button, `</button>`)]
+	if strings.Contains(button, `<span`) || strings.Contains(string(html), `id="graph-view-label"`) {
+		t.Fatal("Visual knowledge graph toggle must only display an icon")
+	}
+	if strings.Index(string(html), `<button id="search-toggle"`) > buttonStart {
+		t.Fatal("Visual knowledge graph toggle must follow search")
+	}
+	for _, required := range []string{`function knowledgeHexagon`, `function knowledgeNodeShape`, `knowledge-root-halo`, `knowledge-root-orbit`, `'knowledge-ring'`, `node.origin==='task'`, `root:node.id===root.id`, `function knowledgeRouteScore`, `function knowledgeRoutingGrid`, `function knowledgeGridPath`, `function knowledgeReserveRoute`, `function knowledgeRefineRings`, `function knowledgeGraphGuides`, `knowledge-arrow-`, `class:'knowledge-flow '+edge.kind`, `@keyframes knowledge-flow`, `.motion-paused .knowledge-flow{animation-play-state:paused}`, `.knowledge-flow{display:none;animation:none}`, `knowledgeRelations:'图谱关系'`} {
+		if !strings.Contains(string(html), required) {
+			t.Fatalf("Visual omitted radial knowledge graph presentation %q", required)
+		}
 	}
 }
 

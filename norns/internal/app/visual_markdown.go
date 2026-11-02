@@ -50,7 +50,7 @@ func (r visualMarkdownRenderer) Render(source string) (string, error) {
 
 func renderVisualMarkdown(all loaded) (map[string]string, error) {
 	renderer := newVisualMarkdownRenderer()
-	result := make(map[string]string, len(all.Tasks)+len(all.Cognitions)+len(all.Explorations))
+	result := make(map[string]string, len(all.Tasks)+len(all.Cognitions)+2*len(all.Explorations))
 	for _, task := range all.Tasks {
 		if task.OutcomeReason == nil {
 			continue
@@ -74,6 +74,13 @@ func renderVisualMarkdown(all loaded) (map[string]string, error) {
 			return nil, err
 		}
 		result[exploration.ID] = rendered
+		if exploration.OutcomeReason != nil {
+			reason, err := renderer.Render(*exploration.OutcomeReason)
+			if err != nil {
+				return nil, err
+			}
+			result["exploration-reason:"+exploration.ID] = reason
+		}
 	}
 	return result, nil
 }
