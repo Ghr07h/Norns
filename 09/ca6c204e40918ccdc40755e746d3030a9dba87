@@ -1,0 +1,34 @@
+container/README.md
+  h_32bccb164adb56 28-46,239-249,288
+container/nornsd/verify.py
+  h_32bccb164adb56 5,54-68
+container/redteam/verify.py
+  h_32bccb164adb56 5,92-106
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 7-8,148,539,1244-1245,1358-1359,1492,1521-1530,1590,1609,1615,1630,1649,1689-1694,1701,1703-1705,1712-1713,1715-1716,1735-1736,1738-1739
+container/redteam_for_benchmark/entrypoint.py
+  h_32bccb164adb56 221,231
+container/redteam_for_benchmark/verify.py
+  h_32bccb164adb56 5,93-107
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 7-9,149,538,1216-1217,1329-1330,1457,1486-1495,1547,1566,1572,1587,1606,1646-1651,1658,1660-1662,1669-1670,1672-1673,1692-1693,1695-1696
+container/redteam_for_benchmark_cc/entrypoint.py
+  h_32bccb164adb56 213,223
+container/redteam_for_benchmark_cc/verify.py
+  h_32bccb164adb56 5,93-107
+container/tests/test_benchmark_timeouts.py
+  h_32bccb164adb56 1-239
+container/tests/test_versions.py
+  h_32bccb164adb56 1-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "09ca6c204e40918ccdc40755e746d3030a9dba87",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
