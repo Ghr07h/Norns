@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "release": "node scripts/release.mjs",
     "prepare:versions": "node scripts/prepare-versions.mjs",
     "predev": "npm run prepare:versions",
     "dev": "vite --host 127.0.0.1 --port 1420",

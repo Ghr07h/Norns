@@ -14,7 +14,7 @@
 #   --use-mirror             使用阿里云 APT/PyPI 和 npmmirror，默认关闭。
 #   --use-ecs-mirror         使用阿里云 ECS 内网 APT/PyPI，默认关闭，并启用 --use-mirror。
 #
-# 前置：项目根目录已执行 ./release.sh 生成 release/linux-<arch> 二进制(镜像构建需要)。
+# 前置：项目根目录已执行 ./release.sh --all-platforms 生成 release/linux-<arch> 二进制(镜像构建需要)。
 
 set -euo pipefail
 
@@ -69,7 +69,7 @@ release_dir="$project_root/release/linux-$release_arch"
 for binary in norns nornsd; do
   path="$release_dir/$binary"
   [ -f "$path" ] || {
-    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh" >&2
+    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh --all-platforms" >&2
     exit 1
   }
   if command -v file >/dev/null 2>&1 && ! file "$path" | grep -q "ELF 64-bit.*$expected_arch"; then

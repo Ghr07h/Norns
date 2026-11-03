@@ -19,7 +19,7 @@
 先在项目根目录生成六个平台的 Release：
 
 ```sh
-./release.sh
+./release.sh --all-platforms
 ```
 
 镜像只使用 `release/linux-x64` 或 `release/linux-arm64`。`norns`、`nornsd` 和

@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	versions "github.com/Ghr07h/norns"
 )
 
 type manifest struct {
@@ -22,15 +20,19 @@ type manifest struct {
 }
 
 func main() {
-	var protocol, plugins, output string
+	var versionPath, protocol, plugins, output string
+	flag.StringVar(&versionPath, "versions", "", "root version manifest")
 	flag.StringVar(&protocol, "protocol", "", "protocol directory")
 	flag.StringVar(&plugins, "plugins", "", "agent plugin source root")
 	flag.StringVar(&output, "output", "", "generated output directory")
 	flag.Parse()
-	if protocol == "" || plugins == "" || output == "" {
-		fatalf("protocol, plugins and output are required")
+	if versionPath == "" || protocol == "" || plugins == "" || output == "" {
+		fatalf("versions, protocol, plugins and output are required")
 	}
-	versionManifest := versions.Read()
+	versionManifest, err := readVersions(versionPath)
+	if err != nil {
+		fatalf("read versions: %v", err)
+	}
 	stage := output + ".stage"
 	_ = os.RemoveAll(stage)
 	if err := os.MkdirAll(stage, 0755); err != nil {
@@ -127,6 +129,34 @@ func main() {
 	if err = os.Rename(stage, output); err != nil {
 		fatalf("publish: %v", err)
 	}
+}
+
+type versionManifest struct {
+	Protocol int `json:"protocol"`
+	Nornsd   struct {
+		SupportProtocol int            `json:"support_protocol"`
+		Plugins         map[string]int `json:"plugins"`
+	} `json:"nornsd"`
+}
+
+func readVersions(path string) (versionManifest, error) {
+	var manifest versionManifest
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return manifest, err
+	}
+	if err := json.Unmarshal(source, &manifest); err != nil {
+		return manifest, err
+	}
+	if manifest.Protocol < 1 || manifest.Nornsd.SupportProtocol < 1 || manifest.Nornsd.Plugins["cc"] < 1 {
+		return manifest, fmt.Errorf("protocol, nornsd.support_protocol and nornsd.plugins.cc must be positive integers")
+	}
+	for name, version := range manifest.Nornsd.Plugins {
+		if version < 1 {
+			return manifest, fmt.Errorf("nornsd.plugins.%s must be a positive integer", name)
+		}
+	}
+	return manifest, nil
 }
 
 func updateJSON(path string, update func(map[string]any)) error {

@@ -38,15 +38,46 @@ domain/          可选领域知识包与模板示例
 container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自包含 Benchmark 及其 CC 对照组的容器构建文件
 ```
 
-## 版本与 Go 构建
+## 版本与构建
 
-根目录 `versions.json` 维护协议、产品及兼容性版本。两个 Go 模块通过本地模块依赖共享根目录的版本读取包；普通 `go build` 会将清单内嵌到二进制，运行时不需要该文件。构建时应保留完整仓库目录结构。
+根目录 `versions.json` 是唯一人工维护的协议、产品及兼容性版本来源。根目录不定义 Go 模块，`norns/` 和 `nornsd/` 保持独立模块。
 
-修改清单后重新编译即可更新 Go 版本值；修改协议或 Plugin 版本后，还需在 `nornsd/` 执行 `go generate ./internal/assets`，更新提交到仓库的内嵌资源。`release.sh` 会执行该生成步骤，产品版本不再由 `NORNS_VERSION` 覆盖；`VCS_REF` 与 `BUILD_TIME` 仍可设置构建元数据。
+统一构建入口为根目录 `release.sh`：
 
-API 路径固定使用 `/api/`，不随 schema 改变；`GET /api/` 的服务信息和 `nornsd version --json` 返回清单中的 `api_schema`。Agent 配置的 `VERSION` 和数据库 schema 必须与清单声明一致，不会自动迁移旧配置或旧数据库。Well 的版本构建与客户端适配独立处理。
+```sh
+./release.sh                   # 当前平台的 norns、norns-* 插件和 nornsd
+./release.sh norns             # 仅 norns 及其命令插件
+./release.sh nornsd            # 仅 nornsd
+./release.sh well              # 仅 Well 桌面程序与安装包
+./release.sh all               # 当前平台的全部三个产品
+./release.sh --all-platforms   # 六个平台的 Go 产物，不构建 Well
+```
 
-根目录、`norns/`、`nornsd/` 是三个 Go 模块，测试需分别执行 `go test ./...`。
+根入口只负责调度、汇总产物和生成校验和；各产品的构建实现与测试放在各自的 `scripts/` 中。Go 产品需要 Go 1.25 或更高版本，不依赖前端或 Rust 工具链。Well 使用自己的 Node.js 构建脚本，不需要 Go，但需要 npm、Rust 及宿主平台的 Tauri 系统依赖，并先在 `well/` 执行 `npm ci`。根入口生成校验和需要 `sha256sum` 或 `shasum`。Well 在对应宿主平台打包，`--all-platforms` 仅支持默认 Go 产品或单个 Go 产品。
+
+也可以在各产品目录内独立构建，不调用兄弟项目的构建脚本，默认仍输出到根目录 `release/`：
+
+```sh
+(cd norns && go run ./scripts/release.go)
+(cd nornsd && go run ./scripts/release.go)
+(cd well && npm run release)
+```
+
+两个 Go 入口均支持 `--all-platforms`；三个入口均支持 `--output <directory>` 指定产物目录，并只读取根版本清单中本产品及所需公共协议字段。各目录自带构建逻辑，但仍共享仓库的 `versions.json`；nornsd 还需共享协议文档和 Plugin 源文件。
+
+产物写入 `release/<os>-<arch>/`；Go 可执行文件放在该目录顶层，Well 可执行文件与 `bundle/` 安装包放在其 `well/` 子目录。单独构建只替换所选产品在所选平台的产物，保留其他产品和平台，并更新覆盖现有全部产物的 `release/SHA256SUMS`。所有所选产品构建成功后才发布到该目录。
+
+修改清单后运行对应构建入口即可：Go 构建前会更新纳入 Git 的 `internal/version/versions_generated.go` 派生代码；nornsd 同时重新生成协议与 Plugin 内嵌资源；Well 复用自身的 Cargo 版本同步流程。派生文件应随清单变更提交，不应手工修改。普通 `go build` 使用已生成的版本，不会自动刷新；两个模块的版本测试会检查是否与根清单一致。运行二进制不需要版本清单。`VCS_REF` 与 `BUILD_TIME` 仍可设置 Go 构建元数据，产品版本不由 `NORNS_VERSION` 覆盖。
+
+API 路径固定使用 `/api/`，不随 schema 改变；`GET /api/` 的服务信息和 `nornsd version --json` 返回清单中的 `api_schema`。Agent 配置的 `VERSION` 和数据库 schema 必须与清单声明一致，不会自动迁移旧配置或旧数据库。
+
+构建工具测试纳入各产品的测试入口，根脚本的调度测试随 norns 运行：
+
+```sh
+(cd norns && go test ./...)
+(cd nornsd && go test ./...)
+(cd well && npm test)
+```
 
 ## 快速开始
 

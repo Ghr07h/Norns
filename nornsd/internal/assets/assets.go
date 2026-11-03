@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-//go:generate go run ../../cmd/genassets --protocol ../../../documents/protocol --plugins ../../../plugin --output generated
+//go:generate go run ../../cmd/genassets --versions ../../../versions.json --protocol ../../../documents/protocol --plugins ../../../plugin --output generated
 
 // Generated contains deterministic Plugin resources grouped by Agent type.
 //

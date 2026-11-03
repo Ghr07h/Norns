@@ -29,7 +29,7 @@ required_paths=(
 for relative_path in "${required_paths[@]}"; do
   [ -e "$project_root/$relative_path" ] || {
     echo "错误: 缺少 $project_root/$relative_path" >&2
-    echo "请先在项目根目录执行 ./release.sh 生成 Linux release。" >&2
+    echo "请先在项目根目录执行 ./release.sh --all-platforms 生成 Linux release。" >&2
     exit 1
   }
 done

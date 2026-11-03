@@ -16,15 +16,16 @@
 ./release.sh
 ```
 
-脚本会交叉编译 `darwin/linux/windows × x64/arm64` 六个平台，并将结果写入
-`release/<os>-<arch>/`。选择当前系统对应的目录，把其中全部文件复制到 `bin/`：
+脚本默认只编译当前平台的 `norns`、`nornsd` 与 `norns-*` 插件，将结果写入
+`release/<os>-<arch>/`。需要全部六个 Go 目标时执行 `./release.sh --all-platforms`。
+选择当前系统对应的目录，把其中 Go 可执行文件复制到 `bin/`：
 
 ```sh
 # 按当前系统修改为 darwin-arm64、darwin-x64、linux-arm64 或 linux-x64。
 platform=darwin-arm64
 
 mkdir -p ./bin
-cp "./release/$platform/"* ./bin/
+cp "./release/$platform/"norns* ./bin/
 chmod +x ./bin/*
 ```
 
@@ -198,7 +199,7 @@ norns view visual --lang zh --open
 当前镜像只封装预编译文件，不在 Docker 内编译 Go 源码。先生成六个平台目标：
 
 ```sh
-./release.sh
+./release.sh --all-platforms
 ```
 
 `release/` 将包含 `darwin/linux/windows × x64/arm64` 的 `norns`、`nornsd` 和

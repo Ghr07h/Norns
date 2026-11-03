@@ -68,7 +68,7 @@ release_dir="$project_root/release/linux-$release_arch"
 for binary in norns nornsd; do
   path="$release_dir/$binary"
   [ -f "$path" ] || {
-    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh" >&2
+    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh --all-platforms" >&2
     exit 1
   }
   if command -v file >/dev/null 2>&1 && ! file "$path" | grep -q "ELF 64-bit.*$expected_arch"; then

@@ -25,7 +25,11 @@ Subject、Runtime 与 Claude Session 使用彼此清晰的身份边界：Subject
 
 ## 构建
 
-从 `nornsd/` 目录执行：
+推荐从项目根目录执行 `./release.sh nornsd`，自动同步版本代码、生成内嵌资源并编译当前平台产物。六平台产物使用 `./release.sh nornsd --all-platforms`。
+
+也可以在本目录执行 `go run ./scripts/release.go`，独立完成版本与内嵌资源生成、编译、产物整理和校验和生成，不依赖 norns 或 Well 的构建实现。支持 `--all-platforms` 与 `--output <directory>`，默认产物写入 `../release/`；构建脚本测试随 `go test ./...` 运行。仍需仓库根版本清单、共享协议文档与 Plugin 源文件。
+
+模块内开发构建可从 `nornsd/` 目录执行：
 
 ```sh
 go generate ./internal/assets
@@ -33,7 +37,7 @@ go build -o ./bin/nornsd ./cmd/nornsd
 go test ./...
 ```
 
-从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`，构建时内嵌到二进制，无需额外的运行时版本文件。
+从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`。版本代码由统一或本目录入口生成到 `internal/version/versions_generated.go` 并纳入 Git，无需额外的运行时版本文件。修改清单后应先执行对应构建入口，普通 `go build` 不会刷新版本；`go generate` 只刷新内嵌资源。
 
 生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源，同时从版本清单填入协议和 Plugin 版本。当前运行时按 `cc` 选择 `plugin/cc/`；修改清单中的协议或 Plugin 版本后需重新生成资源。
 

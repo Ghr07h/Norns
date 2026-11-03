@@ -66,6 +66,23 @@ Well 与 Norns Visual 使用一致的冷灰蓝浅色体系：页面底色 `#f3f5
 
 ## 构建
 
+推荐从项目根目录使用统一入口，单独构建 Well 不需要 Go：
+
+```sh
+./release.sh well
+```
+
+产物位于 `release/<os>-<arch>/well/`，包含桌面可执行文件和 `bundle/` 安装包。只构建宿主平台；构建前先在 `well/` 执行 `npm ci` 并准备 Rust 与 Tauri 系统依赖。`./release.sh all` 同时构建两个 Go 产品，默认不带参数的 `./release.sh` 不构建 Well。
+
+也可以在 `well/` 使用自己的发布入口，独立完成构建、产物整理和校验和生成：
+
+```sh
+npm run release
+npm run release -- --output ../custom-release
+```
+
+构建实现与测试位于本目录 `scripts/`，不依赖两个 Go 项目的构建代码，默认同样输出到 `../release/`。原有桌面构建命令也保持可用，但不额外整理发布产物：
+
 ```sh
 npm run tauri build
 ```

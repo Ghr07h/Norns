@@ -3,110 +3,128 @@
 set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-release_dir="$script_dir/release"
-staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/norns-release.XXXXXX")
 
-cleanup() {
-  rm -rf "$staging_dir"
+usage() {
+  echo "Usage: ./release.sh [norns|nornsd|well|all] [--all-platforms]"
+  echo "Without a product, builds norns (including plugins) and nornsd."
+  echo "Well builds only for the current platform; run npm ci in well first."
 }
-trap cleanup EXIT
 
-if ! command -v go >/dev/null 2>&1; then
-  echo "release: Go 1.25 or newer is required" >&2
+fail() {
+  echo "release: $*" >&2
   exit 1
-fi
+}
 
-go_version=$(go env GOVERSION)
-go_major_minor=${go_version#go}
-go_major=${go_major_minor%%.*}
-go_minor=${go_major_minor#*.}
-go_minor=${go_minor%%.*}
-if (( go_major < 1 || (go_major == 1 && go_minor < 25) )); then
-  echo "release: Go 1.25 or newer is required, found ${go_version}" >&2
-  exit 1
-fi
-
-vcs_ref=${VCS_REF:-}
-if [[ -z "$vcs_ref" ]] && command -v git >/dev/null 2>&1; then
-  vcs_ref=$(git -C "$script_dir" rev-parse --short=12 HEAD 2>/dev/null || true)
-fi
-vcs_ref=${vcs_ref:-unknown}
-build_time=${BUILD_TIME:-$(date -u '+%Y-%m-%dT%H:%M:%SZ')}
-go_cache=${GOCACHE:-${TMPDIR:-/tmp}/norns-release-go-cache}
-
-export CGO_ENABLED=0
-export GOCACHE="$go_cache"
-
-echo "release: generating nornsd embedded assets"
-(cd "$script_dir/nornsd" && go generate ./internal/assets)
-
-plugin_dirs=()
-while IFS= read -r plugin_dir; do
-  plugin_dirs+=("$plugin_dir")
-done < <(find "$script_dir/norns/cmd" -mindepth 1 -maxdepth 1 -type d -name 'norns-*' | LC_ALL=C sort)
-
-norns_ldflags="-s -w \
--X github.com/Ghr07h/norns/norns/internal/version.Commit=$vcs_ref \
--X github.com/Ghr07h/norns/norns/internal/version.BuildTime=$build_time"
-
-nornsd_ldflags="-s -w \
--X github.com/Ghr07h/norns/nornsd/internal/version.Commit=$vcs_ref \
--X github.com/Ghr07h/norns/nornsd/internal/version.BuildTime=$build_time"
-
-targets=(
-  "darwin:x64:amd64"
-  "darwin:arm64:arm64"
-  "linux:x64:amd64"
-  "linux:arm64:arm64"
-  "windows:x64:amd64"
-  "windows:arm64:arm64"
-)
-
-for target in "${targets[@]}"; do
-  IFS=: read -r target_os label_arch target_arch <<<"$target"
-  target_dir="$staging_dir/${target_os}-${label_arch}"
-  extension=""
-  if [[ "$target_os" == "windows" ]]; then
-    extension=".exe"
+ensure_directory() {
+  if [[ -L "$1" || ( -e "$1" && ! -d "$1" ) ]]; then
+    fail "refusing to replace non-directory or symbolic link $1"
   fi
-  mkdir -p "$target_dir"
+  mkdir -p "$1"
+}
 
-  echo "release: building ${target_os}/${target_arch}"
-  (
-    cd "$script_dir/norns"
-    GOOS="$target_os" GOARCH="$target_arch" go build \
-      -trimpath -ldflags "$norns_ldflags" \
-      -o "$target_dir/norns${extension}" ./cmd/norns
-    for plugin_dir in "${plugin_dirs[@]}"; do
-      plugin_name=$(basename "$plugin_dir")
-      GOOS="$target_os" GOARCH="$target_arch" go build \
-        -trimpath -ldflags "$norns_ldflags" \
-        -o "$target_dir/${plugin_name}${extension}" "./cmd/${plugin_name}"
-    done
-  )
-  (
-    cd "$script_dir/nornsd"
-    GOOS="$target_os" GOARCH="$target_arch" go build \
-      -trimpath -ldflags "$nornsd_ldflags" \
-      -o "$target_dir/nornsd${extension}" ./cmd/nornsd
-  )
+selection=""
+all_platforms=()
+help=false
+for argument in "$@"; do
+  case "$argument" in
+    norns|nornsd|well|all)
+      [[ -z "$selection" ]] || fail "select only one product or all"
+      selection=$argument
+      ;;
+    --all-platforms) all_platforms=(--all-platforms) ;;
+    --help|-h) help=true ;;
+    *) fail "unknown argument: $argument" ;;
+  esac
 done
 
-if [[ -L "$release_dir" ]]; then
-  echo "release: refusing to replace symbolic link $release_dir" >&2
-  exit 1
+if [[ ${#all_platforms[@]} -gt 0 && ( "$selection" == well || "$selection" == all ) ]]; then
+  fail "--all-platforms supports only norns and nornsd; build Well on each target platform"
 fi
-rm -rf "$release_dir"
-mkdir -p "$release_dir"
-cp -R "$staging_dir/." "$release_dir/"
+if [[ "$help" == true ]]; then
+  usage
+  exit 0
+fi
+
+case "$selection" in
+  "") products=(norns nornsd) ;;
+  all) products=(norns nornsd well) ;;
+  *) products=("$selection") ;;
+esac
+
+cd "$script_dir"
+if [[ "$selection" != well ]]; then
+  command -v go >/dev/null 2>&1 || fail "Go 1.25 or newer is required"
+  go_version=$(go env GOVERSION)
+  go_major_minor=${go_version#go}
+  go_major=${go_major_minor%%.*}
+  go_minor=${go_major_minor#*.}
+  go_minor=${go_minor%%.*}
+  if (( go_major < 1 || (go_major == 1 && go_minor < 25) )); then
+    fail "Go 1.25 or newer is required, found ${go_version}"
+  fi
+  host_os=$(go env GOHOSTOS)
+  host_arch=$(go env GOHOSTARCH)
+else
+  command -v node >/dev/null 2>&1 || fail "Well requires Node.js"
+  host_os=$(node -p 'process.platform === "win32" ? "windows" : process.platform')
+  host_arch=$(node -p 'process.arch')
+fi
+if [[ "$host_arch" == amd64 ]]; then host_arch=x64; fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  checksum=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  checksum=(shasum -a 256)
+else
+  fail "sha256sum or shasum is required"
+fi
+
+platforms=("$host_os-$host_arch")
+if [[ ${#all_platforms[@]} -gt 0 ]]; then
+  platforms=(darwin-x64 darwin-arm64 linux-x64 linux-arm64 windows-x64 windows-arm64)
+fi
+ensure_directory "$script_dir/release"
+for platform in "${platforms[@]}"; do
+  ensure_directory "$script_dir/release/$platform"
+done
+
+staging=$(mktemp -d "$script_dir/.release.tmp.XXXXXX")
+trap 'rm -rf -- "$staging"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+export VCS_REF="${VCS_REF:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+export BUILD_TIME="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
+for product in "${products[@]}"; do
+  if [[ "$product" == well ]]; then
+    (cd well && npm run release -- --output "$staging/artifacts")
+  else
+    (cd "$product" && go run ./scripts/release.go ${all_platforms[@]+"${all_platforms[@]}"} --output "$staging/artifacts")
+  fi
+done
+
+for platform in "${platforms[@]}"; do
+  ensure_directory "$script_dir/release/$platform"
+  [[ -d "$staging/artifacts/$platform" ]] || fail "missing staged artifacts for $platform"
+done
+for platform in "${platforms[@]}"; do
+  destination="$script_dir/release/$platform"
+  for product in "${products[@]}"; do
+    case "$product" in
+      norns) rm -rf -- "$destination/norns" "$destination/norns.exe" "$destination"/norns-* ;;
+      nornsd) rm -rf -- "$destination/nornsd" "$destination/nornsd.exe" ;;
+      well) rm -rf -- "$destination/well" ;;
+    esac
+  done
+  for artifact in "$staging/artifacts/$platform"/*; do
+    mv -- "$artifact" "$destination/"
+  done
+done
 
 (
-  cd "$release_dir"
-  find . -type f ! -name SHA256SUMS | LC_ALL=C sort | while IFS= read -r artifact; do
-    shasum -a 256 "$artifact"
-  done > SHA256SUMS
-)
-
-touch "$release_dir/.gitkeep"
-
-echo "release: wrote six platform directories and SHA256SUMS to $release_dir"
+  cd release
+  find . -type f ! -name SHA256SUMS ! -name .gitkeep -print | LC_ALL=C sort |
+    while IFS= read -r artifact; do "${checksum[@]}" "$artifact"; done
+) > "$staging/SHA256SUMS"
+mv -- "$staging/SHA256SUMS" "$script_dir/release/SHA256SUMS"
+echo "release: wrote ${products[*]} to $script_dir/release and updated SHA256SUMS"

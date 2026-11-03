@@ -13,7 +13,11 @@ CLI 只管理协议状态，不启动、监控或停止智能体。Runtime 必�
 
 ## 构建
 
-从完整仓库构建：产品版本、支持的协议版本和数据库 schema 来自根目录 `versions.json`，构建时内嵌到二进制，无需额外的运行时版本文件。
+从完整仓库构建：产品版本、支持的协议版本和数据库 schema 来自根目录 `versions.json`，无需额外的运行时版本文件。推荐从项目根目录执行 `./release.sh norns`，它会先刷新版本代码，再构建当前平台的 CLI 与全部 `norns-*` 命令插件。六平台产物使用 `./release.sh norns --all-platforms`。
+
+也可以在本目录执行 `go run ./scripts/release.go`，独立完成版本生成、CLI 与插件编译、产物整理和校验和生成，不依赖 nornsd 或 Well 的构建实现。支持 `--all-platforms` 与 `--output <directory>`，默认产物写入 `../release/`；构建脚本测试随 `go test ./...` 运行。
+
+下列命令可用于模块内开发构建；版本使用已提交的 `internal/version/versions_generated.go` 派生代码。修改根版本清单后应先运行统一或本目录构建入口，直接 `go build` 不会自动刷新版本。
 
 ~~~sh
 cd norns
@@ -39,7 +43,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./bin/norns-windows-amd64.ex
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./bin/norns-websearch-windows-amd64.exe ./cmd/norns-websearch
 ~~~
 
-支持的发布目标为 macOS amd64/arm64、Linux amd64/arm64 和 Windows amd64。
+支持的发布目标为 macOS amd64/arm64、Linux amd64/arm64 和 Windows amd64/arm64。
 
 ## 快速开始
 

@@ -2,8 +2,6 @@ package version
 
 import (
 	"time"
-
-	versions "github.com/Ghr07h/norns"
 )
 
 const (
@@ -27,13 +25,6 @@ const (
 )
 
 var (
-	manifest           = versions.Read()
-	ProductVersion     = manifest.Nornsd.Version
-	DatabaseSchema     = manifest.Nornsd.DatabaseSchema
-	APISchema          = manifest.Nornsd.APISchema
-	AgentConfigVersion = manifest.Nornsd.AgentConfigSchema
-	NornsProtocol      = manifest.Nornsd.SupportProtocol
-	CCPluginVersion    = manifest.Nornsd.Plugins["cc"]
-	Commit             = "unknown"
-	BuildTime          = "unknown"
+	Commit    = "unknown"
+	BuildTime = "unknown"
 )
