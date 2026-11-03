@@ -1,0 +1,58 @@
+documents/design/well.md
+  h_32bccb164adb56 4,44,216,232-236
+well/README.md
+  h_32bccb164adb56 3,12,20,48,73-82,98
+well/package.json
+  h_32bccb164adb56 6-7,9,14
+well/scripts/prepare-versions.mjs
+  h_32bccb164adb56 1-38
+well/scripts/prepare-versions.test.ts
+  h_32bccb164adb56 1-62
+well/src-tauri/Cargo.lock
+  h_32bccb164adb56 5230
+well/src-tauri/Cargo.toml
+  h_32bccb164adb56 3,13
+well/src-tauri/build.rs
+  h_32bccb164adb56 1-2,4-27
+well/src-tauri/src/api/client.rs
+  h_32bccb164adb56 52-60,265-266,279,287,299-303,308-395,400,419,427,440,457,461,483,493,517
+well/src-tauri/src/api/dto.rs
+  h_32bccb164adb56 25
+well/src-tauri/src/api/url.rs
+  h_32bccb164adb56 41-43,65,69-82
+well/src-tauri/src/lib.rs
+  h_32bccb164adb56 3
+well/src-tauri/src/version.rs
+  h_32bccb164adb56 1-14
+well/src/api/dto.ts
+  h_32bccb164adb56 14
+well/src/components/subject/SubjectDetailPanel.test.tsx
+  h_32bccb164adb56 7,30
+well/src/lib/versions.test.ts
+  h_32bccb164adb56 1-8
+well/src/lib/versions.ts
+  h_32bccb164adb56 1-4
+well/src/routes/server/ServerWorkspace.tsx
+  h_32bccb164adb56 59
+well/src/routes/servers/ServerCard.tsx
+  h_32bccb164adb56 29
+well/src/routes/servers/ServersPage.test.tsx
+  h_32bccb164adb56 12,23,103,108-133
+well/src/routes/servers/SettingsDialog.test.tsx
+  h_32bccb164adb56 1-34
+well/src/routes/servers/SettingsDialog.tsx
+  h_32bccb164adb56 9,15
+well/src/test/demo-bridge.ts
+  h_32bccb164adb56 3,35-36,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "49e3320c042e1bdc5009ff3c61d6c74fac96c40d",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
