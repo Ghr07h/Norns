@@ -1,0 +1,70 @@
+QUICKSTART.md
+  h_32bccb164adb56 93,152,157
+README.md
+  h_32bccb164adb56 41-50
+documents/README.md
+  h_32bccb164adb56 13
+documents/design/nornsd.md
+  h_32bccb164adb56 176,180,188,209-224,228-230
+go.mod
+  h_32bccb164adb56 1-3
+norns/README.md
+  h_32bccb164adb56 16-17
+norns/go.mod
+  h_32bccb164adb56 6,16-17
+norns/internal/version/version.go
+  h_32bccb164adb56 3-4,6,10-15
+norns/internal/version/version_test.go
+  h_32bccb164adb56 1-14
+nornsd/README.md
+  h_32bccb164adb56 36-40,55,79,85,88,94,97,107,220
+nornsd/cmd/genassets/main.go
+  h_32bccb164adb56 14-15,33,36,41,44-62,89,132-148
+nornsd/go.mod
+  h_32bccb164adb56 6,16-17
+nornsd/internal/assets/generated/manifest.generated.json
+  h_32bccb164adb56 5
+nornsd/internal/assets/generated/plugins/cc/.claude-plugin/plugin.json
+  h_32bccb164adb56 4,6-9
+nornsd/internal/cli/root.go
+  h_32bccb164adb56 67,71
+nornsd/internal/cli/root_test.go
+  h_32bccb164adb56 6,10,17,20-58,95
+nornsd/internal/config/agent.example.yaml
+  h_32bccb164adb56 2
+nornsd/internal/config/config_test.go
+  h_32bccb164adb56 7,10-11,19,24-31,75,114,125,142,172,198,207,216,225,235,257
+nornsd/internal/httpapi/server.go
+  h_32bccb164adb56 28-29,61-76,81,233,267,379
+nornsd/internal/httpapi/server_test.go
+  h_32bccb164adb56 13,24-51,66,72,77-79,84-93,95,107-110,133,153,166,179,186,197,210,224,235,255,276,283,297-301,341,361,382
+nornsd/internal/plugin/cc/generator.go
+  h_32bccb164adb56 140
+nornsd/internal/plugin/cc/generator_test.go
+  h_32bccb164adb56 6,15,52-53,61-74
+nornsd/internal/runtime/manager_test.go
+  h_32bccb164adb56 12,61,299,424
+nornsd/internal/runtimeartifact/artifact.go
+  h_32bccb164adb56 114
+nornsd/internal/version/version.go
+  h_32bccb164adb56 3-7,10-11,30-38
+nornsd/internal/version/version_test.go
+  h_32bccb164adb56 1-14
+versions.go
+  h_32bccb164adb56 1-64
+versions.json
+  h_32bccb164adb56 1-22
+versions_test.go
+  h_32bccb164adb56 1-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cc824fa1324e4dbd9527de6a7ac3dbdb3ade677d",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
