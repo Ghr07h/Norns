@@ -1,0 +1,32 @@
+container/redteam/Dockerfile
+  h_32bccb164adb56 10,52,65-80,168
+container/redteam/verify.py
+  h_32bccb164adb56 20-21,26-30,84-90,122-127
+container/redteam_for_benchmark/Dockerfile
+  h_32bccb164adb56 17,59,72-87,175
+container/redteam_for_benchmark/verify.py
+  h_32bccb164adb56 21-22,27-31,85-91,123-128
+container/redteam_for_benchmark_cc/Dockerfile
+  h_32bccb164adb56 17,59,72-87,175
+container/redteam_for_benchmark_cc/verify.py
+  h_32bccb164adb56 21-22,27-31,85-91,123-128
+container/tests/test_reverse_tools.py
+  h_32bccb164adb56 1-122
+domain/redteam/skills/pentest-tools/SKILL.md
+  h_32bccb164adb56 3,10,32-34,46,53-55
+domain/redteam/skills/pentest-tools/references/playbook.md
+  h_32bccb164adb56 3-18,182-219,225,231-233
+domain/redteam/skills/pentest-tools/references/tools.md
+  h_32bccb164adb56 3-18,33-45,104-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "16f9359bdc91e78be790fd0754e4e7c83481e751",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
