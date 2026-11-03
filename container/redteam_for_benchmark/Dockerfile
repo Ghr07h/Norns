@@ -14,6 +14,7 @@ ARG CLAUDE_CODE_VERSION=2.1.199
 ARG NODE_VERSION=24.22.1
 ARG NODE_DIST_URL=https://nodejs.org/dist
 ARG NORNS_RELEASE_DIR=release/linux-x64
+ARG RADARE2_VERSION=6.2.4
 
 # 构建期代理。ALL_PROXY/all_proxy 不是 Docker 预定义参数，必须显式声明。
 ARG HTTP_PROXY=
@@ -55,7 +56,7 @@ RUN if [ -n "${APT_SOURCE_BLOCK}" ]; then \
 
 # 系统、网络、经典 Web、Samba 和浏览器工具。
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential pkg-config \
+        build-essential pkg-config gdb strace binutils \
         ca-certificates curl wget git jq ripgrep tmux less file openssl vim sudo \
         unzip tar gzip xz-utils bsdextrautils perl \
         net-tools iputils-ping dnsutils whois iproute2 netcat-openbsd \
@@ -67,6 +68,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium imagemagick \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in amd64|arm64) ;; *) echo "不支持的目标架构: $arch" >&2; exit 1 ;; esac; \
+    mkdir -p /tmp/radare2; \
+    cd /tmp/radare2; \
+    package="radare2_${RADARE2_VERSION}_${arch}.deb"; \
+    base_url="https://github.com/radareorg/radare2/releases/download/${RADARE2_VERSION}"; \
+    curl -fL --retry 5 --connect-timeout 15 --max-time 180 "$base_url/$package" -o "$package"; \
+    curl -fL --retry 5 --connect-timeout 15 --max-time 180 "$base_url/checksums.txt" -o checksums.txt; \
+    sha256sum --check --ignore-missing checksums.txt; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends "/tmp/radare2/$package"; \
+    apt-get clean; \
+    cd /; \
+    rm -rf /tmp/radare2 /var/lib/apt/lists/*
 
 # 直接安装 Node.js 官方二进制包，避免额外拉取 Node 镜像或引入运行时 NVM。
 RUN set -eux; \
@@ -155,6 +172,7 @@ RUN set -eux; \
 RUN pip install --no-cache-dir \
         PyYAML==6.0.3 \
         pwntools \
+        capstone ROPgadget \
         pymongo \
         pyftpdlib \
         paramiko \

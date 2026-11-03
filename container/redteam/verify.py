@@ -17,10 +17,17 @@ REQUIRED_COMMANDS = (
     "curl", "wget", "git", "jq", "rg", "tmux", "nc", "socat",
     "nmap", "sqlmap", "hydra", "john", "dirb", "gobuster", "nikto",
     "nuclei", "katana", "naabu", "ffuf", "dalfox", "chromium", "playwright-cli",
+    "gdb", "strace", "as", "ld", "objdump", "readelf", "nm", "strings",
+    "radare2", "r2", "rabin2", "ROPgadget",
 )
 REQUIRED_MODULES = (
     "yaml", "pwnlib", "pymongo", "pyftpdlib", "paramiko", "cryptography",
     "dns", "bs4", "requests", "dirsearch",
+    "capstone", "ropgadget",
+)
+REVERSE_TOOL_VERSION_COMMANDS = (
+    ("gdb", "--version"), ("strace", "-V"), ("ld", "--version"),
+    ("radare2", "-v"), ("ROPgadget", "--version"),
 )
 REQUIRED_DOMAIN_PATHS = (
     "/norns/domain/redteam/norns_domain_agents/meta.json",
@@ -74,6 +81,13 @@ def import_module(name: str) -> None:
     importlib.import_module(name)
 
 
+def check_capstone() -> None:
+    capstone = importlib.import_module("capstone")
+    disassembler = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+    mnemonics = [instruction.mnemonic for instruction in disassembler.disasm(b"\x90\xc3", 0x1000)]
+    require(mnemonics == ["nop", "ret"], f"Capstone disassembly failed: {mnemonics}")
+
+
 def main() -> int:
     verification = Verification()
     for name in REQUIRED_COMMANDS:
@@ -105,6 +119,12 @@ def main() -> int:
     )
     for name in REQUIRED_MODULES:
         verification.check(f"Python module: {name}", lambda name=name: import_module(name))
+    for argv in REVERSE_TOOL_VERSION_COMMANDS:
+        verification.check(
+            f"tool version: {argv[0]}",
+            lambda argv=argv: command_output(list(argv)),
+        )
+    verification.check("Capstone disassembly", check_capstone)
 
     def check_template() -> None:
         yaml_module = importlib.import_module("yaml")
