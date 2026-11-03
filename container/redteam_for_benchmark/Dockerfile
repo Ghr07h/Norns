@@ -251,7 +251,7 @@ RUN set -eux; \
 
 # NORNS_RELEASE_DIR 由 build.sh 按主机架构选择；目录中已有的 norns-* 插件一并复制。
 COPY ${NORNS_RELEASE_DIR}/ /norns/bin/
-COPY nornsd/internal/config/agent.example.yaml /norns/config/agent.example.yaml
+COPY nornsd/configs/nornsd/agent.example.yaml /norns/config/agent.example.yaml
 COPY domain/redteam/ /norns/domain/redteam/
 # benchmark 调度脚本(仅标准库)与单 nornsd 入口(标准库 + PyYAML)。
 COPY container/redteam_for_benchmark/benchmark.py /norns/bin/benchmark.py

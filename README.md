@@ -42,6 +42,18 @@ container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自�
 
 根目录 `versions.json` 是唯一人工维护的协议、产品及兼容性版本来源。根目录不定义 Go 模块，`norns/` 和 `nornsd/` 保持独立模块。
 
+| 清单字段 | 用途 |
+| --- | --- |
+| `protocol` | 协议规范版本，使用正整数。 |
+| `norns.version`、`nornsd.version`、`well.version` | 各产品的三段式字符串版本，分别维护。 |
+| `norns.support_protocol`、`nornsd.support_protocol` | 各自支持的协议版本；启用 Norns 模式时必须一致。 |
+| `norns.database_schema`、`nornsd.database_schema` | 各自的数据库 schema。 |
+| `nornsd.api_schema`、`well.support_api_schema` | 服务 API schema 与 Well 支持的 schema，配套发布时保持一致。 |
+| `nornsd.agent_config_schema` | Agent 配置的整数 `VERSION`。 |
+| `nornsd.plugins.cc` | CC Plugin 的整数版本，生成 Plugin 元信息时转换为 `<整数>.0.0`。 |
+
+协议和 schema 使用正整数，不参与产品版本或 API 路径拼接。协议文档与 Plugin 源模板不再单独声明这些版本数值；外部工具依赖的版本不属于此清单。
+
 统一构建入口为根目录 `release.sh`：
 
 ```sh
@@ -67,9 +79,15 @@ container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自�
 
 产物写入 `release/<os>-<arch>/`；Go 可执行文件放在该目录顶层，Well 可执行文件与 `bundle/` 安装包放在其 `well/` 子目录。单独构建只替换所选产品在所选平台的产物，保留其他产品和平台，并更新覆盖现有全部产物的 `release/SHA256SUMS`。所有所选产品构建成功后才发布到该目录。
 
-修改清单后运行对应构建入口即可：Go 构建前会更新纳入 Git 的 `internal/version/versions_generated.go` 派生代码；nornsd 同时重新生成协议与 Plugin 内嵌资源；Well 复用自身的 Cargo 版本同步流程。派生文件应随清单变更提交，不应手工修改。普通 `go build` 使用已生成的版本，不会自动刷新；两个模块的版本测试会检查是否与根清单一致。运行二进制不需要版本清单。`VCS_REF` 与 `BUILD_TIME` 仍可设置 Go 构建元数据，产品版本不由 `NORNS_VERSION` 覆盖。
+构建 nornsd 时，会将 schema 同步后的 `nornsd/configs/nornsd/agent.example.yaml` 一起发布到各目标平台目录，与 nornsd 可执行文件同级并纳入校验和；只更新示例，不覆盖已有的 `agent.yaml`。nornsd 的独立构建入口也保持相同行为。
+
+根入口构建 Well 时，在发布产物及校验和均成功写入后，删除 `well/src-tauri/target/release/bundle/` 原始打包目录；设置 `CARGO_TARGET_DIR` 时清理对应目录。保留编译缓存、可执行文件和 Debug 产物，失败时不执行此清理；仅构建 Go 产品时不清理 Well。
+
+修改清单后运行对应构建入口即可：Go 构建前会更新纳入 Git 的 `internal/version/versions_generated.go` 派生代码；nornsd 同时同步 `configs/nornsd/agent.example.yaml` 的 `VERSION`，并重新生成协议与 Plugin 内嵌资源；Well 复用自身的 Cargo 版本同步流程。派生文件应随清单变更提交，不应手工修改生成的版本字段。普通 `go build` 使用已生成的版本，不会自动刷新；两个模块的版本测试会检查是否与根清单一致。运行二进制不需要版本清单。`VCS_REF` 与 `BUILD_TIME` 仍可设置 Go 构建元数据，产品版本不由 `NORNS_VERSION` 覆盖。
 
 API 路径固定使用 `/api/`，不随 schema 改变；`GET /api/` 的服务信息和 `nornsd version --json` 返回清单中的 `api_schema`。Agent 配置的 `VERSION` 和数据库 schema 必须与清单声明一致，不会自动迁移旧配置或旧数据库。
+
+已有 `agent.yaml` 是用户输入，不会被构建覆盖。升级配置 schema 时，应对照新模板检查字段并手动迁移，不能仅修改 `VERSION` 绕过兼容性检查。已安装产物的实际版本以 `norns version --json`、`nornsd version --json` 及服务信息为准，而不是当前源码目录的清单。
 
 构建工具测试纳入各产品的测试入口，根脚本的调度测试随 norns 运行：
 

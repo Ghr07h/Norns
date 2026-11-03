@@ -1,8 +1,5 @@
 # Well 设计
 
-状态：v1 当前设计  
-支持服务：nornsd HTTP API，固定 `/api/` 前缀，以 API schema 判断兼容性
-
 本文记录 Well 的长期产品设计与当前实现设计。服务端资源和接口契约以 [`nornsd.md`](nornsd.md) 的 HTTP API 章节为准。
 
 # 第一部分：原始设计
@@ -11,7 +8,7 @@
 
 Well 是本地桌面 GUI，用于连接和管理多个 nornsd Server，浏览 Subject、Runtime、Queue、Event 与可选 Norns View。
 
-v1 提供：
+当前提供：
 
 - 保存、编辑、连接和移除多个 Server；
 - 汇总 Server 可达性、身份、容量、Profile 和能力；
@@ -82,7 +79,7 @@ Servers 页面时，每条具有 Token 的记录立即开始一轮连接探测�
 
 新增 Server 默认勾选“记住 Token”。勾选时 Token 进入本地 registry；取消后立即删除持久值，仅保留当前 session 输入。主动断开只清 session Token，移除 Server 则删除其全部凭据和缓存。
 
-Well v1 没有用于加密该存储的主密码。记住的 Token 由 WebView 本地存储保护，其安全级别取决于操作系统账户和应用数据目录；README 必须明确这一点。
+Well 当前没有用于加密该存储的主密码。记住的 Token 由 WebView 本地存储保护，其安全级别取决于操作系统账户和应用数据目录；README 必须明确这一点。
 
 本地存储分层：
 
@@ -186,7 +183,7 @@ Visual View 使用 sandboxed iframe `srcdoc`，不授予 `allow-same-origin`、�
 | 图标 | Lucide React |
 | 测试 | Vitest、Testing Library、Playwright、Cargo test |
 
-依赖精确版本由 lockfile 固定。v1 不引入大型 UI 组件库、CSS-in-JS runtime 或通用本地数据库。
+依赖精确版本由 lockfile 固定。当前不引入大型 UI 组件库、CSS-in-JS runtime 或通用本地数据库。
 
 ## 11. 工程边界
 

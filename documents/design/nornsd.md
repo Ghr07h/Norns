@@ -1,10 +1,5 @@
 # nornsd 设计
 
-状态：v1 当前设计  
-服务 API：v1  
-数据库 schema：v1  
-Agent 配置 schema：v1
-
 本文记录 `nornsd` 的长期产品设计、HTTP 契约与当前实现设计。`nornsd` 可以独立管理通用 Agent Runtime，也可以选择启用 Norns 模式；Norns 协议语义以 [`../protocol/protocol.md`](../protocol/protocol.md) 为准，`nornsd` 只通过公开的 `norns` CLI 与 Norns Workspace 交互，不直接读写其数据库。
 
 # 第一部分：原始设计
@@ -24,7 +19,7 @@ Subject 是 nornsd 的长期管理单位，通常对应一个需要持续处理�
 
 nornsd 的通用 Runtime 管理不依赖 Norns。普通模式直接批量驱动 Agent 处理 instruction；可选的 Norns 模式在相同 Runtime 管理能力上增加 Norns Plugin、开放任务求解过程和 Norns View。启用 Norns 时，独立 adapter 负责 CLI 预检、Plugin 生成、Task close 和 View 读取；Norns 不参与 nornsd 的 Subject、队列或并发模型。
 
-v1 只实现 Claude Code adapter，并固定兼容 Claude Code `2.1.199`。实现为单一 Go 可执行文件，不依赖 Python 或 Claude Agent SDK。
+当前只实现 Claude Code adapter，并固定兼容 Claude Code `2.1.199`。实现为单一 Go 可执行文件，不依赖 Python 或 Claude Agent SDK。
 
 ## 2. 核心模型
 
@@ -120,11 +115,11 @@ Norns Runtime 外部停止时，nornsd 先停止 Agent/Explorer 写入，再在�
 
 ## 4. 配置模型
 
-`agent.yaml` 是外部配置，不编译进 nornsd。配置版本键为大写 `VERSION`。规范示例位于 `nornsd/internal/config/agent.example.yaml`。
+`agent.yaml` 是外部配置，不编译进 nornsd。配置版本键为大写 `VERSION`。规范示例位于 `nornsd/configs/nornsd/agent.example.yaml`，其 `VERSION` 由构建入口根据版本清单同步；已有用户配置不会自动修改或迁移。
 
 | 字段 | 含义 |
 | --- | --- |
-| `VERSION` | Agent 配置 schema，当前为 `1`。 |
+| `VERSION` | Agent 配置 schema，必须与 `versions.json` 的 `nornsd.agent_config_schema` 对应的二进制版本一致；`nornsd version --json` 以 `agent_config_version` 报告该值。 |
 | `LLM_URL` | LLM API 基础地址。 |
 | `LLM_KEY` | LLM 凭据。 |
 | `LLM_MODEL` | 主模型。 |
@@ -281,9 +276,9 @@ View API 仅在 Profile 启用 `norns` 时可用。status/trace 原样返回 `no
 
 Subject idle 时仍可读取 View；未启用能力返回 `CAPABILITY_NOT_ENABLED`，未物化返回 `SUBJECT_NOT_MATERIALIZED`。nornsd 不直接读取 Norns SQLite。
 
-### 5.7 v1 明确不提供
+### 5.7 当前明确不提供
 
-v1 不提供 Subject 修改/删除/归档/迁移、配置 API、独立 queue cancel、原始日志下载、diagnostics、幂等键、用户/角色或 Token 轮换。客户端不得自动重试创建和 instruction 提交；结果不确定时先查询 Subject、Runtime 与 Event。
+当前不提供 Subject 修改/删除/归档/迁移、配置 API、独立 queue cancel、原始日志下载、diagnostics、幂等键、用户/角色或 Token 轮换。客户端不得自动重试创建和 instruction 提交；结果不确定时先查询 Subject、Runtime 与 Event。
 
 # 第二部分：实现设计
 
@@ -348,9 +343,9 @@ domain 不依赖 HTTP、Cobra、SQLite、Agent 或操作系统进程 API。
 
 `root.json` 与 `subject.json` 是本地身份，不是数据库替代品。Subject 目录名创建后不变。用户数据、配置、Plugin、日志、transcript 和 artifacts 默认永久保留，权限按包含秘密的数据处理。
 
-## 8. SQLite schema v1
+## 8. SQLite schema
 
-root 数据库表：
+root 数据库 schema 由 `versions.json` 的 `nornsd.database_schema` 声明，实际二进制通过 `nornsd version --json` 的 `database_schema` 报告；不自动迁移不匹配的数据库。数据库表：
 
 | 表 | 职责 |
 | --- | --- |
@@ -368,7 +363,7 @@ root 数据库表：
 
 server 启动时加载全部 `--settings` 并冻结到内存槽。文件随后变化不影响已启动 server。每个 Runtime 保存实际槽位、生成配置 hash 和脱敏快照。
 
-Agent 基础配置模板按类型保存在 `internal/config/templates/<agent>/` 并编译进 nornsd。运行时根据 Runtime Profile 的 Agent 类型选择所需模板；当前 `cc` 模板经结构化 JSON 解析后注入 URL、token、主模型、fast model 和默认模型字段，禁止文本替换或 shell 展开。未知 Agent 类型必须明确失败，不能回退到其他 Agent 的模板。
+Agent 基础配置模板按类型保存在 `configs/<agent>/` 并编译进 nornsd，当前为 `configs/cc/settings.json`；`configs/nornsd/agent.example.yaml` 仅作为外部配置示例，不内嵌。运行时根据 Runtime Profile 的 Agent 类型选择所需模板；当前 `cc` 模板经结构化 JSON 解析后注入 URL、token、主模型、fast model 和默认模型字段，禁止文本替换或 shell 展开。未知 Agent 类型必须明确失败，不能回退到其他 Agent 的模板。
 
 发布流程使用同父目录 staging、受限权限与原子 rename：
 

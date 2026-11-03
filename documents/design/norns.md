@@ -1,9 +1,5 @@
 # Norns CLI 设计
 
-状态：v1 当前设计  
-适用协议：Norns protocol v2  
-数据库 schema：v9
-
 本文记录 `norns` CLI 的长期产品设计与当前实现设计。协议实体、状态机、Graph 和角色语义以 [`../protocol/protocol.md`](../protocol/protocol.md) 为准；本文只定义该协议在本地 Workspace CLI 中的映射。
 
 # 第一部分：原始设计
@@ -32,13 +28,14 @@ Runtime 必须在关闭 Task 前停止并确认相关 Explorer 不再写入。CL
 
 以下版本独立演进：
 
-| 版本 | 当前值 | 含义 |
+| 版本 | `versions.json` 字段 | 含义 |
 | --- | --- | --- |
-| 协议版本 | `2` | 对外可观察的 Norns 语义。 |
-| SQLite schema | `9` | 本实现的物理存储格式。 |
-| 产品版本 | 构建注入 | `norns` 可执行文件版本。 |
+| 协议规范版本 | `protocol` | 对外可观察的 Norns 语义。 |
+| 支持的协议版本 | `norns.support_protocol` | CLI 可接受的 Workspace 协议版本。 |
+| SQLite schema | `norns.database_schema` | 本实现的物理存储格式。 |
+| 产品版本 | `norns.version` | `norns` 可执行文件版本。 |
 
-CLI 只接受协议 v2、schema v9。版本检查必须发生在任何持久化修改之前；`workspace reset` 也不能绕过版本检查。
+以上版本由构建入口写入二进制，实际值可通过 `norns version --json` 查看。CLI 只接受与自身支持的协议和 schema 相同的 Workspace。版本检查必须发生在任何持久化修改之前；`workspace reset` 也不能绕过版本检查。
 
 ## 3. Workspace 行为
 
@@ -185,15 +182,17 @@ cmd/norns-websearch -> internal/websearch
 
 时间、ID 和关键文件操作通过小接口注入，使事务时间、UUID 和 reset 故障点可以确定性测试。
 
-## 10. SQLite v9
+## 10. SQLite schema
 
 数据库标记：
 
 ```text
 PRAGMA application_id = 0x4E4F524E  # NORN
-PRAGMA user_version = 9
-workspace_meta.protocol_version = 2
+PRAGMA user_version = <norns.database_schema>
+workspace_meta.protocol_version = <norns.support_protocol>
 ```
+
+尖括号表示由 `versions.json` 对应字段生成的整数，不是可直接执行的 SQL。
 
 物理表：
 

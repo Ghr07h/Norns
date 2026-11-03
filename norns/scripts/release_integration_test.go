@@ -24,6 +24,10 @@ func coordinatorFixture(testingContext *testing.T) string {
 	for _, project := range []string{"norns", "nornsd", "well"} {
 		writeFixture(testingContext, filepath.Join(root, project, ".fixture"), "")
 	}
+	if err := os.MkdirAll(filepath.Join(root, "well/src-tauri"), 0o755); err != nil {
+		testingContext.Fatal(err)
+	}
+	writeFixture(testingContext, filepath.Join(root, "nornsd/configs/nornsd/agent.example.yaml"), "VERSION: 45\n")
 	tool := `#!/usr/bin/env bash
 set -euo pipefail
 if [[ "$1" == env ]]; then
@@ -64,7 +68,7 @@ for platform in "${platforms[@]}"; do
   mkdir -p "$output/$platform"
   case "$project" in
     norns) printf new > "$output/$platform/norns"; printf new > "$output/$platform/norns-websearch" ;;
-    nornsd) printf new > "$output/$platform/nornsd" ;;
+    nornsd) printf new > "$output/$platform/nornsd"; cp configs/nornsd/agent.example.yaml "$output/$platform/agent.example.yaml" ;;
     well) mkdir -p "$output/$platform/well/bundle"; printf new > "$output/$platform/well/bundle/Well.pkg" ;;
   esac
 done
@@ -75,6 +79,7 @@ done
 	testingContext.Setenv("PATH", filepath.Join(root, "tools")+string(os.PathListSeparator)+os.Getenv("PATH"))
 	testingContext.Setenv("FAKE_BUILD_LOG", filepath.Join(root, "build.log"))
 	testingContext.Setenv("FAKE_FAIL_PRODUCT", "")
+	testingContext.Setenv("CARGO_TARGET_DIR", "")
 	return root
 }
 
@@ -121,6 +126,17 @@ func TestCoordinatorProductSelection(testingContext *testing.T) {
 			if err != nil || len(checksums) == 0 {
 				testingContext.Fatalf("missing checksums: %v", err)
 			}
+			example := filepath.Join(root, "release/linux-x64/agent.example.yaml")
+			if selection := strings.Join(test.arguments, " "); selection == "" || selection == "nornsd" || selection == "all" {
+				if contents, err := os.ReadFile(example); err != nil || string(contents) != "VERSION: 45\n" {
+					testingContext.Fatalf("missing published Agent example: %q %v", contents, err)
+				}
+				if !strings.Contains(string(checksums), "agent.example.yaml") {
+					testingContext.Fatal("Agent example missing from checksums")
+				}
+			} else if _, err := os.Stat(example); !os.IsNotExist(err) {
+				testingContext.Fatalf("unselected nornsd published an Agent example: %v", err)
+			}
 		})
 	}
 }
@@ -131,7 +147,7 @@ func TestCoordinatorAllPlatforms(testingContext *testing.T) {
 		testingContext.Fatalf("entry failed: %v\n%s", err, output)
 	}
 	for _, platform := range []string{"darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64", "windows-x64", "windows-arm64"} {
-		for _, project := range []string{"norns", "nornsd"} {
+		for _, project := range []string{"norns", "nornsd", "agent.example.yaml"} {
 			if _, err := os.Stat(filepath.Join(root, "release", platform, project)); err != nil {
 				testingContext.Fatal(err)
 			}
@@ -142,7 +158,7 @@ func TestCoordinatorAllPlatforms(testingContext *testing.T) {
 func TestCoordinatorPreservesUnselectedArtifacts(testingContext *testing.T) {
 	root := coordinatorFixture(testingContext)
 	output := filepath.Join(root, "release/linux-x64")
-	preserved := []string{filepath.Join(output, "nornsd"), filepath.Join(output, "well/bundle/old.pkg"), filepath.Join(root, "release/other/norns")}
+	preserved := []string{filepath.Join(output, "nornsd"), filepath.Join(output, "agent.example.yaml"), filepath.Join(output, "agent.yaml"), filepath.Join(output, "well/bundle/old.pkg"), filepath.Join(root, "release/other/norns")}
 	for _, filename := range preserved {
 		writeFixture(testingContext, filename, "preserved")
 	}
@@ -176,6 +192,82 @@ func TestCoordinatorFailurePreservesRelease(testingContext *testing.T) {
 	staging, err := filepath.Glob(filepath.Join(root, ".release.tmp.*"))
 	if err != nil || len(staging) != 0 {
 		testingContext.Fatalf("staging leaked: %v %v", staging, err)
+	}
+}
+
+func TestCoordinatorWellBundleCleanup(testingContext *testing.T) {
+	for _, selection := range []string{"", "norns", "nornsd", "well", "all"} {
+		for _, targetDirectory := range []string{"", "custom target", "absolute"} {
+			testingContext.Run(selection+"/"+targetDirectory, func(testingContext *testing.T) {
+				root := coordinatorFixture(testingContext)
+				if targetDirectory == "absolute" {
+					targetDirectory = testingContext.TempDir()
+				}
+				testingContext.Setenv("CARGO_TARGET_DIR", targetDirectory)
+				resolvedTarget := targetDirectory
+				if resolvedTarget == "" {
+					resolvedTarget = "target"
+				}
+				if !filepath.IsAbs(resolvedTarget) {
+					resolvedTarget = filepath.Join(root, "well/src-tauri", resolvedTarget)
+				}
+				bundle := filepath.Join(resolvedTarget, "release/bundle")
+				writeFixture(testingContext, filepath.Join(bundle, "macos/Well.app/Contents/executable"), "source app")
+				preserved := []string{
+					filepath.Join(resolvedTarget, "release/well"),
+					filepath.Join(resolvedTarget, "release/deps/cache"),
+					filepath.Join(resolvedTarget, "debug/bundle/macos/Well.app/Contents/executable"),
+				}
+				for _, filename := range preserved {
+					writeFixture(testingContext, filename, "preserved")
+				}
+				var arguments []string
+				if selection != "" {
+					arguments = append(arguments, selection)
+				}
+				if output, err := runCoordinator(root, arguments...); err != nil {
+					testingContext.Fatalf("release failed: %v\n%s", err, output)
+				}
+				_, err := os.Stat(bundle)
+				if selection == "well" || selection == "all" {
+					if !os.IsNotExist(err) {
+						testingContext.Fatalf("source bundle was not removed: %v", err)
+					}
+					published := filepath.Join(root, "release/linux-x64/well/bundle/Well.pkg")
+					if contents, err := os.ReadFile(published); err != nil || string(contents) != "new" {
+						testingContext.Fatalf("published bundle was not preserved: %q %v", contents, err)
+					}
+				} else if err != nil {
+					testingContext.Fatalf("unselected Well bundle was removed: %v", err)
+				}
+				for _, filename := range preserved {
+					if contents, err := os.ReadFile(filename); err != nil || string(contents) != "preserved" {
+						testingContext.Fatalf("non-bundle artifact changed: %s %v", filename, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestCoordinatorFailedWellReleasePreservesSourceBundle(testingContext *testing.T) {
+	for _, failure := range []string{"build", "checksum"} {
+		testingContext.Run(failure, func(testingContext *testing.T) {
+			root := coordinatorFixture(testingContext)
+			filename := filepath.Join(root, "well/src-tauri/target/release/bundle/macos/Well.app/Contents/executable")
+			writeFixture(testingContext, filename, "source app")
+			if failure == "build" {
+				testingContext.Setenv("FAKE_FAIL_PRODUCT", "well")
+			} else {
+				writeFixture(testingContext, filepath.Join(root, "tools/sha256sum"), "#!/usr/bin/env bash\nexit 1\n")
+			}
+			if output, err := runCoordinator(root, "well"); err == nil {
+				testingContext.Fatalf("accepted failed release: %s", output)
+			}
+			if contents, err := os.ReadFile(filename); err != nil || string(contents) != "source app" {
+				testingContext.Fatalf("source bundle removed after failed release: %q %v", contents, err)
+			}
+		})
 	}
 }
 

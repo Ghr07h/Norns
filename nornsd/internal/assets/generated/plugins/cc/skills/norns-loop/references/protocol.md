@@ -1,8 +1,5 @@
 # Norns 协议
 
-状态：正式版  
-协议版本：2
-
 ## 1. 协议内容
 
 Norns 是一套面向开放任务求解的多智能体协作协议，主要面向由支持多智能体系统（MAS）的 Code Agent 承载的 Runtime。Coordinator 响应协议状态变化和外部事件，基于最新 Graph 与执行状态按需调度 Decider 和 Explorer，持续开展探索并积累可复用的 Cognition，直到当前 Task 形成有依据的结论，或确认在当前条件下无法继续推进。
@@ -31,7 +28,7 @@ Norns 协议实现即完整支持 Norns 协议的可执行系统。协议不规�
 协议版本与兼容性：
 
 - 协议使用协议版本管理变更，不承诺协议版本兼容性。
-- 协议版本由协议文档配套的 `manifest.json` 的 `protocol_version` 字段声明。
+- 协议规范版本由仓库根目录 `versions.json` 的整数 `protocol` 字段声明。
 - 协议实现必须准确声明所支持的协议版本，且不得修改协议版本不受支持的 Workspace。
 - 协议版本与实现的产品版本、存储 schema 版本相互独立。
 

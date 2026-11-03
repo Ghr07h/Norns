@@ -1,4 +1,4 @@
-# nornsd Agent 配置 schema 版本。
+# VERSION 由 nornsd 构建入口根据根目录 versions.json 的 nornsd.agent_config_schema 同步。
 VERSION: 3
 
 # LLM API 基础地址。

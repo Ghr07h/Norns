@@ -12,7 +12,7 @@ import (
 )
 
 func TestAgentExampleIsValid(t *testing.T) {
-	cfg, err := Load("agent.example.yaml")
+	cfg, err := Load("../../configs/nornsd/agent.example.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,6 +30,7 @@ func TestRejectUnsupportedAgentConfigSchema(t *testing.T) {
 }
 
 func TestSettingsUsesEmbeddedTemplateAndInjectsRuntimeValues(t *testing.T) {
+	t.Chdir(t.TempDir())
 	settings, err := Settings("cc", Config{
 		LLMURL:       "https://example.test/v1",
 		LLMKey:       `secret-\"value`,

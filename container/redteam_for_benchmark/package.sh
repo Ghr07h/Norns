@@ -17,7 +17,7 @@ required_files=(
   "release/linux-arm64/nornsd"
   "release/linux-x64/norns"
   "release/linux-x64/nornsd"
-  "nornsd/internal/config/agent.example.yaml"
+  "nornsd/configs/nornsd/agent.example.yaml"
   "domain/redteam/norns_domain_agents/meta.json"
   "domain/redteam/skills"
   "container/redteam_for_benchmark/Dockerfile"
@@ -44,7 +44,7 @@ cd "$project_root"
 zip -X -q -r "$tmp_archive" \
   release/linux-arm64 \
   release/linux-x64 \
-  nornsd/internal/config/agent.example.yaml \
+  nornsd/configs/nornsd/agent.example.yaml \
   domain/redteam \
   container/redteam_for_benchmark/Dockerfile \
   container/redteam_for_benchmark/Dockerfile.dockerignore \

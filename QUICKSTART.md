@@ -84,14 +84,14 @@ AGENT_EXEC:
 覆盖其中的访问密钥和自定义配置：
 
 ```sh
-test -e ./bin/agent.yaml || cp ./nornsd/internal/config/agent.example.yaml ./bin/agent.yaml
+test -e ./bin/agent.yaml || cp ./nornsd/configs/nornsd/agent.example.yaml ./bin/agent.yaml
 ```
 
 编辑 `bin/agent.yaml`，至少设置模型连接信息，并确认 `AGENT_EXEC` 指向上一步安装的
-Claude Code：
+Claude Code。保留模板中的整数 `VERSION`：源码构建入口会根据 `versions.json` 的
+`nornsd.agent_config_schema` 同步该字段，下面只列出需要配置的业务字段：
 
 ```yaml
-VERSION: 3
 LLM_URL: "https://your-api.example.com"
 LLM_KEY: "replace-with-secret"
 LLM_MODEL: "model-name"
@@ -120,6 +120,8 @@ AGENT_EXEC:
 
 路径字段以声明它的 `agent.yaml` 所在目录为基准解析。`agent.yaml` 包含密钥，
 不要提交到版本控制，也不要随 Runtime 产物公开分发。
+
+使用预编译产物时，应从同一 Release 对应的源码取得配置模板，不要与其他版本的模板混用。已有配置不会自动覆盖或升级；若 `VERSION` 与 `nornsd version --json` 返回的 `agent_config_version` 不一致，应对照新模板迁移字段，不能只修改版本数字。
 
 ### 4. 启动一个 Norns Agent
 
@@ -254,7 +256,7 @@ docker stop nornsd
 ```
 
 镜像从指定的 `release/linux-<arch>/` 复制可执行文件到 `/norns/bin/`，并将公开的
-`nornsd/internal/config/agent.example.yaml` 安装为
+`nornsd/configs/nornsd/agent.example.yaml` 安装为
 `/norns/config/agent.example.yaml`。本地 `bin/agent.yaml` 不会进入 Docker 构建上下文。
 完整构建参数、配置白名单和领域目录说明见 [container/README.md](container/README.md)。
 
@@ -264,15 +266,23 @@ docker stop nornsd
 
 ## 当前版本边界
 
-| 项目 | 当前版本 |
+| 项目 | 版本来源 |
 | --- | --- |
-| Norns protocol | `2`（stable） |
-| norns database schema | `9` |
-| nornsd HTTP API | `v1` |
-| nornsd database schema | `1` |
-| agent.yaml schema | `1` |
+| Norns protocol | `versions.json` 的 `protocol` |
+| norns / nornsd / Well 产品版本 | `norns.version` / `nornsd.version` / `well.version` |
+| norns / nornsd 支持的协议 | `norns.support_protocol` / `nornsd.support_protocol` |
+| norns database schema | `norns.database_schema` |
+| nornsd HTTP API schema | `nornsd.api_schema`，接口路径固定为 `/api/` |
+| Well 支持的 API schema | `well.support_api_schema`，与 `nornsd.api_schema` 保持一致 |
+| nornsd database schema | `nornsd.database_schema` |
+| agent.yaml schema | `nornsd.agent_config_schema`，构建时同步到示例的 `VERSION` |
+| CC Plugin | `nornsd.plugins.cc`，构建时转换为 Plugin 元信息版本 |
 | Claude Code | `2.1.199` |
 | Go | `1.25` |
+
+内部版本统一见根目录 [versions.json](versions.json)，本文不重复维护具体数值。
+已安装二进制的实际版本通过 `norns version --json` 和 `nornsd version --json` 获取；
+远端服务信息通过 `GET /api/` 获取。
 
 `norns` 和 `nornsd` 必须来自同一次构建或同一个 Release。nornsd 启用 Norns
 模式时会检查 `norns` 支持的协议版本，但不负责迁移不兼容的 Workspace。

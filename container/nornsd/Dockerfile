@@ -99,7 +99,7 @@ RUN set -eux; \
 
 COPY ${NORNS_RELEASE_DIR}/ /norns/bin/
 COPY domain/ /norns/domain/
-COPY nornsd/internal/config/agent.example.yaml /norns/config/agent.example.yaml
+COPY nornsd/configs/nornsd/agent.example.yaml /norns/config/agent.example.yaml
 COPY container/nornsd/entrypoint.py /usr/local/bin/nornsd-entrypoint
 COPY container/nornsd/verify.py /usr/local/bin/nornsd-verify
 

@@ -4,7 +4,7 @@
 
 nornsd 可以独立批量驱动普通 Agent，也可以通过 `--norns` 启用可选的 Norns 模式。Norns 模式在相同的 Subject、Runtime 和队列能力上增加 Norns Plugin、开放任务求解流程与 View；它不是运行 nornsd server 的前置条件。
 
-正式运行路径为 Go 单一可执行文件与 Claude Code CLI 2.1.199，不依赖 Python 或 Claude Agent SDK。运行前需要确保 `claude` 可执行文件版本为 `2.1.199`；启用 Norns 模式时，还需要在 PATH 或 nornsd 同目录提供支持 protocol v2 的 `norns`。
+正式运行路径为 Go 单一可执行文件与 Claude Code CLI 2.1.199，不依赖 Python 或 Claude Agent SDK。运行前需要确保 `claude` 可执行文件版本为 `2.1.199`；启用 Norns 模式时，还需要在 PATH 或 nornsd 同目录提供支持相同协议版本的 `norns`，对应清单中的 `nornsd.support_protocol` 与 `norns.support_protocol`。
 
 Norns Plugin 在 Linux 和 macOS 上使用 POSIX `sh`/`awk` PreToolUse hook，拦截 Bash 工具中由 shell snapshot shadow 到 Claude Code 内嵌 ugrep 7.5.0 的危险 `grep` 正则；其他系统不会发布该 hook。两个 bounded repeat（例如同一模式内出现两次 `{0,40}`）会触发旧版 ugrep 的正则编译内存爆炸；显式使用 `/usr/bin/grep`、Claude Code 内置 Grep 工具，或者改用 `awk` 不会命中此拦截。Claude Code 2.1.235 已通过升级内嵌 ugrep 修复该问题，但固定使用 2.1.199 的 Runtime 必须保留此 hook。
 
@@ -37,9 +37,9 @@ go build -o ./bin/nornsd ./cmd/nornsd
 go test ./...
 ```
 
-从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`。版本代码由统一或本目录入口生成到 `internal/version/versions_generated.go` 并纳入 Git，无需额外的运行时版本文件。修改清单后应先执行对应构建入口，普通 `go build` 不会刷新版本；`go generate` 只刷新内嵌资源。
+从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`。版本代码由统一或本目录入口生成到 `internal/version/versions_generated.go` 并纳入 Git，同时更新 `configs/nornsd/agent.example.yaml` 的 `VERSION`，无需额外的运行时版本文件。修改清单后应先执行对应构建入口，普通 `go build` 不会刷新版本；`go generate` 只刷新内嵌资源。
 
-生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源，同时从版本清单填入协议和 Plugin 版本。当前运行时按 `cc` 选择 `plugin/cc/`；修改清单中的协议或 Plugin 版本后需重新生成资源。
+生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源，同时从版本清单填入协议和 Plugin 版本。`plugin/cc/` 是不单独声明版本的源模板：生成时将 `nornsd.plugins.cc` 转换为 `<整数>.0.0` 写入 Plugin 元信息，将 `nornsd.support_protocol` 写入 `NORNS_PROTOCOL_VERSION`。当前运行时按 `cc` 选择内嵌资源；修改清单中的协议或 Plugin 版本后需重新生成资源。
 
 API 路径固定使用 `/api/`，不随 API schema 改变。`GET /api/` 和 `nornsd version --json` 使用整数 `api_schema` 报告接口格式版本，不再提供 `api_version` 字符串。旧数据库与旧 `VERSION` 的 Agent 配置继续按现有兼容性检查拒绝，不自动迁移。
 
@@ -175,17 +175,19 @@ RSS 超限后仅终止对应 Runtime 进程树，并将 `end_reason` 和 `error_
 
 ## agent.yaml
 
-示例配置位于 `internal/config/agent.example.yaml`，它是启动 nornsd 时提供的外部输入，不会编译进二进制：
+公开配置模板集中放在 `configs/`：`configs/nornsd/agent.example.yaml` 是启动 nornsd 时提供的外部输入，不会编译进二进制；`configs/cc/settings.json` 是编译内嵌的 Claude Code 基础配置模板。
 
 ```sh
-cp internal/config/agent.example.yaml ./agent.yaml
+cp configs/nornsd/agent.example.yaml ./agent.yaml
 ```
+
+示例的 `VERSION` 由构建入口根据 `versions.json` 的 `nornsd.agent_config_schema` 同步，其余字段仍可按需维护。已有用户配置不会被构建修改。配置 schema 升级后，应对照新模板迁移字段；运行时要求配置 `VERSION` 等于 `nornsd version --json` 返回的 `agent_config_version`，不应只修改版本数字绕过检查。
 
 `nornsd agent --setting=./agent.yaml` 显式使用该文件。裸 `nornsd agent --setting` 自动读取可执行文件同目录的 `agent.yaml`；使用 `--resume-subject` 时再合并 Subject 当前配置。自动发现成功并完成预检后，nornsd 会在 stderr 列出实际配置来源，等待 3 秒再启动 Claude Code，期间可以按 `Ctrl+C` 取消。
 
 `NORNS_ENABLE` 同样适用于 direct agent，并优先于 `--norns`。`NORNS_SERVER_HOST`、`NORNS_SERVER_PORT` 和 `NORNS_SERVER_TOKEN` 仅供 server 使用。
 
-各 Agent 的基础配置模板按类型位于 `internal/config/templates/<agent>/`，并编译进 nornsd；Claude Code 使用 `internal/config/templates/cc/settings.json`。运行时根据 Runtime Profile 的 Agent 类型选择模板，解析 JSON，并以 `agent.yaml` 中的 URL、密钥和模型字段生成本次 Runtime settings。server 托管 Runtime 和提供了 `--setting` 的 direct agent 会传入 `--setting-sources=`，不额外读取用户、Subject project 或 local settings；裸 `nornsd agent` 不传该参数，沿用 Claude Code 的默认配置来源。显式生成的临时 settings 和 `--plugin-dir` 仍会加载。
+各 Agent 的基础配置模板按类型位于 `configs/<agent>/`，由 `configs/templates.go` 编译内嵌；Claude Code 使用 `configs/cc/settings.json`。运行时不依赖源码目录，根据 Runtime Profile 的 Agent 类型选择模板，解析 JSON，并以 `agent.yaml` 中的 URL、密钥和模型字段生成本次 Runtime settings。server 托管 Runtime 和提供了 `--setting` 的 direct agent 会传入 `--setting-sources=`，不额外读取用户、Subject project 或 local settings；裸 `nornsd agent` 不传该参数，沿用 Claude Code 的默认配置来源。显式生成的临时 settings 和 `--plugin-dir` 仍会加载。
 
 `NORNS_EXPLORATION_TIMEOUT` 设置 running Exploration 的超时问询周期，单位为秒，默认 `1200`。该值会注入 Coordinator 的 Runtime 配置；Coordinator 在运行时长达到该周期及其后续整数倍时执行问询或终止规则。
 

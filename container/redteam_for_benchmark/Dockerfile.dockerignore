@@ -7,9 +7,9 @@
 !release/linux-x64/**
 
 !nornsd/
-!nornsd/internal/
-!nornsd/internal/config/
-!nornsd/internal/config/agent.example.yaml
+!nornsd/configs/
+!nornsd/configs/nornsd/
+!nornsd/configs/nornsd/agent.example.yaml
 
 !domain/
 !domain/redteam/

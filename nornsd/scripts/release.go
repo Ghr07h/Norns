@@ -170,6 +170,23 @@ func generateVersions(root string, manifest versions) error {
 	return os.WriteFile(filename, source, 0o644)
 }
 
+func generateAgentExample(root string, manifest versions) error {
+	filename := filepath.Join(root, product, "configs/nornsd/agent.example.yaml")
+	source, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	pattern := regexp.MustCompile(`(?m)^VERSION:[^\r\n]*`)
+	if len(pattern.FindAllIndex(source, -1)) != 1 {
+		return fmt.Errorf("%s must contain exactly one top-level VERSION field", filename)
+	}
+	generated := pattern.ReplaceAll(source, []byte(fmt.Sprintf("VERSION: %d", manifest.Nornsd.AgentConfigSchema)))
+	if bytes.Equal(source, generated) {
+		return nil
+	}
+	return os.WriteFile(filename, generated, 0o644)
+}
+
 func build(root string, selected options, command runCommand) error {
 	manifest, err := readVersions(root)
 	if err != nil {
@@ -218,6 +235,13 @@ func build(root string, selected options, command runCommand) error {
 	if err := generateVersions(root, manifest); err != nil {
 		return err
 	}
+	if err := generateAgentExample(root, manifest); err != nil {
+		return err
+	}
+	agentExample, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/agent.example.yaml"))
+	if err != nil {
+		return err
+	}
 	commands := []string{product}
 	if err := command(filepath.Join(root, product), []string{"CGO_ENABLED=0"}, "go", "generate", "./internal/assets"); err != nil {
 		return err
@@ -237,6 +261,9 @@ func build(root string, selected options, command runCommand) error {
 			if err := command(filepath.Join(root, product), environment, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", output, "./cmd/"+executable); err != nil {
 				return err
 			}
+		}
+		if err := os.WriteFile(filepath.Join(staging, platform.directory(), "agent.example.yaml"), agentExample, 0o644); err != nil {
+			return err
 		}
 	}
 	for _, platform := range platforms {
@@ -288,7 +315,7 @@ func publish(source, destination string) error {
 	}
 	for _, entry := range current {
 		name := entry.Name()
-		owned := name == product || name == product+".exe"
+		owned := name == product || name == product+".exe" || name == "agent.example.yaml"
 		if owned {
 			if err := os.RemoveAll(filepath.Join(destination, name)); err != nil {
 				return err

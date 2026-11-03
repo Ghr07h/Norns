@@ -2,7 +2,7 @@
 
 本目录维护四个基于 Python slim 的独立镜像。所有构建都以项目根目录为 Context，直接
 读取 `release/linux-<arch>/` 中的预编译二进制，并使用公开的
-`nornsd/internal/config/agent.example.yaml`。构建过程不会读取本地 `bin/`。
+`nornsd/configs/nornsd/agent.example.yaml`。构建过程不会读取本地 `bin/`。
 
 | 目录 | 默认镜像 | 用途 |
 | --- | --- | --- |
@@ -30,7 +30,9 @@ Release 中已有的 `norns-*` 插件必须来自同一次构建。
 `versions.json` 到镜像。更新清单后需重新生成 Linux Release，再构建镜像或运行
 `package.sh`，不能沿用旧二进制。
 
-四个镜像的配置模板验证不再固定要求 `VERSION: 1`，而是读取镜像内
+`nornsd/configs/nornsd/agent.example.yaml` 的 `VERSION` 由 nornsd 构建入口根据
+`versions.json` 的 `nornsd.agent_config_schema` 同步，模板与 Linux 二进制应来自同一次构建。
+四个镜像的配置模板验证不固定 schema 数值，而是读取镜像内
 `nornsd version --json` 的 `agent_config_version`，确认模板 `VERSION` 与实际二进制
 支持的配置 schema 一致。失配仍然报错，不自动修改或迁移旧配置；Node.js、Claude Code
 等外部依赖的固定安装版本保持不变。

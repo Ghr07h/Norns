@@ -112,7 +112,7 @@ for platform in "${platforms[@]}"; do
   for product in "${products[@]}"; do
     case "$product" in
       norns) rm -rf -- "$destination/norns" "$destination/norns.exe" "$destination"/norns-* ;;
-      nornsd) rm -rf -- "$destination/nornsd" "$destination/nornsd.exe" ;;
+      nornsd) rm -rf -- "$destination/nornsd" "$destination/nornsd.exe" "$destination/agent.example.yaml" ;;
       well) rm -rf -- "$destination/well" ;;
     esac
   done
@@ -127,4 +127,7 @@ done
     while IFS= read -r artifact; do "${checksum[@]}" "$artifact"; done
 ) > "$staging/SHA256SUMS"
 mv -- "$staging/SHA256SUMS" "$script_dir/release/SHA256SUMS"
+if [[ "$selection" == well || "$selection" == all ]]; then
+  (cd well/src-tauri && rm -rf -- "${CARGO_TARGET_DIR:-target}/release/bundle")
+fi
 echo "release: wrote ${products[*]} to $script_dir/release and updated SHA256SUMS"

@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"crypto/sha256"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,11 +14,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Ghr07h/norns/nornsd/configs"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
-
-//go:embed templates
-var agentSettingsTemplates embed.FS
 
 type Config struct {
 	Version                        int      `yaml:"VERSION" json:"VERSION"`
@@ -310,7 +307,7 @@ func Settings(agent string, c Config) (map[string]any, error) {
 	if agent != "cc" {
 		return nil, fmt.Errorf("settings generation is not implemented for agent %q", agent)
 	}
-	template, err := agentSettingsTemplates.ReadFile("templates/cc/settings.json")
+	template, err := configs.AgentSettingsTemplates.ReadFile("cc/settings.json")
 	if err != nil {
 		return nil, fmt.Errorf("read embedded %s settings template: %w", agent, err)
 	}

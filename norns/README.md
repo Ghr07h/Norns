@@ -1,15 +1,17 @@
 # Norns CLI
 
-`norns` 是 Norns protocol v2 的本地 Workspace CLI。它使用 SQLite 持久化 Task、Cognition、Exploration 及其关系，执行协议状态转换，并生成 Status、Trace 和 Visual 三类 View。
+`norns` 是 Norns protocol 的本地 Workspace CLI。它使用 SQLite 持久化 Task、Cognition、Exploration 及其关系，执行协议状态转换，并生成 Status、Trace 和 Visual 三类 View。
 
 当前版本边界：
 
-- protocol version：`2`
-- database schema version：`9`
+- 支持的 protocol version：根目录 `versions.json` 的 `norns.support_protocol`
+- database schema version：根目录 `versions.json` 的 `norns.database_schema`
 - Go：`1.25`
 - SQLite 驱动：纯 Go，无 CGO 依赖
 
 CLI 只管理协议状态，不启动、监控或停止智能体。Runtime 必须在关闭 Task 前停止并确认相关 Explorer 不再写入。
+
+协议规范版本由 `versions.json` 的 `protocol` 声明，产品版本由 `norns.version` 声明。已安装产物的实际产品、协议和数据库版本使用 `norns version --json` 查看。
 
 ## 构建
 
@@ -104,7 +106,7 @@ ID 由 CLI 生成，格式分别为 `task_<uuid-v4>`、`cog_<uuid-v4>` 和 `exp_
 <workspace>/
   .norns.lock                 生命周期共享/独占锁
   .norns/
-    norns.sqlite              protocol v2 / schema v9 数据库
+    norns.sqlite              带协议和 schema 版本检查的数据库
     view/                     原子发布的 Status、Trace 和 Visual View
     history/                  workspace reset 归档
   .norns-reset.json           仅在 reset 进行或恢复期间存在

@@ -244,7 +244,7 @@ RUN set -eux; \
 
 # NORNS_RELEASE_DIR 由 build.sh 按主机架构选择；目录中已有的 norns-* 插件一并复制。
 COPY ${NORNS_RELEASE_DIR}/ /norns/bin/
-COPY nornsd/internal/config/agent.example.yaml /norns/config/agent.example.yaml
+COPY nornsd/configs/nornsd/agent.example.yaml /norns/config/agent.example.yaml
 COPY domain/redteam/ /norns/domain/redteam/
 COPY container/redteam/entrypoint.py /usr/local/bin/nornsd-entrypoint
 COPY container/redteam/verify.py /usr/local/bin/nornsd-verify

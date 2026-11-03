@@ -10,6 +10,6 @@
     "plugins/cc/hooks/pretooluse_ugrep_guard.sh": "sha256:cea8b052eaf17b92107081e850ee190f057da6a20f7089cedc37feccdd32f29e",
     "plugins/cc/settings.json": "sha256:d78617fd3b06bd667e30a0fd6e811a7c3d78b9a4b1a25867a9aac6cc513533b4",
     "plugins/cc/skills/norns-loop/SKILL.md": "sha256:7a5970be48bd8eca839bf1aec64e010fca292a12b8e21dce3bdc016dcf1bb315",
-    "plugins/cc/skills/norns-loop/references/protocol.md": "sha256:ba4582a6249a718647fbdc8d284a2a17775b990f96e6ee091a0545db5f472480"
+    "plugins/cc/skills/norns-loop/references/protocol.md": "sha256:82bb79654db75d7c8963671c485b5f5dfb0a25606cb6201e5cd5682448a959c7"
   }
 }
