@@ -3,6 +3,7 @@ package cc
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Ghr07h/norns/nornsd/internal/config"
+	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
 
 func TestPublishInjectsNornsRuntimeConfiguration(t *testing.T) {
@@ -47,13 +49,28 @@ func TestPublishIncludesNornsPluginMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	var metadata struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		Version string `json:"version"`
 	}
 	if err = json.Unmarshal(data, &metadata); err != nil {
 		t.Fatal(err)
 	}
 	if metadata.Name != "norns" {
 		t.Fatalf("Plugin name = %q, want norns", metadata.Name)
+	}
+	if want := fmt.Sprintf("%d.0.0", version.CCPluginVersion); metadata.Version != want {
+		t.Fatalf("Plugin version = %q, want %q; regenerate embedded assets", metadata.Version, want)
+	}
+	data, err = os.ReadFile(filepath.Join(path, "plugin.manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest Manifest
+	if err = json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.GeneratorVersion != version.CCPluginVersion || manifest.ProtocolVersion != version.NornsProtocol {
+		t.Fatalf("Plugin manifest does not match versions.json: %#v", manifest)
 	}
 }
 

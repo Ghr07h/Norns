@@ -2,7 +2,7 @@
   "protocol_version": 2,
   "generator_version": 1,
   "files": {
-    "plugins/cc/.claude-plugin/plugin.json": "sha256:5dd442b3c37a6ef9e949dcd5f185d8b45c1001632c90d17667a65e9297f5de10",
+    "plugins/cc/.claude-plugin/plugin.json": "sha256:447d70a396a15f9d26a39f1475a0c460a746560d6e66bf0bc7c1e242637bba54",
     "plugins/cc/agents/coordinator.md": "sha256:82695a2d34f7ca95b14add8d6354d1998ea04d5158a85e791fac05cf64784073",
     "plugins/cc/agents/decider.md": "sha256:8c27ca74b1303d686dd5b788dc54de73798fb1129ebc6c5a569ce27e84ca90bc",
     "plugins/cc/agents/explorer.md": "sha256:90d6dd997726e0d21dbe32ea792b987614a1739654956580d576bf9a9bbf1b6c",

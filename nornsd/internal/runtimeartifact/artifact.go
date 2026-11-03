@@ -111,7 +111,7 @@ func ConfigSnapshot(agent, agentVersion string, c *config.Config, configHash, pl
 		"agent":                    agent,
 		"agent_version":            agentVersion,
 		"agent_config_version":     version.AgentConfigVersion,
-		"plugin_generator_version": 1,
+		"plugin_generator_version": version.CCPluginVersion,
 		"created_at":               createdAt.UTC(),
 	}
 	if c == nil {

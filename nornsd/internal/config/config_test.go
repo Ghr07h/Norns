@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
 
 func TestAgentExampleIsValid(t *testing.T) {
@@ -13,8 +16,16 @@ func TestAgentExampleIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Version != 1 || cfg.LLMURL == "" || cfg.LLMKey == "" || cfg.LLMModel == "" || !cfg.NornsEnable || cfg.NornsServerHost != "0.0.0.0" || cfg.NornsServerPort != 28081 || cfg.NornsServerToken == "" || cfg.NornsExplorationTimeoutSeconds != 1200 {
+	if cfg.Version != version.AgentConfigVersion || cfg.LLMURL == "" || cfg.LLMKey == "" || cfg.LLMModel == "" || !cfg.NornsEnable || cfg.NornsServerHost != "0.0.0.0" || cfg.NornsServerPort != 28081 || cfg.NornsServerToken == "" || cfg.NornsExplorationTimeoutSeconds != 1200 {
 		t.Fatalf("agent example is incomplete: %#v", cfg)
+	}
+}
+
+func TestRejectUnsupportedAgentConfigSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.yaml")
+	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion+1)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "unsupported agent config version") {
+		t.Fatalf("unsupported config schema was not rejected: %v", err)
 	}
 }
 
@@ -61,7 +72,7 @@ func TestPartialMergePreservesExplicitEmptyAndFalse(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "base.yaml")
 	override := filepath.Join(dir, "override.yaml")
-	mustWrite(t, base, "VERSION: 1\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: model\nLLM_FAST_MODEL: fast\nNORNS_ENABLE: true\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: base-token\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 7\nNORNS_EXPLORATION_TIMEOUT: 1800\nNORNS_ALLOW_HUMAN_INTERVENTION: true\nAGENT_EXEC: [claude]\n")
+	mustWrite(t, base, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: model\nLLM_FAST_MODEL: fast\nNORNS_ENABLE: true\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: base-token\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 7\nNORNS_EXPLORATION_TIMEOUT: 1800\nNORNS_ALLOW_HUMAN_INTERVENTION: true\nAGENT_EXEC: [claude]\n")
 	mustWrite(t, override, "LLM_FAST_MODEL: \"\"\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 0.0.0.0\nNORNS_SERVER_PORT: 29000\nNORNS_SERVER_TOKEN: override-token\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 2\nNORNS_EXPLORATION_TIMEOUT: 900\nNORNS_ALLOW_HUMAN_INTERVENTION: false\n")
 	a, err := LoadPartial(base)
 	if err != nil {
@@ -100,7 +111,7 @@ func TestLoadRejectsInvalidNornsServerConfiguration(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "agent.yaml")
-			mustWrite(t, path, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n"+field+"\n")
+			mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n"+field+"\n")
 			if _, err := Load(path); err == nil {
 				t.Fatalf("expected %s to fail", field)
 			}
@@ -111,7 +122,7 @@ func TestLoadRejectsInvalidNornsServerConfiguration(t *testing.T) {
 func TestPersistedConfigPreservesNewFieldPresence(t *testing.T) {
 	dir := t.TempDir()
 	oldPath := filepath.Join(dir, "old.yaml")
-	mustWrite(t, oldPath, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
+	mustWrite(t, oldPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
 	oldConfig, err := Load(oldPath)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +139,7 @@ func TestPersistedConfigPreservesNewFieldPresence(t *testing.T) {
 	}
 
 	newPath := filepath.Join(dir, "new.yaml")
-	mustWrite(t, newPath, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: token\n")
+	mustWrite(t, newPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: token\n")
 	newConfig, err := Load(newPath)
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +169,7 @@ func TestLoadAndMergeCustomPluginDirs(t *testing.T) {
 		}
 	}
 	basePath := filepath.Join(dir, "base.yaml")
-	mustWrite(t, basePath, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - first-plugin\n  - second-plugin\n")
+	mustWrite(t, basePath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - first-plugin\n  - second-plugin\n")
 	base, err := Load(basePath)
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +195,7 @@ func TestLoadAndMergeCustomPluginDirs(t *testing.T) {
 
 func TestLoadRejectsInvalidCustomPluginDir(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	mustWrite(t, path, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - missing\n")
+	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - missing\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected missing CUSTOM_PLUGIN_DIRS entry to fail")
 	}
@@ -193,7 +204,7 @@ func TestLoadRejectsInvalidCustomPluginDir(t *testing.T) {
 func TestLoadRequiresCustomPluginDirsList(t *testing.T) {
 	for _, value := range []string{"null", `"plugin"`} {
 		path := filepath.Join(t.TempDir(), "agent.yaml")
-		mustWrite(t, path, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS: "+value+"\n")
+		mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS: "+value+"\n")
 		if _, err := Load(path); err == nil {
 			t.Fatalf("expected CUSTOM_PLUGIN_DIRS value %s to fail", value)
 		}
@@ -202,7 +213,7 @@ func TestLoadRequiresCustomPluginDirsList(t *testing.T) {
 
 func TestNornsConcurrencyExplicitZeroRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	mustWrite(t, path, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 0\n")
+	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 0\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected explicit zero to fail")
 	}
@@ -211,7 +222,7 @@ func TestNornsConcurrencyExplicitZeroRejected(t *testing.T) {
 func TestNornsExplorationTimeoutDefaultsAndRejectsExplicitZero(t *testing.T) {
 	dir := t.TempDir()
 	defaultPath := filepath.Join(dir, "default.yaml")
-	mustWrite(t, defaultPath, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
+	mustWrite(t, defaultPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
 	cfg, err := Load(defaultPath)
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +232,7 @@ func TestNornsExplorationTimeoutDefaultsAndRejectsExplicitZero(t *testing.T) {
 	}
 
 	zeroPath := filepath.Join(dir, "zero.yaml")
-	mustWrite(t, zeroPath, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_EXPLORATION_TIMEOUT: 0\n")
+	mustWrite(t, zeroPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_EXPLORATION_TIMEOUT: 0\n")
 	if _, err = Load(zeroPath); err == nil {
 		t.Fatal("expected explicit zero NORNS_EXPLORATION_TIMEOUT to fail")
 	}
@@ -243,7 +254,7 @@ func TestLoadDomainConfiguration(t *testing.T) {
   "domain_explorer_extra_info_file": "info/explorer.md"
 }`)
 	setting := filepath.Join(dir, "agent.yaml")
-	mustWrite(t, setting, "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_CUSTOM_DOMAIN_DIR: domain\n")
+	mustWrite(t, setting, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_CUSTOM_DOMAIN_DIR: domain\n")
 
 	cfg, err := Load(setting)
 	if err != nil {

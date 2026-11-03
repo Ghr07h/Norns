@@ -25,6 +25,8 @@ import (
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
 
+const apiPrefix = "/api"
+
 type Config struct {
 	Service     *app.Service
 	Token       string
@@ -56,26 +58,27 @@ func (s *Server) routes() {
 		handler      http.HandlerFunc
 	}
 	routes := []route{
-		{"GET", "/api/v1", nil, s.serviceInfo},
-		{"GET", "/api/v1/health", nil, s.health},
-		{"POST", "/api/v1/subjects", nil, s.createSubject},
-		{"GET", "/api/v1/subjects", map[string]bool{"limit": false, "cursor": false, "state": true}, s.listSubjects},
-		{"GET", "/api/v1/subjects/{subject_id}", nil, s.getSubject},
-		{"POST", "/api/v1/subjects/{subject_id}/runtime", nil, s.submit},
-		{"GET", "/api/v1/subjects/{subject_id}/runtime", nil, s.getCurrentRuntime},
-		{"POST", "/api/v1/subjects/{subject_id}/runtime/stop", nil, s.stop},
-		{"GET", "/api/v1/queue", map[string]bool{"limit": false, "cursor": false}, s.listQueue},
-		{"GET", "/api/v1/subjects/{subject_id}/events", map[string]bool{"limit": false, "cursor": false, "after": false}, s.listEvents},
-		{"GET", "/api/v1/subjects/{subject_id}/events/updates", map[string]bool{"cursor": false}, s.eventUpdates},
-		{"GET", "/api/v1/subjects/{subject_id}/runtimes", map[string]bool{"limit": false, "cursor": false}, s.listRuntimes},
-		{"GET", "/api/v1/subjects/{subject_id}/runtimes/{runtime_id}", nil, s.getRuntime},
-		{"GET", "/api/v1/subjects/{subject_id}/norns/views/status", map[string]bool{"task_id": false}, s.statusView},
-		{"GET", "/api/v1/subjects/{subject_id}/norns/views/trace", map[string]bool{"exploration_id": false}, s.traceView},
-		{"GET", "/api/v1/subjects/{subject_id}/norns/views/visual", map[string]bool{"lang": false}, s.visualView},
+		{"GET", "/{$}", nil, s.serviceInfo},
+		{"GET", "/health", nil, s.health},
+		{"POST", "/subjects", nil, s.createSubject},
+		{"GET", "/subjects", map[string]bool{"limit": false, "cursor": false, "state": true}, s.listSubjects},
+		{"GET", "/subjects/{subject_id}", nil, s.getSubject},
+		{"POST", "/subjects/{subject_id}/runtime", nil, s.submit},
+		{"GET", "/subjects/{subject_id}/runtime", nil, s.getCurrentRuntime},
+		{"POST", "/subjects/{subject_id}/runtime/stop", nil, s.stop},
+		{"GET", "/queue", map[string]bool{"limit": false, "cursor": false}, s.listQueue},
+		{"GET", "/subjects/{subject_id}/events", map[string]bool{"limit": false, "cursor": false, "after": false}, s.listEvents},
+		{"GET", "/subjects/{subject_id}/events/updates", map[string]bool{"cursor": false}, s.eventUpdates},
+		{"GET", "/subjects/{subject_id}/runtimes", map[string]bool{"limit": false, "cursor": false}, s.listRuntimes},
+		{"GET", "/subjects/{subject_id}/runtimes/{runtime_id}", nil, s.getRuntime},
+		{"GET", "/subjects/{subject_id}/norns/views/status", map[string]bool{"task_id": false}, s.statusView},
+		{"GET", "/subjects/{subject_id}/norns/views/trace", map[string]bool{"exploration_id": false}, s.traceView},
+		{"GET", "/subjects/{subject_id}/norns/views/visual", map[string]bool{"lang": false}, s.visualView},
 	}
 	methods := map[string][]string{}
 	for _, item := range routes {
 		item := item
+		item.path = apiPrefix + item.path
 		methods[item.path] = append(methods[item.path], item.method)
 		s.mux.HandleFunc(item.method+" "+item.path, func(w http.ResponseWriter, r *http.Request) {
 			if err := validateQuery(r, item.query); err != nil {
@@ -227,7 +230,7 @@ func (s *Server) serviceInfo(w http.ResponseWriter, r *http.Request) {
 		caps = append(caps, "norns_views")
 		nornsVersion = version.NornsProtocol
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"service": "nornsd", "server_id": s.service.RootID(), "version": version.ProductVersion, "api_version": version.APIVersion, "runtime_profile": s.service.Profile, "protocol_versions": map[string]any{"norns": nornsVersion, "agent_config": version.AgentConfigVersion}, "capacity": map[string]any{"concurrency": s.concurrency, "using": using, "queuing": queuing}, "capabilities": caps})
+	writeJSON(w, http.StatusOK, map[string]any{"service": "nornsd", "server_id": s.service.RootID(), "version": version.ProductVersion, "api_schema": version.APISchema, "runtime_profile": s.service.Profile, "protocol_versions": map[string]any{"norns": nornsVersion, "agent_config": version.AgentConfigVersion}, "capacity": map[string]any{"concurrency": s.concurrency, "using": using, "queuing": queuing}, "capabilities": caps})
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
@@ -261,7 +264,7 @@ func (s *Server) createSubject(w http.ResponseWriter, r *http.Request) {
 		fail(s, w, r, err)
 		return
 	}
-	w.Header().Set("Location", "/api/v1/subjects/"+subject.ID)
+	w.Header().Set("Location", apiPrefix+"/subjects/"+subject.ID)
 	writeJSON(w, http.StatusCreated, map[string]string{"subject_id": subject.ID})
 }
 
@@ -373,7 +376,7 @@ func (s *Server) stop(w http.ResponseWriter, r *http.Request) {
 		fail(s, w, r, err)
 		return
 	}
-	w.Header().Set("Location", "/api/v1/subjects/"+runtime.SubjectID+"/runtimes/"+runtime.ID)
+	w.Header().Set("Location", apiPrefix+"/subjects/"+runtime.SubjectID+"/runtimes/"+runtime.ID)
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "subject_id": runtime.SubjectID, "runtime_id": runtime.ID, "runtime_state": domain.RuntimeCancelled})
 }
 

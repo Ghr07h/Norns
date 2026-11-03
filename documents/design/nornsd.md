@@ -173,11 +173,11 @@ Norns Runtime 外部停止时，nornsd 先停止 Agent/Explorer 写入，再在�
 
 `domain_name` 匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`。description 非空；extra-info 是领域目录内的相对普通文件，符号链接解析后也不能逃逸。配置加载时即读取并冻结内容。
 
-## 5. HTTP API v1
+## 5. HTTP API
 
 ### 5.1 通用约定
 
-- 基础路径：`/api/v1`；
+- 基础路径：`/api/`；
 - 请求和普通响应：UTF-8 JSON；Visual View 成功时为 HTML；
 - 所有接口，包括 service info 与 health，都要求 `Authorization: Bearer <token>`；
 - 时间：UTC RFC 3339，至少毫秒精度；
@@ -185,7 +185,7 @@ Norns Runtime 外部停止时，nornsd 先停止 Agent/Explorer 写入，再在�
 - 请求体上限 2 MiB，单条 instruction 上限 1 MiB；
 - 普通 handler deadline 为 5 秒；
 - 未知请求字段返回 `400 INVALID_REQUEST`；
-- v1 使用普通请求/轮询，不提供 SSE 或 WebSocket。
+- 当前使用普通请求/轮询，不提供 SSE 或 WebSocket。
 
 错误 envelope：
 
@@ -206,26 +206,28 @@ Norns Runtime 外部停止时，nornsd 先停止 Agent/Explorer 写入，再在�
 
 | 方法 | 路径 | 成功 | 用途 |
 | --- | --- | --- | --- |
-| GET | `/api/v1` | 200 | 服务身份、版本、Profile、容量与能力。 |
-| GET | `/api/v1/health` | 200 | 数据库和调度器健康。 |
-| POST | `/api/v1/subjects` | 201 | 创建 Subject，可原子创建首个 queued Runtime。 |
-| GET | `/api/v1/subjects` | 200 | 按状态分页列出 Subject。 |
-| GET | `/api/v1/subjects/{subject_id}` | 200 | Subject 详情。 |
-| POST | `/api/v1/subjects/{subject_id}/runtime` | 202 | 创建 Runtime、追加 instruction，或 fork 最新 Session。 |
-| GET | `/api/v1/subjects/{subject_id}/runtime` | 200 | 当前/排队 Runtime 快捷查询。 |
-| POST | `/api/v1/subjects/{subject_id}/runtime/stop` | 202 | `graceful` 或 `force` 停止。 |
-| GET | `/api/v1/queue` | 200 | 全局 Runtime Queue。 |
-| GET | `/api/v1/subjects/{subject_id}/events` | 200 | 人类可读 Event 最新窗口、增量与历史读取。 |
-| GET | `/api/v1/subjects/{subject_id}/events/updates` | 200 | 检查指定 Event 游标后是否有新记录。 |
-| GET | `/api/v1/subjects/{subject_id}/runtimes` | 200 | Runtime 历史。 |
-| GET | `/api/v1/subjects/{subject_id}/runtimes/{runtime_id}` | 200 | 稳定 ID Runtime 详情。 |
-| GET | `/api/v1/subjects/{subject_id}/norns/views/status` | 200 | Norns JSON Status View。 |
-| GET | `/api/v1/subjects/{subject_id}/norns/views/trace` | 200 | Norns JSON Trace View。 |
-| GET | `/api/v1/subjects/{subject_id}/norns/views/visual` | 200 HTML | Norns Visual View。 |
+| GET | `/api/` | 200 | 服务身份、版本、Profile、容量与能力。 |
+| GET | `/api/health` | 200 | 数据库和调度器健康。 |
+| POST | `/api/subjects` | 201 | 创建 Subject，可原子创建首个 queued Runtime。 |
+| GET | `/api/subjects` | 200 | 按状态分页列出 Subject。 |
+| GET | `/api/subjects/{subject_id}` | 200 | Subject 详情。 |
+| POST | `/api/subjects/{subject_id}/runtime` | 202 | 创建 Runtime、追加 instruction，或 fork 最新 Session。 |
+| GET | `/api/subjects/{subject_id}/runtime` | 200 | 当前/排队 Runtime 快捷查询。 |
+| POST | `/api/subjects/{subject_id}/runtime/stop` | 202 | `graceful` 或 `force` 停止。 |
+| GET | `/api/queue` | 200 | 全局 Runtime Queue。 |
+| GET | `/api/subjects/{subject_id}/events` | 200 | 人类可读 Event 最新窗口、增量与历史读取。 |
+| GET | `/api/subjects/{subject_id}/events/updates` | 200 | 检查指定 Event 游标后是否有新记录。 |
+| GET | `/api/subjects/{subject_id}/runtimes` | 200 | Runtime 历史。 |
+| GET | `/api/subjects/{subject_id}/runtimes/{runtime_id}` | 200 | 稳定 ID Runtime 详情。 |
+| GET | `/api/subjects/{subject_id}/norns/views/status` | 200 | Norns JSON Status View。 |
+| GET | `/api/subjects/{subject_id}/norns/views/trace` | 200 | Norns JSON Trace View。 |
+| GET | `/api/subjects/{subject_id}/norns/views/visual` | 200 HTML | Norns Visual View。 |
 
 ### 5.3 服务身份与能力
 
-`GET /api/v1` 返回 `service=nornsd`、稳定 `server_id`、产品/API 版本、Runtime Profile、协议版本、容量和 capability 列表。Well 使用 `server_id` 检测同一 URL 后的数据域变化。
+`GET /api/` 返回 `service=nornsd`、稳定 `server_id`、产品版本 `version`、整数接口格式版本 `api_schema`、Runtime Profile、协议版本、容量和 capability 列表。Well 使用 `server_id` 检测同一 URL 后的数据域变化。
+
+API schema 由根目录 `versions.json` 的 `nornsd.api_schema` 声明，不编码在请求路径中。客户端应先读取服务信息并检查是否支持返回的 schema，再发送业务请求；`nornsd version --json` 同样返回 `api_schema`。
 
 health 只说明 HTTP、SQLite 和调度器可以继续接受请求，不保证外部 LLM 可用。
 

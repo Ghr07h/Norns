@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -19,6 +20,34 @@ import (
 	runtimemanager "github.com/Ghr07h/norns/nornsd/internal/runtime"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
+
+func TestUnversionedAPIRootRouting(t *testing.T) {
+	server := New(Config{Token: "secret", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	for _, test := range []struct {
+		method string
+		path   string
+		status int
+	}{
+		{http.MethodGet, "/api", http.StatusMovedPermanently},
+		{http.MethodPost, "/api/", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/not-a-route", http.StatusNotFound},
+		{http.MethodGet, "/api/v1/health", http.StatusNotFound},
+		{http.MethodGet, "/api/v" + strconv.Itoa(version.APISchema) + "/health", http.StatusNotFound},
+	} {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, nil)
+			request.Header.Set("Authorization", "Bearer secret")
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d: %s", response.Code, test.status, response.Body.String())
+			}
+			if test.path == "/api" && response.Header().Get("Location") != "/api/" {
+				t.Fatalf("API root redirect = %q", response.Header().Get("Location"))
+			}
+		})
+	}
+}
 
 func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -34,24 +63,36 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	defer func() { manager.Close(); _ = owner.Close() }()
 	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
 	server := New(Config{Service: service, Token: "secret", Concurrency: 1, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	request := httptest.NewRequest(http.MethodGet, "/api/v1", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/", nil)
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized status = %d", response.Code)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	var info struct {
-		ServerID string `json:"server_id"`
+		ServerID  string `json:"server_id"`
+		Version   string `json:"version"`
+		APISchema int    `json:"api_schema"`
 	}
 	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &info) != nil || info.ServerID != owner.Identity.RootID {
 		t.Fatalf("service identity response=%d body=%s", response.Code, response.Body.String())
 	}
+	if info.Version != version.ProductVersion || info.APISchema != version.APISchema {
+		t.Fatalf("service versions do not match versions.json: %#v", info)
+	}
+	var infoFields map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &infoFields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := infoFields["api_version"]; exists {
+		t.Fatal("service info must use api_schema instead of api_version")
+	}
 	body := bytes.NewBufferString(`{"name":"subject"}`)
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/subjects", body)
+	request = httptest.NewRequest(http.MethodPost, "/api/subjects", body)
 	request.Header.Set("Authorization", "Bearer secret")
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
@@ -63,7 +104,10 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if json.Unmarshal(response.Body.Bytes(), &created) != nil || created["subject_id"] == "" {
 		t.Fatalf("invalid create response: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"], nil)
+	if location := response.Header().Get("Location"); location != "/api/subjects/"+created["subject_id"] {
+		t.Fatalf("created subject Location = %q", location)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"], nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -86,7 +130,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if json.Unmarshal(response.Body.Bytes(), &detail) != nil || !detail.Workspace.Materialized || detail.Workspace.Path == nil || !filepath.IsAbs(*detail.Workspace.Path) {
 		t.Fatalf("invalid workspace path: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -106,7 +150,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if _, ok := subjectPageFields["total"]; ok {
 		t.Fatalf("subject list must not include total: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/events", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/events", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -119,7 +163,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &eventPage) != nil || len(eventPage.Events) != 1 || eventPage.Cursor == "" || eventPage.NextCursor != nil || eventPage.HasMore {
 		t.Fatalf("invalid initial event page: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/events/updates?cursor="+eventPage.Cursor, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/events/updates?cursor="+eventPage.Cursor, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -132,14 +176,14 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if err = manager.RepairReadable(ctx, created["subject_id"]); err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/events/updates?cursor="+eventPage.Cursor, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/events/updates?cursor="+eventPage.Cursor, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || response.Body.String() != "{\"has_updates\":true}\n" {
 		t.Fatalf("invalid updated event response: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/events?after="+eventPage.Cursor, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/events?after="+eventPage.Cursor, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -150,7 +194,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/runtime", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/runtime", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -163,7 +207,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &current) != nil || current.Runtime == nil || current.Runtime.ID != runtime.ID || len(current.Runtime.Instructions) != 1 {
 		t.Fatalf("invalid current runtime: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/runtimes", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/runtimes", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -177,7 +221,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if _, ok := runtimePage.Runtimes[0]["started_at"]; !ok {
 		t.Fatalf("runtime summary is missing started_at: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/queue", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/queue", nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -188,7 +232,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if _, ok := queuePageFields["total"]; ok {
 		t.Fatalf("queue list must not include total: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -208,7 +252,7 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if err = owner.Store.UpdateRuntimeTranscript(ctx, created["subject_id"], runtime.ID, map[string]any{"status": "missing", "session_id": runtime.ID, "copied": []string{}, "missing": []string{runtime.ID + ".jsonl", runtime.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
@@ -229,14 +273,14 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if err = owner.Store.UpdateRuntimeTranscript(ctx, created["subject_id"], runtime.ID, map[string]any{"status": "complete", "session_id": runtime.ID, "copied": []string{runtime.ID + ".jsonl"}, "missing": []string{}}); err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/subjects/"+created["subject_id"]+"/runtimes/"+runtime.ID, nil)
 	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if json.Unmarshal(response.Body.Bytes(), &runtimeDetail) != nil || runtimeDetail.Artifacts.MemorySamples == nil || *runtimeDetail.Artifacts.MemorySamples != memorySamplesPath || runtimeDetail.Artifacts.Transcript == nil || *runtimeDetail.Artifacts.Transcript != transcriptPath || runtimeDetail.Artifacts.TranscriptStatus != "available" {
 		t.Fatalf("invalid transcript artifact: %s", response.Body.String())
 	}
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/subjects", bytes.NewBufferString(`{"unknown":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/subjects", bytes.NewBufferString(`{"unknown":true}`))
 	request.Header.Set("Authorization", "Bearer secret")
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
@@ -250,11 +294,11 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 		status int
 		code   string
 	}{
-		{http.MethodGet, "/api/v1/subjects?unknown=true", http.StatusBadRequest, "INVALID_REQUEST"},
-		{http.MethodGet, "/api/v1/queue?limit=1&limit=2", http.StatusBadRequest, "INVALID_REQUEST"},
-		{http.MethodGet, "/api/v1/subjects/" + created["subject_id"] + "/norns/views/visual?lang=de", http.StatusBadRequest, "INVALID_REQUEST"},
-		{http.MethodPost, "/api/v1/health", http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED"},
-		{http.MethodGet, "/api/v1/not-a-route", http.StatusNotFound, "NOT_FOUND"},
+		{http.MethodGet, "/api/subjects?unknown=true", http.StatusBadRequest, "INVALID_REQUEST"},
+		{http.MethodGet, "/api/queue?limit=1&limit=2", http.StatusBadRequest, "INVALID_REQUEST"},
+		{http.MethodGet, "/api/subjects/" + created["subject_id"] + "/norns/views/visual?lang=de", http.StatusBadRequest, "INVALID_REQUEST"},
+		{http.MethodPost, "/api/health", http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED"},
+		{http.MethodGet, "/api/not-a-route", http.StatusNotFound, "NOT_FOUND"},
 	} {
 		request = httptest.NewRequest(tc.method, tc.path, nil)
 		request.Header.Set("Authorization", "Bearer secret")
@@ -294,7 +338,7 @@ func TestSubmitCanForkLatestRuntimeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/subjects/"+withoutHistory.ID+"/runtime", bytes.NewBufferString(`{"instruction":"continue","resume_session":true}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/subjects/"+withoutHistory.ID+"/runtime", bytes.NewBufferString(`{"instruction":"continue","resume_session":true}`))
 	request.Header.Set("Authorization", "Bearer secret")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -314,7 +358,7 @@ func TestSubmitCanForkLatestRuntimeSession(t *testing.T) {
 	if err = owner.Store.SetRuntimeTerminal(ctx, subject.ID, previousID, domain.RuntimeEnded, "completed", "", time.Now().UTC(), true); err != nil {
 		t.Fatal(err)
 	}
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/subjects/"+subject.ID+"/runtime", bytes.NewBufferString(`{"instruction":"continue","resume_session":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/subjects/"+subject.ID+"/runtime", bytes.NewBufferString(`{"instruction":"continue","resume_session":true}`))
 	request.Header.Set("Authorization", "Bearer secret")
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
@@ -335,7 +379,7 @@ func TestSubmitCanForkLatestRuntimeSession(t *testing.T) {
 		t.Fatalf("resumed Runtime mode=%q process=%s", resumed.SessionMode, resumed.ProcessJSON)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/v1/subjects/"+subject.ID+"/runtime", bytes.NewBufferString(`{"instruction":"again","resume_session":true}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/subjects/"+subject.ID+"/runtime", bytes.NewBufferString(`{"instruction":"again","resume_session":true}`))
 	request.Header.Set("Authorization", "Bearer secret")
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()

@@ -137,7 +137,7 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 	if err = rewriteCoordinator(filepath.Join(stage, "agents", "coordinator.md"), agentIDs, runtimeConfig); err != nil {
 		return "", "", err
 	}
-	manifest := Manifest{ProtocolVersion: version.NornsProtocol, GeneratorVersion: 1, RuntimeID: runtimeID, Files: map[string]string{}}
+	manifest := Manifest{ProtocolVersion: version.NornsProtocol, GeneratorVersion: version.CCPluginVersion, RuntimeID: runtimeID, Files: map[string]string{}}
 	var paths []string
 	_ = filepath.WalkDir(stage, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

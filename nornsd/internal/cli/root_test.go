@@ -3,16 +3,58 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Ghr07h/norns/nornsd/internal/config"
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
+	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
+
+func TestVersionCommandUsesManifest(t *testing.T) {
+	var output bytes.Buffer
+	command := versionCommand(&output)
+	command.SetArgs([]string{"--json"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var info struct {
+		Version            string         `json:"version"`
+		DatabaseSchema     int            `json:"database_schema"`
+		APISchema          int            `json:"api_schema"`
+		AgentConfigVersion int            `json:"agent_config_version"`
+		NornsProtocol      int            `json:"norns_protocol"`
+		Plugins            map[string]int `json:"plugins"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Version != version.ProductVersion || info.DatabaseSchema != version.DatabaseSchema || info.APISchema != version.APISchema || info.AgentConfigVersion != version.AgentConfigVersion || info.NornsProtocol != version.NornsProtocol || info.Plugins["cc"] != version.CCPluginVersion {
+		t.Fatalf("version output does not match versions.json: %s", output.String())
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(output.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["api_version"]; exists {
+		t.Fatal("version output must use api_schema instead of api_version")
+	}
+	output.Reset()
+	command = versionCommand(&output)
+	command.SetArgs([]string{})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "API schema "+strconv.Itoa(version.APISchema)) {
+		t.Fatalf("human version output does not report the API schema: %s", output.String())
+	}
+}
 
 func TestNewInteractiveSubjectHasDisplayName(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 8, 30, 0, 0, time.UTC)
@@ -50,7 +92,7 @@ func TestWaitForAutoSettingLaunchReportsSourcesAndCanCancel(t *testing.T) {
 
 func TestServerOptionsUseFirstAgentSettingAsAuthority(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	content := "VERSION: 1\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 0.0.0.0\nNORNS_SERVER_PORT: 29000\nNORNS_SERVER_TOKEN: yaml-token\n"
+	content := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 0.0.0.0\nNORNS_SERVER_PORT: 29000\nNORNS_SERVER_TOKEN: yaml-token\n"
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}

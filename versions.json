@@ -1,0 +1,22 @@
+{
+  "protocol": 2,
+  "norns": {
+    "version": "0.2.1",
+    "support_protocol": 2,
+    "database_schema": 9
+  },
+  "nornsd": {
+    "version": "0.2.1",
+    "support_protocol": 2,
+    "database_schema": 4,
+    "api_schema": 6,
+    "agent_config_schema": 3,
+    "plugins": {
+      "cc": 4
+    }
+  },
+  "well": {
+    "version": "0.2.1",
+    "support_api_schema": 6
+  }
+}

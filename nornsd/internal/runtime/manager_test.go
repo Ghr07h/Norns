@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ done
 		}
 	}
 	setting := filepath.Join(dir, "agent.yaml")
-	yaml := "VERSION: 1\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nCUSTOM_AGENTS_DIR: " + customAgents + "\nCUSTOM_PLUGIN_DIRS:\n  - " + customPluginOne + "\n  - " + customPluginTwo + "\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nCUSTOM_AGENTS_DIR: " + customAgents + "\nCUSTOM_PLUGIN_DIRS:\n  - " + customPluginOne + "\n  - " + customPluginTwo + "\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +296,7 @@ done
 		t.Fatal(err)
 	}
 	setting := filepath.Join(dir, "agent.yaml")
-	yaml := "VERSION: 1\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +421,7 @@ done
 		t.Fatal(err)
 	}
 	setting := filepath.Join(dir, "agent-close.yaml")
-	yaml := "VERSION: 1\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}

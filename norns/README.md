@@ -13,6 +13,8 @@ CLI 只管理协议状态，不启动、监控或停止智能体。Runtime 必�
 
 ## 构建
 
+从完整仓库构建：产品版本、支持的协议版本和数据库 schema 来自根目录 `versions.json`，构建时内嵌到二进制，无需额外的运行时版本文件。
+
 ~~~sh
 cd norns
 go build -o ./bin/norns ./cmd/norns

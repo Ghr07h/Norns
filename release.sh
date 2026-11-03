@@ -26,7 +26,6 @@ if (( go_major < 1 || (go_major == 1 && go_minor < 25) )); then
   exit 1
 fi
 
-product_version=${NORNS_VERSION:-dev}
 vcs_ref=${VCS_REF:-}
 if [[ -z "$vcs_ref" ]] && command -v git >/dev/null 2>&1; then
   vcs_ref=$(git -C "$script_dir" rev-parse --short=12 HEAD 2>/dev/null || true)
@@ -47,12 +46,10 @@ while IFS= read -r plugin_dir; do
 done < <(find "$script_dir/norns/cmd" -mindepth 1 -maxdepth 1 -type d -name 'norns-*' | LC_ALL=C sort)
 
 norns_ldflags="-s -w \
--X github.com/Ghr07h/norns/norns/internal/version.ProductVersion=$product_version \
 -X github.com/Ghr07h/norns/norns/internal/version.Commit=$vcs_ref \
 -X github.com/Ghr07h/norns/norns/internal/version.BuildTime=$build_time"
 
 nornsd_ldflags="-s -w \
--X github.com/Ghr07h/norns/nornsd/internal/version.ProductVersion=$product_version \
 -X github.com/Ghr07h/norns/nornsd/internal/version.Commit=$vcs_ref \
 -X github.com/Ghr07h/norns/nornsd/internal/version.BuildTime=$build_time"
 

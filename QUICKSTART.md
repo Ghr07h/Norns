@@ -90,7 +90,7 @@ test -e ./bin/agent.yaml || cp ./nornsd/internal/config/agent.example.yaml ./bin
 Claude Code：
 
 ```yaml
-VERSION: 1
+VERSION: 3
 LLM_URL: "https://your-api.example.com"
 LLM_KEY: "replace-with-secret"
 LLM_MODEL: "model-name"
@@ -149,12 +149,12 @@ nornsd server \
 
 `NORNS_ENABLE`、`NORNS_SERVER_HOST`、`NORNS_SERVER_PORT` 和
 `NORNS_SERVER_TOKEN` 已由 `agent.yaml` 提供；显式配置时，它们优先于同用途的命令行参数。
-Server 的 API 基础路径为 `/api/v1`，所有请求都需要 Bearer Token。生产环境中
+Server 的 API 基础路径为 `/api/`，所有请求都需要 Bearer Token。生产环境中
 不要直接将未加密的 nornsd HTTP 端口暴露到不可信网络，应使用 TLS 反向代理并限制访问来源。
 
 Well 是该 API 的桌面客户端。打开 Well 后添加 Server：
 
-- URL：`http://127.0.0.1:28081`，不要包含 `/api/v1`
+- URL：`http://127.0.0.1:28081`，不要包含 `/api/`
 - Token：与 `NORNS_SERVER_TOKEN` 相同
 
 Well 可以创建 Subject、提交 Runtime、查看队列和事件，以及显示 Norns Status、

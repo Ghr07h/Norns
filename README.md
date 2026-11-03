@@ -38,6 +38,16 @@ domain/          可选领域知识包与模板示例
 container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自包含 Benchmark 及其 CC 对照组的容器构建文件
 ```
 
+## 版本与 Go 构建
+
+根目录 `versions.json` 维护协议、产品及兼容性版本。两个 Go 模块通过本地模块依赖共享根目录的版本读取包；普通 `go build` 会将清单内嵌到二进制，运行时不需要该文件。构建时应保留完整仓库目录结构。
+
+修改清单后重新编译即可更新 Go 版本值；修改协议或 Plugin 版本后，还需在 `nornsd/` 执行 `go generate ./internal/assets`，更新提交到仓库的内嵌资源。`release.sh` 会执行该生成步骤，产品版本不再由 `NORNS_VERSION` 覆盖；`VCS_REF` 与 `BUILD_TIME` 仍可设置构建元数据。
+
+API 路径固定使用 `/api/`，不随 schema 改变；`GET /api/` 的服务信息和 `nornsd version --json` 返回清单中的 `api_schema`。Agent 配置的 `VERSION` 和数据库 schema 必须与清单声明一致，不会自动迁移旧配置或旧数据库。Well 的版本构建与客户端适配独立处理。
+
+根目录、`norns/`、`nornsd/` 是三个 Go 模块，测试需分别执行 `go test ./...`。
+
 ## 快速开始
 
 安装依赖、获取二进制、配置 Agent、启动 nornsd Server 和运行 Docker 镜像的完整步骤见

@@ -64,11 +64,11 @@ func newRoot(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 func versionCommand(out io.Writer) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error {
-		value := map[string]any{"version": version.ProductVersion, "api_version": version.APIVersion, "database_schema": version.DatabaseSchema, "agent_config_version": version.AgentConfigVersion, "norns_protocol": version.NornsProtocol, "claude_code_version": version.ClaudeCodeVersion, "commit": version.Commit, "build_time": version.BuildTime}
+		value := map[string]any{"version": version.ProductVersion, "api_schema": version.APISchema, "database_schema": version.DatabaseSchema, "agent_config_version": version.AgentConfigVersion, "norns_protocol": version.NornsProtocol, "plugins": map[string]int{"cc": version.CCPluginVersion}, "claude_code_version": version.ClaudeCodeVersion, "commit": version.Commit, "build_time": version.BuildTime}
 		if asJSON {
 			return json.NewEncoder(out).Encode(value)
 		}
-		_, err := fmt.Fprintf(out, "nornsd %s (API %s, Norns protocol %d, Claude Code %s)\n", version.ProductVersion, version.APIVersion, version.NornsProtocol, version.ClaudeCodeVersion)
+		_, err := fmt.Fprintf(out, "nornsd %s (API schema %d, Norns protocol %d, Claude Code %s)\n", version.ProductVersion, version.APISchema, version.NornsProtocol, version.ClaudeCodeVersion)
 		return err
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON")

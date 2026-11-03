@@ -3,6 +3,7 @@ module github.com/Ghr07h/norns/norns
 go 1.25.0
 
 require (
+	github.com/Ghr07h/norns v0.0.0
 	github.com/gofrs/flock v0.12.1
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/spf13/cobra v1.10.2
@@ -11,6 +12,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.1
 )
+
+replace github.com/Ghr07h/norns => ..
 
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect

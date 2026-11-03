@@ -1,14 +1,14 @@
 package version
 
-import "time"
+import (
+	"time"
+
+	versions "github.com/Ghr07h/norns"
+)
 
 const (
-	APIVersion         = "v1"
-	DatabaseSchema     = 1
-	AgentConfigVersion = 1
-	NornsProtocol      = 2
-	ClaudeCodeVersion  = "2.1.199"
-	SQLiteAppID        = 0x4E534456 // NSDV
+	ClaudeCodeVersion = "2.1.199"
+	SQLiteAppID       = 0x4E534456 // NSDV
 
 	MaxInstructionBytes = 1_048_576
 	MaxRequestBodyBytes = 2_097_152
@@ -27,7 +27,13 @@ const (
 )
 
 var (
-	ProductVersion = "dev"
-	Commit         = "unknown"
-	BuildTime      = "unknown"
+	manifest           = versions.Read()
+	ProductVersion     = manifest.Nornsd.Version
+	DatabaseSchema     = manifest.Nornsd.DatabaseSchema
+	APISchema          = manifest.Nornsd.APISchema
+	AgentConfigVersion = manifest.Nornsd.AgentConfigSchema
+	NornsProtocol      = manifest.Nornsd.SupportProtocol
+	CCPluginVersion    = manifest.Nornsd.Plugins["cc"]
+	Commit             = "unknown"
+	BuildTime          = "unknown"
 )

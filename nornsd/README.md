@@ -33,7 +33,11 @@ go build -o ./bin/nornsd ./cmd/nornsd
 go test ./...
 ```
 
-生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源。当前运行时按 `cc` 选择 `plugin/cc/`；协议版本必须与 `internal/version` 中的常量一致。
+从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`，构建时内嵌到二进制，无需额外的运行时版本文件。
+
+生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源，同时从版本清单填入协议和 Plugin 版本。当前运行时按 `cc` 选择 `plugin/cc/`；修改清单中的协议或 Plugin 版本后需重新生成资源。
+
+API 路径固定使用 `/api/`，不随 API schema 改变。`GET /api/` 和 `nornsd version --json` 使用整数 `api_schema` 报告接口格式版本，不再提供 `api_version` 字符串。旧数据库与旧 `VERSION` 的 Agent 配置继续按现有兼容性检查拒绝，不自动迁移。
 
 ## 命令
 
@@ -48,7 +52,7 @@ nornsd server [--agent cc] [--host HOST] [--port PORT] [--token TOKEN]
 nornsd version [--json]
 ```
 
-server 默认监听 `127.0.0.1:28081`，API 基础路径为 `/api/v1`。所有接口（包括健康检查）都要求 `Authorization: Bearer <token>`。Token 必须通过 `--token` 或 `agent.yaml` 的 `NORNS_SERVER_TOKEN` 提供。
+server 默认监听 `127.0.0.1:28081`，API 基础路径为 `/api/`。所有接口（包括健康检查）都要求 `Authorization: Bearer <token>`。Token 必须通过 `--token` 或 `agent.yaml` 的 `NORNS_SERVER_TOKEN` 提供。
 
 ## 快速开始
 
@@ -72,25 +76,25 @@ curl -X POST \
   -H 'Authorization: Bearer replace-with-a-long-random-token' \
   -H 'Content-Type: application/json' \
   --data '{"name":"review-repository-a","runtime":{"instruction":"审查 repository A 并输出风险清单"}}' \
-  http://127.0.0.1:28081/api/v1/subjects
+  http://127.0.0.1:28081/api/subjects
 
 curl -X POST \
   -H 'Authorization: Bearer replace-with-a-long-random-token' \
   -H 'Content-Type: application/json' \
   --data '{"name":"review-repository-b","runtime":{"instruction":"审查 repository B 并输出风险清单"}}' \
-  http://127.0.0.1:28081/api/v1/subjects
+  http://127.0.0.1:28081/api/subjects
 ```
 
-创建 Subject 与首个 Runtime 是一次原子操作。两个 Runtime 会根据 `--concurrency` 立即运行或进入 FIFO；调用方可以通过 `/api/v1/subjects`、`/api/v1/queue`、Runtime 和 Event 接口持续观察进展。
+创建 Subject 与首个 Runtime 是一次原子操作。两个 Runtime 会根据 `--concurrency` 立即运行或进入 FIFO；调用方可以通过 `/api/subjects`、`/api/queue`、Runtime 和 Event 接口持续观察进展。
 
 检查服务与队列：
 
 ```sh
 curl -H 'Authorization: Bearer replace-with-a-long-random-token' \
-  http://127.0.0.1:28081/api/v1
+  http://127.0.0.1:28081/api/
 
 curl -H 'Authorization: Bearer replace-with-a-long-random-token' \
-  http://127.0.0.1:28081/api/v1/queue
+  http://127.0.0.1:28081/api/queue
 ```
 
 在空闲的已有 Subject 下创建 Runtime，并从其最新 Claude Session 派生对话上下文：
@@ -100,7 +104,7 @@ curl -X POST \
   -H 'Authorization: Bearer replace-with-a-long-random-token' \
   -H 'Content-Type: application/json' \
   --data '{"instruction":"继续上一轮尚未完成的工作","resume_session":true}' \
-  http://127.0.0.1:28081/api/v1/subjects/SUBJECT_UUID/runtime
+  http://127.0.0.1:28081/api/subjects/SUBJECT_UUID/runtime
 ```
 
 该请求要求 Subject 当前没有 Runtime 且至少有一个历史 Runtime；否则分别返回 `SUBJECT_RUNTIME_ACTIVE` 或 `RUNTIME_SESSION_NOT_FOUND`。不传或传入 `false` 时保持原行为：空闲时创建全新 Session，使用中时向当前 Runtime 追加 instruction。
@@ -213,5 +217,5 @@ nornsd 启动的所有 Claude Code Runtime 都固定传入 `--dangerously-skip-p
 
 ## 文档
 
-- [nornsd 设计与 HTTP API v1](../documents/design/nornsd.md)
+- [nornsd 设计与 HTTP API](../documents/design/nornsd.md)
 - [Norns 协议](../documents/protocol/protocol.md)

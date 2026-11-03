@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	versions "github.com/Ghr07h/norns"
 )
 
 type manifest struct {
@@ -28,25 +30,35 @@ func main() {
 	if protocol == "" || plugins == "" || output == "" {
 		fatalf("protocol, plugins and output are required")
 	}
-	manifestBytes, err := os.ReadFile(filepath.Join(protocol, "manifest.json"))
-	if err != nil {
-		fatalf("read manifest: %v", err)
-	}
-	var protocolManifest struct {
-		ProtocolVersion int `json:"protocol_version"`
-	}
-	if err = json.Unmarshal(manifestBytes, &protocolManifest); err != nil {
-		fatalf("parse manifest: %v", err)
-	}
+	versionManifest := versions.Read()
 	stage := output + ".stage"
 	_ = os.RemoveAll(stage)
-	if err = os.MkdirAll(stage, 0755); err != nil {
+	if err := os.MkdirAll(stage, 0755); err != nil {
 		fatalf("create stage: %v", err)
 	}
 	defer os.RemoveAll(stage)
 	pluginsTarget := filepath.Join(stage, "plugins")
-	if err = copyTree(plugins, pluginsTarget); err != nil {
+	if err := copyTree(plugins, pluginsTarget); err != nil {
 		fatalf("copy plugins: %v", err)
+	}
+	for name, pluginVersion := range versionManifest.Nornsd.Plugins {
+		metadataPath := filepath.Join(pluginsTarget, name, ".claude-plugin", "plugin.json")
+		if err := updateJSON(metadataPath, func(metadata map[string]any) {
+			metadata["version"] = fmt.Sprintf("%d.0.0", pluginVersion)
+		}); err != nil {
+			fatalf("update %s plugin metadata: %v", name, err)
+		}
+		settingsPath := filepath.Join(pluginsTarget, name, "settings.json")
+		if err := updateJSON(settingsPath, func(settings map[string]any) {
+			env, ok := settings["env"].(map[string]any)
+			if !ok {
+				env = map[string]any{}
+			}
+			env["NORNS_PROTOCOL_VERSION"] = fmt.Sprint(versionManifest.Nornsd.SupportProtocol)
+			settings["env"] = env
+		}); err != nil {
+			fatalf("update %s plugin settings: %v", name, err)
+		}
 	}
 	protocolBytes, err := os.ReadFile(filepath.Join(protocol, "protocol.md"))
 	if err != nil {
@@ -74,7 +86,7 @@ func main() {
 			fatalf("write %s protocol reference: %v", entry.Name(), err)
 		}
 	}
-	m := manifest{ProtocolVersion: protocolManifest.ProtocolVersion, Generator: 1, Files: map[string]string{}}
+	m := manifest{ProtocolVersion: versionManifest.Protocol, Generator: 1, Files: map[string]string{}}
 	var paths []string
 	if err = filepath.WalkDir(stage, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -115,6 +127,23 @@ func main() {
 	if err = os.Rename(stage, output); err != nil {
 		fatalf("publish: %v", err)
 	}
+}
+
+func updateJSON(path string, update func(map[string]any)) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var value map[string]any
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	update(value)
+	data, err = json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0644)
 }
 
 func copyTree(source, target string) error {
