@@ -1,7 +1,7 @@
 # Well 设计
 
 状态：v1 当前设计  
-支持服务：nornsd HTTP API v1
+支持服务：nornsd HTTP API，固定 `/api/` 前缀，以 API schema 判断兼容性
 
 本文记录 Well 的长期产品设计与当前实现设计。服务端资源和接口契约以 [`nornsd.md`](nornsd.md) 的 HTTP API 章节为准。
 
@@ -41,7 +41,7 @@ Server 是 Well 本地连接记录，不是 nornsd 资源：
 | --- | --- |
 | `id` | Well 生成的本地 UUID。 |
 | `name` | 用户设置的非空显示名称。 |
-| `base_url` | 规范化服务根 URL，不包含 `/api/v1`。 |
+| `base_url` | 规范化服务根 URL，只包含 origin，不包含 `/api/` 或其他路径。 |
 | `remote_server_id` | nornsd root 的稳定 UUID。 |
 | `remember_password` | 是否持久保存 Token；字段名为 v1 存储兼容名称。 |
 | `password` | 持久或 session-only Token；字段名为 v1 存储兼容名称。 |
@@ -213,7 +213,7 @@ src-tauri/src/
 前端不能直接访问 nornsd，也不能获得任意 URL/method/header 的通用 Tauri command。Rust 层只暴露白名单 typed commands，并负责：
 
 - 规范化 base URL，禁止 userinfo、fragment 和不支持的 scheme；
-- 拼接固定 `/api/v1` 与 URL-encoded path segment；
+- 拼接固定 `/api/` 与 URL-encoded path segment，服务信息直接请求 `/api/`，保留末尾斜杠；
 - 注入 Bearer header；
 - 完整连接探测超时 3 秒，底层 TCP connect timeout 8 秒，普通请求 15 秒，
   Visual 30 秒；
@@ -229,7 +229,11 @@ AppState 只保存可复用 `reqwest::Client`。Token 作为 command 参数或 s
 
 Rust DTO 与 TypeScript DTO 逐字段对应 nornsd API。时间先保持 RFC 3339 string，到展示边界解析；可能超过 JavaScript 安全整数的计数使用 string 或显式转换策略。
 
-响应允许服务端增加未知字段，但稳定枚举出现未知值时以 `unknown` 展示并保留原值，不应导致整个页面崩溃。修改操作只在明确 capability 和 API version 支持时启用。
+响应允许服务端增加未知字段，但稳定枚举出现未知值时以 `unknown` 展示并保留原值，不应导致整个页面崩溃。修改操作只在明确 capability 和 API schema 支持时启用。
+
+根目录 `versions.json` 是 Well 唯一人工维护的版本来源。`well.version` 用于前端版本展示、Cargo 产品版本、Tauri 运行时和安装包版本；`well.support_api_schema` 编译进客户端，用于与 `/api/` 返回的整数 `api_schema` 严格匹配。产品版本不参与 API 兼容性判断，schema 也不参与 URL 拼接。字段缺失、格式错误或 schema 不匹配均视为协议不兼容。
+
+Well 的 npm 开发、构建和 Tauri 入口自动执行轻量版本同步脚本，仅同步 Cargo manifest 与 lockfile 的派生产品版本。Tauri 不单独声明版本，继承 Cargo；直接运行 Cargo 前需执行 `npm run prepare:versions`，Rust 构建检查元数据与根文件一致。
 
 契约 fixtures 来自 nornsd HTTP tests，固定 service info、Subject、Runtime、Queue、Event、错误和 Norns View 的共同形状。
 

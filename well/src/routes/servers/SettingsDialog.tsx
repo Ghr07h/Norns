@@ -6,12 +6,13 @@ import { getVersion } from "@tauri-apps/api/app";
 import { Dialog } from "../../components/common/Dialog";
 import { cacheSummary, clearAllCaches } from "../../storage/event-db";
 import { formatBytes } from "../../lib/format";
+import { wellVersion } from "../../lib/versions";
 
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const [summary, setSummary] = useState({ events: 0, bytes: 0 });
-  const [version, setVersion] = useState("0.1.0");
+  const [version, setVersion] = useState(wellVersion);
   useEffect(() => { if (open) { void cacheSummary().then(setSummary); void getVersion().then(setVersion).catch(() => undefined); } }, [open]);
   const clear = async () => { if (!confirm(t("settings.clearConfirm"))) return; await clearAllCaches(); client.clear(); setSummary({ events: 0, bytes: 0 }); };
   return <Dialog open={open} title={t("settings.title")} onClose={onClose} footer={<button className="button secondary" onClick={onClose}>{t("common.close")}</button>}>

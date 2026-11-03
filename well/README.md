@@ -1,6 +1,6 @@
 # Well
 
-Well 是 nornsd HTTP API v1 的本地桌面客户端，用于管理多个 nornsd Server、浏览 Subject 与 Runtime，并查看 Event、Runtime artifact 和 Norns View。
+Well 是 nornsd HTTP API 的本地桌面客户端，用于管理多个 nornsd Server、浏览 Subject 与 Runtime，并查看 Event、Runtime artifact 和 Norns View。
 
 Well 只通过 nornsd API 工作，不直接访问 Subject 文件系统、SQLite、raw log 或 Claude transcript。
 
@@ -9,7 +9,7 @@ Well 只通过 nornsd API 工作，不直接访问 Subject 文件系统、SQLite
 - Tauri 2 与 Rust `reqwest` 网络层
 - React、TypeScript、Vite 与 Hash Router
 - TanStack Query、Dexie、i18next 和 Lucide
-- nornsd HTTP API v1
+- nornsd HTTP API（固定 `/api/` 前缀，按 API schema 检查兼容性）
 
 前端不直接发出 HTTP 请求。所有远端操作通过 Rust 中明确列出的 typed Tauri command 完成，Bearer Token 不进入 URL 或前端日志。
 
@@ -17,7 +17,7 @@ Well 只通过 nornsd API 工作，不直接访问 Subject 文件系统、SQLite
 
 启动后直接进入 Servers 页面：
 
-1. 添加 Server 名称、基础 URL 和 Bearer Token；URL 不包含 `/api/v1`。
+1. 添加 Server 名称、基础 URL 和 Bearer Token；URL 只填写 origin，不包含 `/api/` 或其他路径。
 2. 连接成功后，Well 会绑定 nornsd 返回的稳定 `server_id`。
 3. 进入 Server workspace 浏览 Subject 和 Queue，或创建 Subject 并提交首条 instruction。
 4. 在 Subject 详情中查看实体概览、Runtime（含历史记录）、事件记录和可选 Norns View。
@@ -45,6 +45,7 @@ npm run tauri dev
 npm run typecheck
 npm test
 npm run build
+npm run prepare:versions
 cargo fmt --check --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
@@ -69,6 +70,16 @@ Well 与 Norns Visual 使用一致的冷灰蓝浅色体系：页面底色 `#f3f5
 npm run tauri build
 ```
 
+### 版本来源
+
+根目录 `../versions.json` 是唯一人工维护的版本来源：`well.version` 是产品版本，`well.support_api_schema` 是客户端支持的 API schema。前端和 Rust 编译时均读取该文件。
+
+`npm run dev`、`npm run build` 和 `npm run tauri ...` 会先自动运行 `prepare:versions`，把产品版本同步到 Cargo 必须保留的 `Cargo.toml` 与 `Cargo.lock` 元数据。它们是派生副本，不应手工修改；Tauri 未单独声明版本，运行时与安装包版本继承 Cargo 产品版本。私有 npm 包不声明产品版本。
+
+后续调整版本时只修改根文件，再使用上述入口启动或构建。直接执行 Cargo 命令前先运行 `npm run prepare:versions`；Rust 构建会检查产品版本是否已同步，避免静默构建出旧版本。
+
+连接时，Well 直接请求带末尾斜杠的 `/api/` 获取服务信息，并比较返回的整数 `api_schema` 与 `well.support_api_schema`。不一致时显示不兼容错误，不继续请求健康状态或进入工作区；不比较 Well 与 nornsd 的产品版本，也不根据 schema 改变请求路径。
+
 ## 本地数据与安全
 
 Server registry 和偏好保存在 WebView `localStorage`，Event cache 保存在 IndexedDB。每个 Subject 跨重启保留最近 5,000 条 Event。
@@ -84,4 +95,4 @@ Norns Visual View 在 sandboxed iframe 中显示，不获得 Well storage、Taur
 ## 文档
 
 - [Well 设计](../documents/design/well.md)
-- [nornsd 设计与 HTTP API v1](../documents/design/nornsd.md)
+- [nornsd 设计与 HTTP API](../documents/design/nornsd.md)

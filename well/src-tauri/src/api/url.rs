@@ -38,7 +38,9 @@ pub fn endpoint(base_url: &str, segments: &[&str]) -> Result<Url, ClientError> {
             .map_err(|_| ClientError::protocol("server URL cannot be a base URL"))?;
         path.clear();
         path.push("api");
-        path.push("v1");
+        if segments.is_empty() {
+            path.push("");
+        }
         for segment in segments {
             path.push(segment);
         }
@@ -60,8 +62,22 @@ mod tests {
             endpoint("https://example.com", &["subjects", "a/b"])
                 .unwrap()
                 .as_str(),
-            "https://example.com/api/v1/subjects/a%2Fb"
+            "https://example.com/api/subjects/a%2Fb"
         );
         assert!(normalize_server_url("https://user@example.com/path").is_err());
+    }
+
+    #[test]
+    fn service_root_has_a_trailing_slash() {
+        assert_eq!(
+            endpoint("https://example.com/", &[]).unwrap().as_str(),
+            "https://example.com/api/"
+        );
+        assert_eq!(
+            endpoint("https://example.com", &["health"])
+                .unwrap()
+                .as_str(),
+            "https://example.com/api/health"
+        );
     }
 }

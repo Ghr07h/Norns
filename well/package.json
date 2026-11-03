@@ -1,14 +1,17 @@
 {
   "name": "well",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare:versions": "node scripts/prepare-versions.mjs",
+    "predev": "npm run prepare:versions",
     "dev": "vite --host 127.0.0.1 --port 1420",
+    "prebuild": "npm run prepare:versions",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretauri": "npm run prepare:versions",
     "tauri": "tauri"
   },
   "dependencies": {

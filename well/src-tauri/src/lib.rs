@@ -1,5 +1,6 @@
 mod api;
 mod state;
+mod version;
 
 use api::command::*;
 use state::AppState;

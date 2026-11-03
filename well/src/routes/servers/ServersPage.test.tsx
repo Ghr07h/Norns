@@ -9,6 +9,7 @@ import { cacheEvents, clearAllCaches, readLatestCachedEvents } from "../../stora
 import { bindRemoteIdentity, readRegistry, saveServer } from "../../storage/registry";
 import { sessionPasswords } from "../../storage/session-passwords";
 import { ServersPage } from "./ServersPage";
+import { supportedApiSchema } from "../../lib/versions";
 
 const OLD_ID = "550e8400-e29b-41d4-a716-446655440000";
 const NEW_ID = "38b90b26-86d8-4149-a88f-91a44d36e79f";
@@ -19,7 +20,7 @@ function snapshot(serverId: string): ProbeSnapshot {
       service: "nornsd",
       server_id: serverId,
       version: "dev",
-      api_version: "v1",
+      api_schema: supportedApiSchema,
       runtime_profile: { agent: "cc", agent_version: "1", capabilities: [] },
       protocol_versions: { norns: null, agent_config: 1 },
       capacity: { concurrency: 1, using: 0, queuing: 0 },
@@ -99,8 +100,35 @@ it("warns without blocking connections that share a Server Root", async () => {
   renderPage();
 
   await waitFor(() => expect(screen.getAllByText("重复的 Server Root 记录")).toHaveLength(2));
+  expect(screen.getAllByText(`nornsd ${snapshot(OLD_ID).service.version} · API schema ${supportedApiSchema}`)).toHaveLength(2);
   for (const badge of screen.getAllByText("重复的 Server Root 记录")) expect(badge).toHaveClass("status-warning");
   for (const button of screen.getAllByRole("button", { name: "进入工作区" })) expect(button).toBeEnabled();
+});
+
+it("shows incompatible API schemas and blocks workspace access", async () => {
+  const message = `incompatible nornsd API schema: server returned ${supportedApiSchema + 1}, Well supports ${supportedApiSchema}`;
+  const incompatibleError: ClientError = {
+    kind: "protocol",
+    httpStatus: null,
+    code: null,
+    message,
+    requestId: null,
+    details: {},
+  };
+  let attempts = 0;
+  window.__WELL_BRIDGE__ = { invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+    if (command === "normalize_server_url") return String(args?.input) as T;
+    if (command === "probe_server") { attempts += 1; throw incompatibleError; }
+    throw new Error(`unexpected command: ${command}`);
+  } };
+  await saveServer({ name: "Incompatible", baseUrl: "http://incompatible.test", password: "secret", rememberPassword: true });
+
+  renderPage();
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(screen.getByText("不兼容")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "进入工作区" })).toBeDisabled();
+  expect(attempts).toBe(1);
 });
 
 it("hides cached capacity when a server probe becomes offline", async () => {

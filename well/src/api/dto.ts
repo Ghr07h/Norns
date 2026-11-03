@@ -11,7 +11,7 @@ export interface ServiceInfo {
   service: string;
   server_id?: string;
   version: string;
-  api_version: string;
+  api_schema: number;
   runtime_profile: RuntimeProfile;
   protocol_versions: { norns: number | null; agent_config: number };
   capacity: { concurrency: number; using: number; queuing: number };

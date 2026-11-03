@@ -1,5 +1,6 @@
 import type { WellBridge } from "../api/bridge";
 import { REGISTRY_KEY } from "../storage/registry-schema";
+import versions from "../../../versions.json";
 
 export const DEMO_SERVER_ID = "11111111-1111-4111-8111-111111111111";
 const REMOTE_ID = "22222222-2222-4222-8222-222222222222";
@@ -31,10 +32,10 @@ const subjects = [
 const service = {
   service: "nornsd",
   server_id: REMOTE_ID,
-  version: "0.1.0",
-  api_version: "v1",
+  version: versions.nornsd.version,
+  api_schema: versions.nornsd.api_schema,
   runtime_profile: { agent: "cc", agent_version: "2.0.31", capabilities: ["norns"] },
-  protocol_versions: { norns: 1, agent_config: 1 },
+  protocol_versions: { norns: versions.nornsd.support_protocol, agent_config: versions.nornsd.agent_config_schema },
   capacity: { concurrency: 4, using: 1, queuing: 1 },
   capabilities: ["runtime_queue", "norns_views"],
 };

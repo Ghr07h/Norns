@@ -49,10 +49,15 @@ impl<'a> ApiClient<'a> {
 
     async fn probe_request(&self) -> Result<ProbeSnapshot, ClientError> {
         let service: ServiceInfo = self.get(&[], &[]).await?;
-        if service.service != "nornsd" || service.api_version != "v1" {
-            return Err(ClientError::protocol(
-                "server is not a supported nornsd API v1 service",
-            ));
+        if service.service != "nornsd" {
+            return Err(ClientError::protocol("server is not a nornsd service"));
+        }
+        if service.api_schema != crate::version::SUPPORT_API_SCHEMA {
+            return Err(ClientError::protocol(format!(
+                "incompatible nornsd API schema: server returned {}, Well supports {}",
+                service.api_schema,
+                crate::version::SUPPORT_API_SCHEMA
+            )));
         }
         if let Some(server_id) = &service.server_id {
             if Uuid::parse_str(server_id).is_err() {
@@ -257,8 +262,8 @@ mod tests {
         json!({
             "service": "nornsd",
             "server_id": server_id,
-            "version": "0.1.0",
-            "api_version": "v1",
+            "version": "9.8.7",
+            "api_schema": crate::version::SUPPORT_API_SCHEMA,
             "runtime_profile": { "agent": "cc", "agent_version": "1", "capabilities": [] },
             "protocol_versions": { "norns": null, "agent_config": 1 },
             "capacity": { "concurrency": 2, "using": 0, "queuing": 0 },
@@ -271,7 +276,7 @@ mod tests {
         let server = MockServer::start();
         let root = server.mock(|when, then| {
             when.method(GET)
-                .path("/api/v1")
+                .path("/api/")
                 .header("authorization", "Bearer secret");
             then.status(200)
                 .header("content-type", "application/json")
@@ -279,7 +284,7 @@ mod tests {
         });
         let health = server.mock(|when, then| {
             when.method(GET)
-                .path("/api/v1/health")
+                .path("/api/health")
                 .header("authorization", "Bearer secret");
             then.status(200)
                 .header("content-type", "application/json")
@@ -291,15 +296,108 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(snapshot.service.service, "nornsd");
+        assert_eq!(snapshot.service.version, "9.8.7");
+        assert_eq!(
+            snapshot.service.api_schema,
+            crate::version::SUPPORT_API_SCHEMA
+        );
         root.assert();
         health.assert();
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_incompatible_schema_before_requesting_health() {
+        let server = MockServer::start();
+        let supported = crate::version::SUPPORT_API_SCHEMA;
+        server.mock(|when, then| {
+            when.method(GET).path("/api/");
+            let mut body = service(Value::Null);
+            body["api_schema"] = json!(supported + 1);
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(body);
+        });
+        let health = server.mock(|when, then| {
+            when.method(GET).path("/api/health");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({ "status": "ok" }));
+        });
+        let client = http_client();
+        let error = ApiClient::new(&client, &server.base_url(), "secret")
+            .probe()
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.kind, "protocol");
+        assert!(error
+            .message
+            .contains(&format!("server returned {}", supported + 1)));
+        assert!(error
+            .message
+            .contains(&format!("Well supports {supported}")));
+        health.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_missing_or_invalid_api_schema() {
+        for schema in [
+            None,
+            Some(json!("6")),
+            Some(json!(-1)),
+            Some(json!(1.5)),
+            Some(Value::Null),
+        ] {
+            let server = MockServer::start();
+            server.mock(|when, then| {
+                when.method(GET).path("/api/");
+                let mut body = service(Value::Null);
+                if let Some(schema) = schema {
+                    body["api_schema"] = schema;
+                } else {
+                    body.as_object_mut().unwrap().remove("api_schema");
+                }
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(body);
+            });
+            let client = http_client();
+            let error = ApiClient::new(&client, &server.base_url(), "secret")
+                .probe()
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(error.kind, "protocol");
+            assert!(error.message.contains("invalid nornsd JSON response"));
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_non_nornsd_services() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/");
+            let mut body = service(Value::Null);
+            body["service"] = json!("other");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(body);
+        });
+        let client = http_client();
+        let error = ApiClient::new(&client, &server.base_url(), "secret")
+            .probe()
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.kind, "protocol");
+        assert_eq!(error.message, "server is not a nornsd service");
     }
 
     #[tokio::test]
     async fn probe_applies_one_timeout_to_the_complete_attempt() {
         let server = MockServer::start();
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1");
+            when.method(GET).path("/api/");
             then.delay(Duration::from_millis(100))
                 .status(200)
                 .header("content-type", "application/json")
@@ -318,7 +416,7 @@ mod tests {
     async fn probe_accepts_missing_identity_and_rejects_invalid_identity() {
         let old = MockServer::start();
         old.mock(|when, then| {
-            when.method(GET).path("/api/v1");
+            when.method(GET).path("/api/");
             let mut body = service(Value::Null);
             body.as_object_mut().unwrap().remove("server_id");
             then.status(200)
@@ -326,7 +424,7 @@ mod tests {
                 .json_body(body);
         });
         old.mock(|when, then| {
-            when.method(GET).path("/api/v1/health");
+            when.method(GET).path("/api/health");
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({ "status": "ok" }));
@@ -339,7 +437,7 @@ mod tests {
 
         let invalid = MockServer::start();
         invalid.mock(|when, then| {
-            when.method(GET).path("/api/v1");
+            when.method(GET).path("/api/");
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(service(json!("not-a-uuid")));
@@ -356,11 +454,11 @@ mod tests {
     async fn preserves_api_error_envelope_and_rejects_non_html_visual() {
         let server = MockServer::start();
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1/subjects");
+            when.method(GET).path("/api/subjects");
             then.status(401).header("content-type", "application/json").json_body(json!({ "error": { "code": "UNAUTHORIZED", "message": "denied", "request_id": "req-1", "details": null } }));
         });
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1/visual");
+            when.method(GET).path("/api/visual");
             then.status(200)
                 .header("content-type", "application/json")
                 .body("{}");
@@ -382,7 +480,7 @@ mod tests {
     async fn view_responses_preserve_only_safe_server_filenames() {
         let server = MockServer::start();
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1/status");
+            when.method(GET).path("/api/status");
             then.status(200)
                 .header("content-type", "application/json")
                 .header(
@@ -392,7 +490,7 @@ mod tests {
                 .json_body(json!({ "generated_at": "2026-10-22T08:00:00Z" }));
         });
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1/visual");
+            when.method(GET).path("/api/visual");
             then.status(200)
                 .header("content-type", "text/html")
                 .header("x-norns-view-filename", "../../escape.html")
@@ -416,7 +514,7 @@ mod tests {
     async fn probe_classifies_any_unauthorized_response_as_authentication() {
         let server = MockServer::start();
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1");
+            when.method(GET).path("/api/");
             then.status(401)
                 .header("content-type", "text/plain")
                 .body("unauthorized");

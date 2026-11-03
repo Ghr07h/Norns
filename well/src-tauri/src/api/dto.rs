@@ -22,7 +22,7 @@ pub struct ServiceInfo {
     #[serde(default)]
     pub server_id: Option<String>,
     pub version: String,
-    pub api_version: String,
+    pub api_schema: u64,
     pub runtime_profile: RuntimeProfile,
     pub protocol_versions: Value,
     pub capacity: Capacity,

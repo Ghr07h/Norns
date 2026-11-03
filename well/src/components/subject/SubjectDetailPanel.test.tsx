@@ -4,6 +4,7 @@ import { beforeAll, expect, it, vi } from "vitest";
 import type { ServiceInfo } from "../../api/dto";
 import i18n from "../../i18n";
 import { SubjectDetailPanel } from "./SubjectDetailPanel";
+import { supportedApiSchema } from "../../lib/versions";
 
 beforeAll(() => i18n.changeLanguage("en"));
 
@@ -26,7 +27,7 @@ it("loads the current runtime only when the runtime panel is opened", async () =
   const service: ServiceInfo = {
     service: "nornsd",
     version: "dev",
-    api_version: "v1",
+    api_schema: supportedApiSchema,
     runtime_profile: { agent: "cc", agent_version: "2.1.199", capabilities: [] },
     protocol_versions: { norns: null, agent_config: 1 },
     capacity: { concurrency: 1, using: 1, queuing: 0 },
