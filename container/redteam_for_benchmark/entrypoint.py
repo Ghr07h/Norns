@@ -218,7 +218,7 @@ def validate_runtime(config: dict) -> None:
 
 
 def wait_healthy(proc: subprocess.Popen, base: str, deadline: float, token: str) -> tuple[bool, str]:
-    # --host 0.0.0.0(非 loopback)+ --token 让 nornsd 对所有端点(含 /api/v1/health)强制
+    # --host 0.0.0.0(非 loopback)+ --token 让 nornsd 对所有端点(含 /api/health)强制
     # Bearer 鉴权(那条 "serving a Bearer token over plaintext HTTP on a non-loopback
     # address" warning 即此)。不带 Authorization 头则 health 恒 401 → wait_healthy 死等
     # 到 ENTRYPOINT_HEALTH_WAIT 超时。故探活必须带
@@ -228,7 +228,7 @@ def wait_healthy(proc: subprocess.Popen, base: str, deadline: float, token: str)
             return False, f"收到停止信号({_received_signal})"
         if proc.poll() is not None:
             return False, f"nornsd 进程已退出(code={proc.returncode})"
-        request = urllib.request.Request(base + "/api/v1/health")
+        request = urllib.request.Request(base.rstrip("/") + "/api/health")
         request.add_header("Authorization", f"Bearer {token}")
         try:
             with urllib.request.urlopen(request, timeout=3) as response:

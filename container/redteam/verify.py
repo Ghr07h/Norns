@@ -2,6 +2,7 @@
 """Validate artifacts installed in the redteam nornsd image."""
 
 import importlib
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -88,6 +89,21 @@ def check_capstone() -> None:
     require(mnemonics == ["nop", "ret"], f"Capstone disassembly failed: {mnemonics}")
 
 
+def check_template() -> None:
+    yaml_module = importlib.import_module("yaml")
+    config = yaml_module.safe_load(TEMPLATE_PATH.read_text(encoding="utf-8"))
+    version_info = json.loads(command_output(["nornsd", "version", "--json"]))
+    schema = version_info.get("agent_config_version") if isinstance(version_info, dict) else None
+    require(
+        type(schema) is int and schema > 0,
+        "nornsd version --json must report a positive integer agent_config_version",
+    )
+    require(
+        isinstance(config, dict) and type(config.get("VERSION")) is int and config["VERSION"] == schema,
+        f"template VERSION must match nornsd agent_config_version ({schema}): {TEMPLATE_PATH}",
+    )
+
+
 def main() -> int:
     verification = Verification()
     for name in REQUIRED_COMMANDS:
@@ -125,14 +141,6 @@ def main() -> int:
             lambda argv=argv: command_output(list(argv)),
         )
     verification.check("Capstone disassembly", check_capstone)
-
-    def check_template() -> None:
-        yaml_module = importlib.import_module("yaml")
-        config = yaml_module.safe_load(TEMPLATE_PATH.read_text(encoding="utf-8"))
-        require(
-            isinstance(config, dict) and config.get("VERSION") == 1,
-            f"invalid template: {TEMPLATE_PATH}",
-        )
 
     verification.check("agent configuration template", check_template)
     for path in REQUIRED_DOMAIN_PATHS:

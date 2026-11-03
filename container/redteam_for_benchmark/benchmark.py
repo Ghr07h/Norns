@@ -4,7 +4,8 @@
 The module contains both the reusable benchmark core and its executable policy. One
 long-lived nornsd binds one model and exposes three Runtime slots. Every unfinished
 challenge runs once per round; the next round keeps FIFO order and increases the
-per-challenge timeout.
+per-challenge timeout. Once all remaining challenges are running, with at most
+three unfinished and none awaiting dispatch, single-challenge timeouts are disabled.
 
 The nornsd adapter follows the current HTTP contract: readable Events continue with
 opaque response cursors, and each attempt tracks its stable Runtime ID after the
@@ -144,7 +145,7 @@ class Config:
         if missing:
             raise SystemExit("缺少必填环境变量: " + ", ".join(missing))
         cls.nornsd_token = _read_nornsd_token()
-        cls.nornsd_apis = [url + "/api/v1" for url in cls.nornsd_base_urls]
+        cls.nornsd_apis = [url + "/api" for url in cls.nornsd_base_urls]
         models = [m.strip() for m in (os.environ.get("LLM_MODEL") or "").split(",") if m.strip()]
         if len(cls.nornsd_base_urls) != 1:
             raise SystemExit("BENCHMARK_NORNSD_BASE_URLS 必须且只能包含一个 nornsd 地址")
@@ -535,7 +536,7 @@ class NornsdClient:
     # -- 健康/信息 -----------------------------------------------------
 
     def service_info(self) -> dict:
-        data = self._call("GET", "")
+        data = self._call("GET", "/")
         return data if isinstance(data, dict) else {}
 
     def health(self) -> bool:
@@ -1240,7 +1241,8 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
              stop_event: threading.Event, *, model: str = "",
              overall_deadline: float | None = None,
              reference_context: str = "",
-             attempt_round: int = 1) -> ChallengeResult:
+             attempt_round: int = 1,
+             timeout_disabled: threading.Event | None = None) -> ChallengeResult:
     """Run one challenge attempt from container start through Runtime cleanup."""
     unique_code = challenge.get("unique_code", "")
     result = ChallengeResult(
@@ -1353,7 +1355,8 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
                 log.info("[%s/%s] 收到全局停止，提前结束轮询", unique_code, model or "?")
                 result.status = "aborted"
                 break
-            if time.monotonic() >= challenge_deadline:
+            if (time.monotonic() >= challenge_deadline
+                    and (timeout_disabled is None or not timeout_disabled.is_set())):
                 log.info("[%s/%s] 单题超时，停止推进", unique_code, model or "?")
                 result.status = "timeout"
                 break
@@ -1486,6 +1489,7 @@ class QueueTask:
     status: str = "pending"
     result: ChallengeResult | None = None
     attempts: list[dict] = field(default_factory=list)
+    running: bool = False
 
     @property
     def code(self) -> str:
@@ -1514,6 +1518,16 @@ class RoundQueueScheduler:
         self.timeout_minutes = Config.initial_limit_minutes
         self.dispatch_sequence = 0
         self.global_stopped = False
+        self.timeout_disabled = threading.Event()
+
+    def _update_timeout_policy_locked(self) -> None:
+        remaining = [task for task in self.tasks if task.status == "pending"]
+        if (0 < len(remaining) <= self.worker_count
+                and all(task.running for task in remaining)
+                and not self.timeout_disabled.is_set()):
+            self.timeout_disabled.set()
+            log.info("剩余 %d 道题均已运行，无待调度题目，取消单题超时，当前 Runtime 继续执行",
+                     len(remaining))
 
     def request_stop(self) -> None:
         self.global_stopped = True
@@ -1573,6 +1587,7 @@ class RoundQueueScheduler:
             "concurrency": self.worker_count,
             "round": self.round_index,
             "timeout_minutes": self.timeout_minutes,
+            "timeout_disabled": self.timeout_disabled.is_set(),
             "global_stopped": self.global_stopped,
             "total": len(self.tasks),
             "completed": sum(task.status == "completed" for task in self.tasks),
@@ -1591,11 +1606,13 @@ class RoundQueueScheduler:
         attempt.update({
             "round": attempt_round,
             "timeout_minutes": timeout_minutes,
+            "timeout_disabled": self.timeout_disabled.is_set(),
             "dispatch_order": dispatch_order,
             "started_at": started_at,
             "finished_at": now_iso(),
         })
         with self.lock:
+            task.running = False
             task.result = result
             task.attempts.append(attempt)
             task.challenge["correct_flag_count"] = max(
@@ -1610,6 +1627,7 @@ class RoundQueueScheduler:
                 self.stop_event.set()
             elif result.error == "challenge_not_found":
                 task.status = "unresolvable"
+            self._update_timeout_policy_locked()
             self._write_snapshot_locked()
 
     def _run_task(self, task: QueueTask, dispatch_order: int,
@@ -1628,6 +1646,7 @@ class RoundQueueScheduler:
                 model=self.model,
                 overall_deadline=self.overall_deadline,
                 attempt_round=attempt_round,
+                timeout_disabled=self.timeout_disabled,
             )
         except TaskEnded as error:
             result = self._error_result(task, error)
@@ -1667,29 +1686,34 @@ class RoundQueueScheduler:
                         Config.initial_limit_minutes
                         + (attempt_round - 1) * Config.increment_minutes
                     )
-                    if timeout_minutes > Config.max_challenge_timeout_minutes:
-                        reason = (
-                            f"next timeout {timeout_minutes:g}min exceeds ceiling "
-                            f"{Config.max_challenge_timeout_minutes:g}min"
-                        )
-                        with self.lock:
+                    with self.lock:
+                        if timeout_minutes > Config.max_challenge_timeout_minutes:
+                            reason = (
+                                f"next timeout {timeout_minutes:g}min exceeds ceiling "
+                                f"{Config.max_challenge_timeout_minutes:g}min"
+                            )
                             task.status = "unresolvable"
                             if task.result is None:
                                 task.result = self._error_result(
                                     task, RuntimeError(reason))
                             task.result.status = "unresolvable"
                             task.result.error = reason
+                            self._update_timeout_policy_locked()
                             self._write_snapshot_locked()
-                        continue
+                            continue
+                        task.running = True
+                        self._update_timeout_policy_locked()
 
                     self.dispatch_sequence += 1
                     dispatch_order = self.dispatch_sequence
                     self.round_index = max(self.round_index, attempt_round)
                     self.timeout_minutes = max(
                         self.timeout_minutes, timeout_minutes)
+                    timeout_label = ("unlimited" if self.timeout_disabled.is_set()
+                                     else f"{timeout_minutes:.2f}min")
                     log.info(
-                        "[%s] dispatch round=%d order=%d timeout=%.2fmin",
-                        task.code, attempt_round, dispatch_order, timeout_minutes)
+                        "[%s] dispatch round=%d order=%d timeout=%s",
+                        task.code, attempt_round, dispatch_order, timeout_label)
                     future = executor.submit(
                         self._run_task, task, dispatch_order,
                         attempt_round, timeout_minutes)
@@ -1708,9 +1732,11 @@ class RoundQueueScheduler:
                             Config.initial_limit_minutes
                             + (next_round - 1) * Config.increment_minutes
                         )
+                        timeout_label = ("unlimited" if self.timeout_disabled.is_set()
+                                         else f"{next_timeout:.2f}min")
                         log.info(
-                            "[%s] attempt %d complete; queued retry %d at %.2fmin",
-                            task.code, next_round - 1, next_round, next_timeout)
+                            "[%s] attempt %d complete; queued retry %d timeout=%s",
+                            task.code, next_round - 1, next_round, timeout_label)
                         ready.append(task)
 
         with self.lock:

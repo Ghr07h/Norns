@@ -25,6 +25,25 @@
 镜像只使用 `release/linux-x64` 或 `release/linux-arm64`。`norns`、`nornsd` 和
 Release 中已有的 `norns-*` 插件必须来自同一次构建。
 
+协议、产品和 schema 版本由根目录 `versions.json` 维护，并在构建时写入二进制。
+容器不另外维护或固定 norns/nornsd 产品版本、协议版本或 API schema，也不需要复制
+`versions.json` 到镜像。更新清单后需重新生成 Linux Release，再构建镜像或运行
+`package.sh`，不能沿用旧二进制。
+
+四个镜像的配置模板验证不再固定要求 `VERSION: 1`，而是读取镜像内
+`nornsd version --json` 的 `agent_config_version`，确认模板 `VERSION` 与实际二进制
+支持的配置 schema 一致。失配仍然报错，不自动修改或迁移旧配置；Node.js、Claude Code
+等外部依赖的固定安装版本保持不变。
+
+nornsd API 固定使用 `/api/`：服务信息请求 `GET /api/`（保留末尾斜杠），健康检查
+请求 `GET /api/health`，其余资源使用 `/api/subjects/...` 等路径。Benchmark 通过服务信息
+获取 `version`、整数 `api_schema` 等元数据，不将版本拼入 URL，也不固定比较产品版本。
+两个 Benchmark 的内部探活继续携带 Bearer Token；外部评测平台的 `/openapi/v1/challenges/*`
+属于独立 SaaS 接口，保持不变。
+
+版本和 API 路径的本地回归测试可运行 `python3 -m unittest discover -s container/tests -v`，
+不依赖 Docker 或镜像内工具；测试覆盖四份验证器和两套 Benchmark 的认证、服务信息与探活。
+
 四个镜像使用相同的容器目录约定：
 
 ```text
@@ -217,6 +236,17 @@ docker run --rm --entrypoint python3 \
 worker 持续消费同一个 FIFO 尝试队列。未完成题目会增加单题限时后回到队尾，不等待
 其他题目的首轮结束；第二轮及后续轮次使用 `resume_session` 延续最新 Runtime Session。
 
+当所有剩余未完成题目均已运行、没有其他待调度题目（包括待重试题目），且数量为 3 道
+或更少时，进入不限单题时间的收尾阶段。例如最后三道题都已运行，或只剩两道题运行时，
+都会动态忽略单题限时，不停止或重启当前 Runtime；若还有题目排队则暂不进入收尾阶段。
+全局超时、停止信号、SaaS 任务结束和异常处理保持有效。
+Runtime 自然结束仍走原有的结果处理流程；未通关题目的重试与
+重试预算封顶检查保持不变，不因取消执行计时而无限增加重试轮次。
+
+此规则同时适用于 Norns 与普通 Claude Code 两套 Benchmark。结果中的
+`timeout_disabled: true` 表示已取消单题时限；原有 `timeout_minutes` 保留各轮的名义预算，
+此时不再用于中止 Runtime。
+
 构建：
 
 ```sh
@@ -255,7 +285,7 @@ docker run --rm \
 | --- | ---: | --- |
 | `BENCHMARK_INITIAL_LIMIT_MINUTES` | 40 | 首轮单题限时 |
 | `BENCHMARK_LIMIT_INCREMENT_MINUTES` | 30 | 每轮限时增量 |
-| `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 单题限时上限 |
+| `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 单题重试预算上限；超过后不再启动新一轮，不中断收尾中的 Runtime |
 | `BENCHMARK_EVENT_LIMIT` | 5000 | 单次 Event 读取上限 |
 | `BENCHMARK_POLL_INTERVAL` | 4 | Runtime 和 Event 轮询间隔，单位秒 |
 | `BENCHMARK_STOP_GRACE` | 90 | Runtime 优雅停止等待时间，单位秒 |
