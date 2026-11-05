@@ -41,7 +41,7 @@ class ReverseToolTests(unittest.TestCase):
                 pip_install = re.search(r"RUN pip install --no-cache-dir .*?(?=\n)", normalized).group()
                 for package in ("gdb", "strace", "binutils"):
                     self.assertIn(package, apt_install.split())
-                for package in ("pwntools", "capstone", "ROPgadget"):
+                for package in ("pwntools", "capstone", "ROPgadget", "z3-solver", "numpy"):
                     self.assertIn(package, pip_install.split())
                 self.assertIn('case "$arch" in amd64|arm64)', source)
                 self.assertIn('package="radare2_${RADARE2_VERSION}_${arch}.deb"', source)
@@ -52,7 +52,7 @@ class ReverseToolTests(unittest.TestCase):
         for image, module in self.verifiers.items():
             with self.subTest(image=image):
                 self.assertTrue(commands.issubset(module.REQUIRED_COMMANDS))
-                self.assertTrue({"capstone", "ropgadget"}.issubset(module.REQUIRED_MODULES))
+                self.assertTrue({"capstone", "ropgadget", "z3", "numpy"}.issubset(module.REQUIRED_MODULES))
 
     def test_version_checks_execute_tools_without_tracing_processes(self):
         commands = (("gdb", "--version"), ("strace", "-V"), ("ld", "--version"), ("radare2", "-v"), ("ROPgadget", "--version"))

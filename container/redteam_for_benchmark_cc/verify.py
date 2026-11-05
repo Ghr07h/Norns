@@ -25,7 +25,7 @@ REQUIRED_COMMANDS = (
 REQUIRED_MODULES = (
     "yaml", "pwnlib", "pymongo", "pyftpdlib", "paramiko", "cryptography",
     "dns", "bs4", "requests", "dirsearch",
-    "capstone", "ropgadget",
+    "capstone", "ropgadget", "z3", "numpy",
 )
 REVERSE_TOOL_VERSION_COMMANDS = (
     ("gdb", "--version"), ("strace", "-V"), ("ld", "--version"),

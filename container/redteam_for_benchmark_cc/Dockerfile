@@ -173,6 +173,7 @@ RUN pip install --no-cache-dir \
         PyYAML==6.0.3 \
         pwntools \
         capstone ROPgadget \
+        z3-solver numpy \
         pymongo \
         pyftpdlib \
         paramiko \
