@@ -1,0 +1,44 @@
+container/README.md
+  h_32bccb164adb56 245-252,296
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 816-822,832-859,861-862,870-871,878,927-929,945-947,1284-1285,1344-1345,1447-1450,1453-1455,1697,1738-1742
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 788-794,804-831,833-834,842-843,850,899-901,917-919,1256-1257,1316-1317,1418-1421,1424-1426,1654,1695-1699
+container/tests/test_benchmark_recovery.py
+  h_32bccb164adb56 1-167
+container/tests/test_benchmark_timeouts.py
+  h_32bccb164adb56 205,221-223,226-282
+domain/redteam/norns_domain_agents/decider.md
+  h_32bccb164adb56 4-5,7,9,15-43,47-49,52-66
+domain/redteam/norns_domain_agents/explorer.md
+  h_32bccb164adb56 2,4,8-9,11,13,15-32,36-38,41-55
+norns/internal/app/reset.go
+  h_32bccb164adb56 35
+norns/internal/cli/root_test.go
+  h_32bccb164adb56 7,50-104
+norns/internal/domain/domain.go
+  h_32bccb164adb56 12-13
+norns/internal/i18n/i18n.go
+  h_32bccb164adb56 6-7,29-30
+norns/internal/store/sqlite/store.go
+  h_32bccb164adb56 130
+plugin/cc/agents/coordinator.md
+  h_32bccb164adb56 22-26,34-38,42,44-45,47,49-51,56,58,60,62,64-65,67,70,74-75,83
+plugin/cc/agents/decider.md
+  h_32bccb164adb56 16,26-29,34-36,40,42-60
+plugin/cc/agents/explorer.md
+  h_32bccb164adb56 16,20-21,24-28,33-34,38,40,42-45,47-49,55-63,65,78-85,106-109,114
+plugin/cc/skills/norns-loop/SKILL.md
+  h_32bccb164adb56 68,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "755155a5f13f35fb06af1366df43fe6fed3ad382",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
