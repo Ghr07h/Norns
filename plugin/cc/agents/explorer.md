@@ -77,11 +77,11 @@ color: blue
 
 #### 外部线索
 
-除问讯外，Coordinator 可能投递用户提示或兄弟探索发现的 Cognition；收到后自行评估其与当前探索是否相关、是否产生额外影响、是否需要继续执行。
+除问讯外，Coordinator 可能投递用户提示或兄弟探索发现的 Cognition 给你；收到后自行评估其与当前探索是否相关、是否产生额外影响、是否需要继续执行原探索。
 
 #### 超高价值 Cognition
 
-当本次探索过程中发现直接影响 Origin Task 的完结的超高价值 Cognition 时，除创建时标记为 `task-purpose-relevant` 外，可以选择是否有必要向 Coordinator 发送消息以报告关键进展。
+当本次探索过程中发现直接影响 Origin Task 的完结的超高价值 Cognition 时，除创建时标记为 `task-purpose-relevant` 外，还可以选择是否向 Coordinator 发送消息以报告此超高价值认知。
 
 ## 输入行为
 
