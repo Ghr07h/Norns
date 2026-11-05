@@ -1,0 +1,24 @@
+norns/README.md
+  h_32bccb164adb56 222-225
+norns/internal/app/visual.go
+  h_32bccb164adb56 45-46,48-55,63,84-85,110,153,155,162-166,170,172,179,181,283,285-348,377-379,382,384
+norns/internal/app/visual_interaction_test.go
+  h_32bccb164adb56 22-23,40-41
+norns/internal/app/visual_knowledge_test.go
+  h_32bccb164adb56 80-93,104-221
+norns/internal/app/visual_pointer_test.go
+  h_32bccb164adb56 1-58
+norns/internal/app/visual_typography_test.go
+  h_32bccb164adb56 32-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b613d5868ce5512fa7125ea5b0e63e861ec17680",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
