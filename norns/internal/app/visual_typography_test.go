@@ -29,8 +29,10 @@ func TestVisualTypographyKeepsReadableSizes(t *testing.T) {
 		".exploration-attribute dd": {"font-size:13px"},
 		".node-title":               {"font-size:13px"},
 		".graph-body":               {"grid-template-columns:minmax(0,1fr) 360px"},
-		`.graph-shell[data-graph-view="knowledge"] .node-title`:                      {"font-size:12px"},
-		`.graph-shell[data-graph-view="knowledge"] .node.knowledge-root .node-title`: {"font-size:16px"},
+		`.graph-shell[data-graph-view="knowledge"] .node-title`:   {"display:none"},
+		`.knowledge-label-copy`:                                   {"font:600 13px/1.5", "text-align:left"},
+		`.knowledge-label-text`:                                   {"-webkit-line-clamp:var(--knowledge-label-lines,2)", "overflow-wrap:anywhere", "overflow:hidden"},
+		`.graph-shell .node.knowledge-root .knowledge-label-copy`: {"font-size:13px", "font-weight:700"},
 	} {
 		rule := regexp.MustCompile(regexp.QuoteMeta(selector) + `\{([^{}]+)\}`).FindSubmatch(style[1])
 		if len(rule) != 2 {

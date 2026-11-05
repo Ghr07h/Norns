@@ -77,6 +77,20 @@ const detours=knowledgeGraphRoutes([{from:'left',to:'right',kind:'source'},{from
 assert.equal(new Set(detours.map(route=>route.path)).size,3);
 for(const route of detours)for(const [id,position]of wall){if(id===route.edge.from||id===route.edge.to)continue;for(let index=1;index<route.samples.length;index++)assert.ok(knowledgeSegmentDistance(center(position),route.samples[index-1],route.samples[index])>position.width/2-5,'detour intersects obstacle wall')}
 for(const count of [1,12,80]){const fan=[root,...Array.from({length:count},(_,index)=>makeNode('fan-'+index,'exploration'))],links=fan.slice(1).map(node=>({from:root.id,to:node.id,kind:'source'}));const result=knowledgeGraphLayout(fan,links);assert.deepEqual(center(result.positions.get(root.id)),{x:stageWidth/2,y:stageHeight/2});const values=[...result.positions.values()];for(let first=0;first<values.length;first++)for(let second=first+1;second<values.length;second++)assert.ok(distance(center(values[first]),center(values[second]))>(values[first].width+values[second].width)/2+20,'fan overlaps')}
+const chronological=[root,...Array.from({length:45},(_,index)=>({...makeNode('time-'+(45-index),index%2?'cognition':'exploration'),created_at:new Date(Date.UTC(2026,10,5,0,index)).toISOString()}))];
+const timeLinks=chronological.slice(1).map((node,index)=>({from:index%3?root.id:chronological[Math.max(0,index-1)].id,to:node.id,kind:index%2?'output':'source'}));
+const timeLayout=knowledgeGraphLayout(chronological,timeLinks),timeCenter=center(timeLayout.positions.get(root.id));
+let previousRadius=0;
+for(const node of chronological.slice(1)){
+ const radius=distance(timeCenter,center(timeLayout.positions.get(node.id)));
+ assert.ok(radius>previousRadius,'newer Cognitions and Explorations must be farther from the initial Cognition');previousRadius=radius;
+}
+assert.deepEqual(knowledgeGraphLayout([...chronological].reverse(),[...timeLinks].reverse()).positions,timeLayout.positions,'time-based layout must remain deterministic');
+const timePositions=[...timeLayout.positions.values()];
+for(let first=0;first<timePositions.length;first++)for(let second=first+1;second<timePositions.length;second++)assert.ok(distance(center(timePositions[first]),center(timePositions[second]))>(timePositions[first].width+timePositions[second].width)/2+20,'time bands overlap');
+const early={...makeNode('early','exploration'),created_at:'2026-11-05T10:00:00+08:00'},late={...makeNode('late','exploration'),created_at:'2026-11-05T03:00:00Z'};
+const zoned=knowledgeGraphLayout([root,late,early],[]).positions,zonedCenter=center(zoned.get(root.id));
+assert.ok(distance(zonedCenter,center(zoned.get('early')))<distance(zonedCenter,center(zoned.get('late'))),'creation order must respect timezone offsets');
 console.log('Knowledge graph geometry checks passed');
 ` + "`" + `);
 checks(assert);
@@ -85,5 +99,123 @@ checks(assert);
 	command.Stdin = strings.NewReader(string(html))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("Visual knowledge graph geometry failed: %v\n%s", err, output)
+	}
+}
+
+func TestVisualKnowledgeGraphReadableLabelsAndPreview(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required to exercise generated Visual JavaScript")
+	}
+	html, err := visualHTML([]byte(`{}`), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`transform:scale(var(--knowledge-label-scale,1))`,
+		`.knowledge-flow{display:block;fill:none`,
+		`.edge.related+.knowledge-flow,.edge.preview-related+.knowledge-flow{display:block`,
+		`knowledgeHelp:'悬停高亮关联 · 点击查看详情'`,
+		`class="legend-cognition"`, `class="legend-exploration"`,
+		`[data-knowledge-density="overview"]`,
+		`frame.setAttribute('height',String(Math.ceil(size.height)))`,
+		`copy.style.setProperty('--knowledge-label-lines',expanded?'6':'2')`,
+		`.graph-shell[data-knowledge-density="overview"] .node:not(.selected):not(.previewed):not(:hover):not(:focus) .knowledge-label{display:none}`,
+	} {
+		if !strings.Contains(string(html), required) {
+			t.Errorf("Visual omitted knowledge graph readability behavior %q", required)
+		}
+	}
+	const script = `
+const assert=require('node:assert/strict'),html=require('node:fs').readFileSync(0,'utf8');
+const extract=(start,end)=>html.slice(html.indexOf('function '+start+'('),html.indexOf('function '+end+'('));
+const checks=new Function('assert',
+extract('appendKnowledgeLabel','knowledgeLabelPlacement')+
+extract('knowledgeLabelPlacement','layoutKnowledgeLabels')+
+extract('previewKnowledgeNode','addNode')+
+extract('transform','setZoom')+String.raw` + "`" + `
+let graphView='knowledge',selectedNodeId=null,scale=.5,panX=10,panY=20,scheduled=0;
+const values=new Map(),shell={dataset:{},style:{setProperty:(name,value)=>values.set(name,value)}},stage={style:{}},zoom={};
+const el=id=>id==='graph-shell'?shell:id==='stage'?stage:zoom;
+const scheduleKnowledgeLabels=()=>scheduled++;
+const element=()=>({children:[],attributes:{},textContent:'',classList:{values:new Set(),toggle(name,active){if(active)this.values.add(name);else this.values.delete(name)}},append(...children){this.children.push(...children)},setAttribute(name,value){this.attributes[name]=value}});
+const svgElement=(tag,attributes)=>Object.assign(element(),{tag,attributes});
+const document={createElementNS:()=>element()},t=key=>key;
+const nodeElements=new Map(['root','neighbor','island'].map(id=>[id,element()]));
+const edgeElements=[{edge:{from:'root',to:'neighbor'},path:element()},{edge:{from:'island',to:'island'},path:element()}];
+const has=(id,name)=>nodeElements.get(id).classList.values.has(name);
+previewKnowledgeNode('root');
+assert.ok(has('root','previewed'));assert.ok(has('neighbor','preview-related'));assert.ok(has('island','preview-unrelated'));
+assert.ok(edgeElements[0].path.classList.values.has('preview-related'));
+assert.ok(edgeElements[1].path.classList.values.has('preview-unrelated'));
+selectedNodeId='neighbor';previewKnowledgeNode('root');
+for(const item of nodeElements.values())assert.equal(item.classList.values.size,0,'hover must not override selection');
+selectedNodeId=null;graphView='plane';previewKnowledgeNode('root');
+for(const item of nodeElements.values())assert.equal(item.classList.values.size,0,'planar view must not gain knowledge preview classes');
+graphView='knowledge';previewKnowledgeNode(null);
+for(const item of edgeElements)assert.equal(item.path.classList.values.size,0,'preview classes must clear');
+const title='<img src=x onerror="alert(1)">',item=element();
+appendKnowledgeLabel(item,{title},{width:132,height:132});
+const label=item.children[0],frame=label.children[1],copy=frame.children[0].children[0],text=copy.children[0];
+assert.equal(label.attributes.transform,'translate(66 66)');
+assert.equal(text.textContent,title);assert.equal(text.innerHTML,undefined,'titles must not be interpreted as HTML');
+const shortWidth=knowledgeLabelWidth(100,900,false),longWidth=knowledgeLabelWidth(900,900,false),expandedWidth=knowledgeLabelWidth(900,900,true);
+assert.ok(shortWidth<longWidth&&longWidth<expandedWidth,'title frames must grow with text length and expansion');
+assert.ok(expandedWidth<=380&&knowledgeLabelWidth(900,338,true)<=314,'expanded title frames must fit the viewport');
+for(const [nextScale,inverse,density]of [[.5,'2','detail'],[2,'.5','detail'],[.2,'5','overview']]){
+ scale=nextScale;transform();assert.equal(Number(values.get('--knowledge-label-scale')),Number(inverse));assert.equal(shell.dataset.knowledgeDensity,density);
+ assert.equal(zoom.value,String(Math.round(scale*100)));
+}
+
+const center={x:220,y:240,radius:26},size={width:160,height:34},obstacles=[center,{x:350,y:240,radius:26}],bounds={left:12,right:480,top:70,bottom:500},occupied=[];
+for(let index=0;index<3;index++){
+ const placement=knowledgeLabelPlacement(center,size,obstacles,occupied,bounds,{x:1,y:0});
+ assert.ok(Number.isFinite(placement.score));
+ assert.ok(placement.x>=bounds.left&&placement.y>=bounds.top&&placement.x+placement.width<=bounds.right&&placement.y+placement.height<=bounds.bottom,'label must stay in the canvas');
+ for(const obstacle of obstacles){const nearestX=Math.max(placement.x,Math.min(obstacle.x,placement.x+placement.width)),nearestY=Math.max(placement.y,Math.min(obstacle.y,placement.y+placement.height));assert.ok(Math.hypot(nearestX-obstacle.x,nearestY-obstacle.y)>=obstacle.radius+5,'label overlaps a node')}
+ for(const other of occupied)assert.ok(placement.x+placement.width<=other.x||other.x+other.width<=placement.x||placement.y+placement.height<=other.y||other.y+other.height<=placement.y,'labels overlap');
+ occupied.push(placement);
+}
+assert.ok(scheduled>0);
+for(const center of [{x:20,y:90,radius:30},{x:320,y:90,radius:30},{x:20,y:490,radius:30},{x:320,y:490,radius:30}]){
+ const bounds={left:12,right:326,top:70,bottom:500},placement=knowledgeLabelPlacement(center,{width:188,height:51},[center],[],bounds,{x:-1,y:1});
+ assert.ok(placement.x>=bounds.left&&placement.y>=bounds.top&&placement.x+placement.width<=bounds.right&&placement.y+placement.height<=bounds.bottom,'labels near mobile viewport edges must stay within bounds');
+}
+` + "`" + `);
+checks(assert);
+`
+	command := exec.Command(node, "-e", script)
+	command.Stdin = strings.NewReader(string(html))
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("Visual knowledge graph readability checks failed: %v\n%s", err, output)
+	}
+}
+
+func TestVisualPlanarLegendAndSharedGrid(t *testing.T) {
+	html, err := visualHTML([]byte(`{}`), "zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`class="graph-legend plane-legend"`, `class="graph-legend knowledge-legend"`,
+		`class="legend-task"`, `class="legend-result"`, `class="legend-regular"`,
+		`class="legend-todo"`, `class="legend-running"`, `class="legend-finished"`,
+		`legendTaskInit:'任务初始'`, `legendTaskRelated:'任务相关'`, `legendCommon:'常规'`,
+		`.graph-shell[data-graph-view="knowledge"] .plane-legend{display:none}`,
+		`.graph-shell[data-graph-view="knowledge"] .knowledge-legend{display:flex}`,
+		`background-image:linear-gradient(var(--canvas-grid) 1px,transparent 1px),linear-gradient(90deg,var(--canvas-grid) 1px,transparent 1px)`,
+		`fill="url(#cognition-bronze)"`, `fill="url(#cognition-gold)"`, `fill="url(#cognition-silver)"`,
+		`.legend-row-exploration i::after{content:"";position:absolute;inset:2px;background:#fff;clip-path:inherit}`,
+		`filter:brightness(.88) saturate(1.3)`,
+	} {
+		if !strings.Contains(string(html), required) {
+			t.Errorf("Visual omitted graph legend or shared grid behavior %q", required)
+		}
+	}
+	if strings.Contains(string(html), `.graph-shell[data-graph-view="knowledge"] .viewport{`) {
+		t.Error("Knowledge graph must inherit the same grid background as the planar view")
+	}
+	if strings.Contains(string(html), `knowledgeTimeline`) || strings.Contains(string(html), `legend-timeline`) {
+		t.Error("Knowledge graph legend must not include a creation-time explanation")
 	}
 }

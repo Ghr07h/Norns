@@ -19,8 +19,8 @@ func TestVisualFullChainFitsAllNodes(t *testing.T) {
 const assert=require('node:assert/strict'),html=require('node:fs').readFileSync(0,'utf8');
 const extract=(start,end)=>html.slice(html.indexOf('function '+start+'('),html.indexOf('function '+end+'('));
 const check=new Function('assert',String.raw` + "`" + `
-let traceSelection=false,scale=2.5,panX=500,panY=-400,selectedNodeId='selected';
-const stageWidth=2000,stageHeight=1600,viewport={clientWidth:900,clientHeight:680},selections=[];
+let traceSelection=false,scale=2.5,panX=500,panY=-400,selectedNodeId='selected',graphView='plane';
+const stageWidth=2000,stageHeight=1600,viewport={clientWidth:900,clientHeight:680,querySelector:()=>null},selections=[];
 const document={createElement:()=>({children:[],append(...children){this.children.push(...children)},setAttribute(){}})};
 const t=key=>key,el=()=>viewport,detailAction=(label,activate)=>({label,activate,setAttribute(){}}),owningExploration=()=>null;
 function applySelection(id){selections.push(id)}
@@ -37,6 +37,8 @@ for(const expectedTrace of [true,false]){
  assert.equal(selectedNodeId,'selected');
 }
 assert.deepEqual(selections,['selected','selected']);
+viewport.querySelector=()=>({offsetHeight:64,offsetTop:14});fitGraph();
+assert.ok(panY>=90&&stageHeight*scale+panY<=viewport.clientHeight-90,'fit all must leave space for the planar legend');
 ` + "`" + `);
 check(assert);
 `
