@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,6 +44,61 @@ func TestCLIWorkspaceAndStructuredErrors(t *testing.T) {
 	entries, err := os.ReadDir(".norns/view")
 	if err != nil || len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), "status-") {
 		t.Fatalf("Status View was not published: entries=%v err=%v", entries, err)
+	}
+}
+
+func TestUninitializedDirectoryExplainsWorkspaceLocation(t *testing.T) {
+	for _, locale := range []string{"en_US.UTF-8", "zh_CN.UTF-8"} {
+		t.Run(locale, func(t *testing.T) {
+			t.Setenv("LC_ALL", locale)
+			workspace := t.TempDir()
+			t.Chdir(workspace)
+			if code, _, stderr := runCLI("workspace", "init"); code != 0 {
+				t.Fatalf("workspace init: code=%d stderr=%s", code, stderr)
+			}
+			subdirectory := filepath.Join(workspace, "exploration")
+			if err := os.Mkdir(subdirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for _, directory := range []string{subdirectory, t.TempDir()} {
+				t.Chdir(directory)
+				for _, command := range [][]string{{"view", "status"}, {"workspace", "reset"}} {
+					code, stdout, stderr := runCLI(command...)
+					if code != 1 || stdout != "" {
+						t.Fatalf("%v: code=%d stdout=%q stderr=%s", command, code, stdout, stderr)
+					}
+					var failure struct {
+						OK    bool `json:"ok"`
+						Error struct {
+							Code    string `json:"code"`
+							Message string `json:"message"`
+						} `json:"error"`
+					}
+					if err := json.Unmarshal([]byte(stderr), &failure); err != nil {
+						t.Fatal(err)
+					}
+					if failure.OK || failure.Error.Code != "WORKSPACE_NOT_INITIALIZED" {
+						t.Fatalf("unexpected error envelope: %s", stderr)
+					}
+					fragments := []string{"Workspace marker", "Check whether pwd is the Subject directory", "does not search parent directories", "must be run from the Subject directory", "only when explicitly creating a new, independent Workspace"}
+					if strings.HasPrefix(locale, "zh") {
+						fragments = []string{"Workspace 标记", "请检查 pwd 是否为 Subject 目录", "不会向上查找父级目录", "仅可在 Subject 目录执行", "在明确需要创建新的、独立的 Workspace 时使用 norns workspace init 命令"}
+					}
+					for _, fragment := range fragments {
+						if !strings.Contains(failure.Error.Message, fragment) {
+							t.Fatalf("message omitted %q: %s", fragment, failure.Error.Message)
+						}
+					}
+				}
+				if _, err := os.Stat(filepath.Join(directory, ".norns")); !os.IsNotExist(err) {
+					t.Fatalf("failed commands must not initialize a Workspace: %v", err)
+				}
+			}
+			t.Chdir(workspace)
+			if code, _, stderr := runCLI("view", "status"); code != 0 {
+				t.Fatalf("original Workspace is no longer usable: code=%d stderr=%s", code, stderr)
+			}
+		})
 	}
 }
 

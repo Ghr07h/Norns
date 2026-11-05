@@ -202,7 +202,7 @@ class BenchmarkTimeoutTests(unittest.TestCase):
                 self.assertTrue(all(options["timeout_disabled"].is_set() for options in options_seen))
                 self.assertTrue(all(task.attempts[-1]["timeout_minutes"] == 70 for task in scheduler.tasks))
 
-    def test_retry_ceiling_is_preserved_when_runtime_timeout_is_disabled(self):
+    def test_retry_ceiling_is_bypassed_when_runtime_timeout_is_disabled(self):
         for image, module in self.modules.items():
             with self.subTest(image=image), \
                     patch.object(module, "write_results"), \
@@ -218,10 +218,67 @@ class BenchmarkTimeoutTests(unittest.TestCase):
 
                 with patch.object(module, "run_cell", side_effect=run_cell) as attempt:
                     summary = scheduler.run_all()
-                self.assertEqual(summary["unresolvable"], 2)
-                self.assertEqual(summary["completed"], 0)
-                attempt.assert_not_called()
+                self.assertEqual(summary["unresolvable"], 0)
+                self.assertEqual(summary["completed"], 2)
+                self.assertEqual(attempt.call_count, 2)
                 self.assertTrue(summary["timeout_disabled"])
+
+    def test_last_batch_can_enter_tail_mode_at_round_eight(self):
+        for image, module in self.modules.items():
+            with self.subTest(image=image), \
+                    patch.object(module, "write_results"), \
+                    patch.object(module, "_close_row_container"), \
+                    patch.multiple(module.Config, initial_limit_minutes=40.0, increment_minutes=30.0, max_challenge_timeout_minutes=240.0):
+                scheduler = self.scheduler(module, 2)
+                for task in scheduler.tasks:
+                    task.attempts.extend({"round": number} for number in range(1, 8))
+
+                def run_cell(challenge, *arguments, **options):
+                    self.assertEqual(options["attempt_round"], 8)
+                    return self.result(module, scheduler.tasks[int(challenge["unique_code"])])
+
+                with patch.object(module, "run_cell", side_effect=run_cell) as attempt:
+                    summary = scheduler.run_all()
+                self.assertEqual(attempt.call_count, 2)
+                self.assertEqual(summary["completed"], 2)
+                self.assertEqual(summary["unresolvable"], 0)
+                self.assertTrue(summary["timeout_disabled"])
+
+    def test_unlimited_task_can_retry_beyond_round_eight(self):
+        for image, module in self.modules.items():
+            with self.subTest(image=image), \
+                    patch.object(module, "write_results"), \
+                    patch.object(module, "_close_row_container"), \
+                    patch.multiple(module.Config, initial_limit_minutes=40.0, increment_minutes=30.0, max_challenge_timeout_minutes=240.0):
+                scheduler = self.scheduler(module, 1)
+
+                def run_cell(challenge, *arguments, **options):
+                    return self.result(module, scheduler.tasks[0], options["attempt_round"] == 9)
+
+                with patch.object(module, "run_cell", side_effect=run_cell) as attempt:
+                    summary = scheduler.run_all()
+                self.assertEqual(attempt.call_count, 9)
+                self.assertEqual(summary["completed"], 1)
+                self.assertEqual(summary["unresolvable"], 0)
+
+    def test_ceiling_still_applies_before_the_last_batch(self):
+        for image, module in self.modules.items():
+            with self.subTest(image=image), \
+                    patch.object(module, "write_results"), \
+                    patch.object(module, "_close_row_container"), \
+                    patch.multiple(module.Config, initial_limit_minutes=40.0, increment_minutes=30.0, max_challenge_timeout_minutes=40.0):
+                scheduler = self.scheduler(module, 4)
+                for task in scheduler.tasks:
+                    task.attempts.append({"round": 1})
+
+                def run_cell(challenge, *arguments, **options):
+                    return self.result(module, scheduler.tasks[int(challenge["unique_code"])])
+
+                with patch.object(module, "run_cell", side_effect=run_cell) as attempt:
+                    summary = scheduler.run_all()
+                self.assertEqual(attempt.call_count, 3)
+                self.assertEqual(summary["completed"], 3)
+                self.assertEqual(summary["unresolvable"], 1)
 
     def test_global_stop_prevents_dispatch_even_when_timeouts_are_disabled(self):
         for image, module in self.modules.items():

@@ -3,6 +3,8 @@ package i18n
 import (
 	"os"
 	"strings"
+
+	"github.com/Ghr07h/norns/norns/internal/domain"
 )
 
 var chineseMessages = map[string]string{
@@ -24,9 +26,8 @@ var chineseMessages = map[string]string{
 	"View written to file":      "View 已写入文件",
 	"operation applied, but running explorations exceed the configured concurrency": "操作已生效，但运行中的 Exploration 数量超过额定并发数",
 	"view generated, but the browser could not be opened":                           "View 已生成，但无法打开浏览器",
-	"internal error":               "内部错误",
-	"Workspace is not initialized": "Workspace 尚未初始化",
-	"Workspace is not initialized; run norns workspace init": "Workspace 尚未初始化；请运行 norns workspace init",
+	"internal error":                                   "内部错误",
+	domain.WorkspaceNotInitializedMessage:              "当前目录未找到已初始化的 Workspace 标记。请检查 pwd 是否为 Subject 目录。Norns CLI 不会向上查找父级目录，仅可在 Subject 目录执行。在明确需要创建新的、独立的 Workspace 时使用 norns workspace init 命令进行工作区初始化。",
 	"Workspace is busy":                                "Workspace 正忙",
 	"SQLite writer is busy":                            "SQLite 写入正在占用",
 	"Workspace already has an open Task":               "Workspace 已有打开的 Task",

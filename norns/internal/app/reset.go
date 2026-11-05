@@ -32,7 +32,7 @@ func (s *Service) Reset(ctx context.Context) (Result, error) {
 	var result Result
 	err := s.exclusive(ctx, func(ctx context.Context) error {
 		if !s.Store.Initialized() {
-			return domain.NewError("WORKSPACE_NOT_INITIALIZED", "Workspace is not initialized")
+			return domain.NewError("WORKSPACE_NOT_INITIALIZED", domain.WorkspaceNotInitializedMessage)
 		}
 		if err := s.Store.Read(ctx, func(tx *sql.Tx) error {
 			var count int

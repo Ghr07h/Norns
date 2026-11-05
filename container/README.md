@@ -242,8 +242,14 @@ worker 持续消费同一个 FIFO 尝试队列。未完成题目会增加单题�
 或更少时，进入不限单题时间的收尾阶段。例如最后三道题都已运行，或只剩两道题运行时，
 都会动态忽略单题限时，不停止或重启当前 Runtime；若还有题目排队则暂不进入收尾阶段。
 全局超时、停止信号、SaaS 任务结束和异常处理保持有效。
-Runtime 自然结束仍走原有的结果处理流程；未通关题目的重试与
-重试预算封顶检查保持不变，不因取消执行计时而无限增加重试轮次。
+进入收尾阶段后，未通关题目仍可重试，不再受名义单题限时上限约束，第八轮及后续轮次
+不会因此被拦截。最后一批待派发题目也不会因该上限被提前判为不可解。
+
+重试指令使用“对应结束原因的恢复指令前缀 + 公共上下文”：区分正常结束但未通关、
+内存超限、单题超时及外部取消，并填入题目编号、平台验收进度与当前靶场地址，提醒
+靶场重启会重置状态且可能变更地址。其他异常使用实际错误原因，不冒充超时或内存超限。
+平台到期、benchmark 全局停止或停止信号不会自动恢复。结果文件同时保留 `runtime_state`、
+`runtime_end_reason` 和 `runtime_error_code`，Runtime 错误与取消不再统一记录为 `ended`。
 
 此规则同时适用于 Norns 与普通 Claude Code 两套 Benchmark。结果中的
 `timeout_disabled: true` 表示已取消单题时限；原有 `timeout_minutes` 保留各轮的名义预算，
@@ -287,7 +293,7 @@ docker run --rm \
 | --- | ---: | --- |
 | `BENCHMARK_INITIAL_LIMIT_MINUTES` | 40 | 首轮单题限时 |
 | `BENCHMARK_LIMIT_INCREMENT_MINUTES` | 30 | 每轮限时增量 |
-| `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 单题重试预算上限；超过后不再启动新一轮，不中断收尾中的 Runtime |
+| `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 非收尾阶段的名义单题限时上限；收尾阶段忽略，不限制重试轮数 |
 | `BENCHMARK_EVENT_LIMIT` | 5000 | 单次 Event 读取上限 |
 | `BENCHMARK_POLL_INTERVAL` | 4 | Runtime 和 Event 轮询间隔，单位秒 |
 | `BENCHMARK_STOP_GRACE` | 90 | Runtime 优雅停止等待时间，单位秒 |

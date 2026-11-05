@@ -65,7 +65,7 @@ description: 使用 Norns Protocol 的 Cognition/Exploration Graph 组织开放�
 
 ## CLI Usage
 
-使用以下 CLI 命令调用对应协议动作：
+在 Subject 目录使用以下 CLI 命令调用对应协议动作：
 
 ```sh
 # 初始化当前工作目录中的空 Workspace；重复初始化合法 Workspace 时幂等成功
@@ -128,7 +128,7 @@ norns view trace --exploration EXP_ID [--json]
 norns view visual [--open]
 ```
 
-- 注意：Norns CLI 需要在当前 Subject 目录下执行。
+- 注意：Norns CLI 需要在当前 Subject 目录，即 Norns 工作区目录下执行才有效。
 - 修改命令成功时返回 `{"ok":true,"data":...,"warnings":[],"message":"..."}`。检查 `ok`、结构化 `data` 和 `warnings`，不要解析本地化 `message`。
 - 失败时 stderr 返回 `{"ok":false,"error":{"code":"...","message":"...","details":...}}`。按 `error.code` 处理，不得把失败动作视为已生效。
 - Status 和 Trace 默认输出 YAML，只有显式传入 `--json` 时才输出 JSON；`exploration todo` 与 `exploration running` 是调度查询，不是 View。

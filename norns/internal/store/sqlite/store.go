@@ -127,7 +127,7 @@ func configure(db *sql.DB, readOnly bool) error {
 
 func (s *Store) probe(ctx context.Context) error {
 	if !s.Initialized() {
-		return domain.NewError("WORKSPACE_NOT_INITIALIZED", "Workspace is not initialized; run norns workspace init")
+		return domain.NewError("WORKSPACE_NOT_INITIALIZED", domain.WorkspaceNotInitializedMessage)
 	}
 	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(s.Paths.Database)+"?mode=ro")
 	if err != nil {

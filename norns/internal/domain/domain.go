@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const WorkspaceNotInitializedMessage = "No initialized Workspace marker was found in the current directory. Check whether pwd is the Subject directory. Norns CLI does not search parent directories and must be run from the Subject directory. Use norns workspace init to initialize a Workspace only when explicitly creating a new, independent Workspace."
+
 type Error struct {
 	Code    string
 	Message string
