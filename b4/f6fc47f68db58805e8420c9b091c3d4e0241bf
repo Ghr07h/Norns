@@ -1,0 +1,14 @@
+plugin/cc/agents/explorer.md
+  h_32bccb164adb56 80,84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b4f6fc47f68db58805e8420c9b091c3d4e0241bf",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
