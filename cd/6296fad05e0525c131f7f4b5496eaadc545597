@@ -1,0 +1,20 @@
+container/README.md
+  h_32bccb164adb56 295,305-314
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 21,122,220-290,397-414,416-419,536-538,1457-1460,1488-1490,1551-1552,1898-1903
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 22,123,219-289,396-413,415-418,535-537,1429-1432,1459-1461,1522-1523,1855-1860
+container/tests/test_benchmark_diagnostics.py
+  h_32bccb164adb56 1-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cd6296fad05e0525c131f7f4b5496eaadc545597",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
