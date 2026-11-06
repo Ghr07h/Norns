@@ -1,0 +1,30 @@
+norns/README.md
+  h_32bccb164adb56 222,224-226
+norns/internal/app/service_test.go
+  h_32bccb164adb56 496,541,593
+norns/internal/app/visual.go
+  h_32bccb164adb56 17,49-52,54-81,89,110-113,174-183,190-416,418,420-426,428-608,648-654,656-704,708-713,722-723,759-776,782,799-834,836-882,884-887,900-902,914-921,926-930,937-985,989-991,993-997,1002-1004,1018-1201,1208-1210
+norns/internal/app/visual_interaction_test.go
+  h_32bccb164adb56 66-68
+norns/internal/app/visual_knowledge_test.go
+  h_32bccb164adb56 22,35-37,40,64,66-72,74,76,86,89-90,92-98,121-129,131-135,141-149,156,163,191-196,220,229-230,237-239,249-299
+norns/internal/app/visual_motion_test.go
+  h_32bccb164adb56 1-139
+norns/internal/app/visual_pointer_test.go
+  h_32bccb164adb56 21-22,25,33,35,42-44,54-63,73-119
+norns/internal/app/visual_theme_test.go
+  h_32bccb164adb56 1-103
+norns/internal/app/visual_typography_test.go
+  h_32bccb164adb56 31,33,37-38,42-49,51-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f17ae8ea48d7755686daca4c361098e0a6c1bebe",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
