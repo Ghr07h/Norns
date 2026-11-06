@@ -292,6 +292,7 @@ docker run --rm \
 | 变量 | 默认值 | 用途 |
 | --- | ---: | --- |
 | `BENCHMARK_INITIAL_LIMIT_MINUTES` | 40 | 首轮单题限时 |
+| `BENCHMARK_DIAGNOSTICS` | `0` | 设为 `1` 输出额外诊断日志，不改变调度、重试、超时及 flag 提交行为 |
 | `BENCHMARK_LIMIT_INCREMENT_MINUTES` | 30 | 每轮限时增量 |
 | `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 非收尾阶段的名义单题限时上限；收尾阶段忽略，不限制重试轮数 |
 | `BENCHMARK_EVENT_LIMIT` | 5000 | 单次 Event 读取上限 |
@@ -300,6 +301,16 @@ docker run --rm \
 | `BENCHMARK_RESULT_FILE` | `/workspace/benchmark-result.json` | 增量结果文件 |
 | `BENCHMARK_ONLY_CODES` | 空 | 仅运行指定 unique_code，逗号分隔 |
 | `BENCHMARK_OVERALL_TIMEOUT` | 0 | 全局秒级限时，0 表示不限 |
+
+本地复现异常时，可在原有容器启动参数中追加 `--env BENCHMARK_DIAGNOSTICS=1`。
+两套 Benchmark 都会向 stdout 和过程日志输出带 `[DIAG]` 标记的诊断：
+Runtime 的错误详情、进程退出信息与会话恢复来源，错误 Runtime 对应的最近 stderr，
+脚本自身的平台 POST 请求及响应，以及已有靶场就绪查询返回的平台验收进度快照。
+每条诊断包含独立 UTC 时间；平台请求使用请求 ID 关联响应，flag 使用 SHA-256 指纹关联，
+新增诊断会脱敏已知凭据并截断过长内容，不改变原有日志内容和结果文件格式。
+stderr 只读取 API 已返回的本地 raw 日志路径的最后 64 KiB，并筛选当前 Runtime 的最后
+5 条记录；远端路径不可读或日志尚未写完时可能没有 stderr，需要保留工作区原始日志。
+诊断不增加 API 请求、不刷新或修正调度状态，也不能直接追踪 Agent 绕过脚本发出的平台请求。
 
 过程日志写入 `/workspace/benchmark-process.log`，nornsd Token 持久化到
 `/workspace/.nornsd-token`。镜像验证：

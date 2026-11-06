@@ -18,6 +18,7 @@ current-runtime shortcut becomes null.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -118,6 +119,7 @@ class Config:
 
     result_file = os.environ.get("BENCHMARK_RESULT_FILE", "/workspace/benchmark-result.json")
     run_id = os.environ.get("BENCHMARK_RUN_ID", "")
+    diagnostics = _env_truthy("BENCHMARK_DIAGNOSTICS")
     # --test 开关:由 entrypoint --test 经 env BENCHMARK_TEST_ENV=1 透传进来;
     # 为真时把"临时环境/无 pentest-tools,基于当前环境解题"追加到提示词末尾。
     # 默认 False:真实/官方调用不传 --test 即无此注,提示词保持原样。
@@ -213,6 +215,77 @@ def _setup_process_log() -> Path | None:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _diagnostic(event: str, **fields) -> None:
+    if not Config.diagnostics:
+        return
+    try:
+        secret_key = re.compile(r"token|password|secret|authorization|(?:api|llm)[_-]?key", re.I)
+        secrets = {Config.benchmark_token, getattr(Config, "nornsd_token", None)}
+        secrets.update(value for key, value in os.environ.items()
+                       if re.search(r"TOKEN|PASSWORD|SECRET|(?:^|_)KEY$", key, re.I))
+        secrets = sorted((value for value in secrets if isinstance(value, str) and value),
+                         key=len, reverse=True)
+
+        def redact(value, depth=0):
+            if depth > 6:
+                return "[truncated]"
+            if isinstance(value, dict):
+                return {str(key): "[REDACTED]" if secret_key.search(str(key))
+                        else redact(item, depth + 1)
+                        for key, item in list(value.items())[:32]}
+            if isinstance(value, (list, tuple)):
+                return [redact(item, depth + 1) for item in value[:16]]
+            if isinstance(value, str):
+                for secret in secrets:
+                    value = value.replace(secret, "[REDACTED]")
+                value = re.sub(r"(?i)\bBearer\s+[^\s\"']+", "Bearer [REDACTED]", value)
+                return value[:2048] + ("...[truncated]" if len(value) > 2048 else "")
+            return value
+
+        record = redact({"event": event, "timestamp_utc": now_iso(),
+                         "pid": os.getpid(), "thread": threading.current_thread().name,
+                         "run_id": Config.run_id, **fields})
+        encoded = json.dumps(record, ensure_ascii=False, default=str)
+        if len(encoded) > 8192:
+            encoded = json.dumps({"event": event, "truncated": True,
+                                  "summary": encoded[:4096]}, ensure_ascii=False)
+        log.info("[DIAG] %s", encoded)
+    except Exception:
+        return
+
+
+def _log_runtime_diagnostics(runtime: dict, subject_id: str, runtime_id: str,
+                             **context) -> None:
+    if not Config.diagnostics:
+        return
+    try:
+        _diagnostic("runtime_terminal", subject_id=subject_id, runtime_id=runtime_id,
+                    **context, **{key: runtime.get(key) for key in (
+                        "state", "started_at", "ended_at", "end_reason", "error",
+                        "process", "resources", "artifacts")})
+        path = (runtime.get("artifacts") or {}).get("raw_log_path")
+        if runtime.get("state") != "error" or not isinstance(path, str):
+            return
+        with open(path, "rb") as stream:
+            offset = max(0, stream.seek(0, os.SEEK_END) - 65536)
+            stream.seek(offset)
+            lines = stream.read(65536).splitlines()
+        entries = []
+        for line in lines[1:] if offset else lines:
+            try:
+                record = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue
+            if (isinstance(record, dict) and record.get("runtime_id") == runtime_id
+                    and record.get("stream") == "stderr"):
+                entries.append({key: record.get(key) for key in ("timestamp", "payload")})
+        _diagnostic("agent_stderr_tail", subject_id=subject_id, runtime_id=runtime_id,
+                    entries=entries[-5:], scanned_bytes_limit=65536)
+    except Exception as error:
+        _diagnostic("runtime_raw_unavailable", subject_id=subject_id,
+                    runtime_id=runtime_id, error=str(error))
 
 
 # ---------------------------------------------------------------------------
@@ -321,8 +394,29 @@ class SaaSClient:
     def _call(self, method: str, path: str, *, params: dict | None = None,
               body: dict | None = None) -> object:
         url = _query(self.base_url, path, params)
-        status, raw = _request(method, url, headers=self._headers(), body=body, timeout=60.0)
+        traced = Config.diagnostics and method == "POST"
+        if traced:
+            request_id = f"{os.getpid()}-{time.time_ns()}"
+            fields = body or params or {}
+            flag = fields.get("flag")
+            _diagnostic("platform_request", request_id=request_id, method=method,
+                        path=path, unique_code=fields.get("unique_code"),
+                        flag_sha256=hashlib.sha256(flag.encode()).hexdigest()
+                        if isinstance(flag, str) else None)
+            started = time.perf_counter()
+        try:
+            status, raw = _request(method, url, headers=self._headers(), body=body, timeout=60.0)
+        except BenchmarkError as error:
+            if traced:
+                _diagnostic("platform_transport_error", request_id=request_id,
+                            path=path, error=str(error),
+                            elapsed_seconds=round(time.perf_counter() - started, 3))
+            raise
         payload = _json(raw)
+        if traced:
+            _diagnostic("platform_response", request_id=request_id, path=path,
+                        status=status, elapsed_seconds=round(time.perf_counter() - started, 3),
+                        response=payload if payload is not None else raw.decode("utf-8", "replace"))
         if status >= 400:
             code, message = self._error_fields(payload, raw)
             if code == "duplicate":
@@ -439,6 +533,9 @@ class SaaSClient:
                 if challenge.get("unique_code") == unique_code:
                     last_status = challenge.get("container_status")
                     if challenge.get("container_status") == "available":
+                        _diagnostic("platform_snapshot", **{key: challenge.get(key) for key in (
+                            "unique_code", "container_status", "correct_flag_count",
+                            "flag_count", "is_completed")})
                         return list(challenge.get("container_addr") or fallback_addrs)
                     break
             time.sleep(Config.container_ready_interval)
@@ -1357,6 +1454,10 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
     runtime_id = session.runtime_id
     log.info("[%s/%s] subject/runtime 已接受: %s/%s",
              unique_code, model or "?", subject_id, runtime_id)
+    _diagnostic("runtime_accepted", unique_code=unique_code, model=model,
+                subject_id=subject_id, runtime_id=runtime_id, attempt_round=attempt_round,
+                resume_session=resume_session, correct_flag_count=result.correct_flag_count,
+                is_completed=result.is_completed)
 
     # 3. 轮询事件流并提交 flag
     event_cursor = session.event_cursor
@@ -1384,6 +1485,9 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
     def detect_events(events: list[dict]) -> None:
         before = set(detected)
         for event in events:
+            if event.get("type") in ("diagnostic", "agent.result", "runtime.finished", "runtime.session_resumed"):
+                _diagnostic("agent_event", unique_code=unique_code, subject_id=subject_id,
+                            observed_runtime_id=runtime_id, record=event)
             detected.update(extract_flags(_event_text(event)))
         new_flags = detected - before
         if new_flags:
@@ -1444,6 +1548,8 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
             runtime = nor.get_runtime(subject_id, runtime_id)
             state = runtime.get("state")
             if state in ("ended", "error", "cancelled"):
+                _log_runtime_diagnostics(runtime, subject_id, runtime_id,
+                                         unique_code=unique_code, attempt_round=attempt_round)
                 result.runtime_state = state
                 result.runtime_end_reason = str(runtime.get("end_reason") or "")
                 runtime_error = runtime.get("error") or {}
@@ -1789,6 +1895,12 @@ class RoundQueueScheduler:
                         log.info(
                             "[%s] attempt %d complete; queued retry %d timeout=%s",
                             task.code, next_round - 1, next_round, timeout_label)
+                        _diagnostic("retry_queued", unique_code=task.code,
+                                    attempt_round=next_round - 1, next_round=next_round,
+                                    status=task.result.status, error=task.result.error,
+                                    runtime_error_code=task.result.runtime_error_code,
+                                    time_used=task.result.time_used,
+                                    timeout_disabled=self.timeout_disabled.is_set())
                         ready.append(task)
 
         with self.lock:
