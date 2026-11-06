@@ -14,7 +14,7 @@ func visualHTML(data []byte, language string) ([]byte, error) {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>Norns Visual Snapshot</title>
 <style>
-:root{color-scheme:light;--bg:#f3f5f8;--panel:#fff;--panel-soft:#f7f9fc;--line:#e0e5ed;--line-strong:#bdc8d8;--text:#222a38;--muted:#667387;--green:#167354;--green-soft:#e8f3ee;--amber:#ad650c;--amber-soft:#fff3dd;--red:#b83b3b;--red-soft:#fbeaea;--blue:#28649b;--blue-soft:#eaf2f9;--violet:#75549c;--violet-soft:#f1ecf7;--shadow:0 8px 28px rgba(32,49,77,.09);--accent:#3563c5;--accent-soft:#eaf0fd;--active-surface:#f6f9ff;--heading:#24344f;--code-bg:#202c40;--canvas-bg:#f8fafc;--canvas-grid:#e2e8f04d;--module-shadow:0 3px 14px rgba(32,49,77,.04);--control-shadow:0 4px 14px rgba(32,49,77,.12)}
+:root{color-scheme:light;--bg:#f3f5f8;--panel:#fff;--panel-soft:#f7f9fc;--line:#e0e5ed;--line-strong:#bdc8d8;--text:#222a38;--muted:#667387;--green:#167354;--green-soft:#e8f3ee;--amber:#ad650c;--amber-soft:#fff3dd;--red:#b83b3b;--red-soft:#fbeaea;--blue:#28649b;--blue-soft:#eaf2f9;--violet:#75549c;--violet-soft:#f1ecf7;--shadow:0 8px 28px rgba(32,49,77,.09);--accent:#3563c5;--accent-soft:#eaf0fd;--active-surface:#f6f9ff;--heading:#24344f;--code-bg:#202c40;--canvas-bg:#f6f8fa;--canvas-grid:#e2e8f04d;--module-shadow:0 3px 14px rgba(32,49,77,.04);--control-shadow:0 4px 14px rgba(32,49,77,.12)}
 *{box-sizing:border-box}html{max-width:100%;scroll-behavior:smooth}body{max-width:100%;margin:0;overflow-x:hidden;background:var(--bg);color:var(--text);font:15px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0}button,input,select{font:inherit;color:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}button:disabled{cursor:not-allowed;opacity:.45}
 .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:20px;height:58px;padding:0 max(18px,calc((100vw - 1440px)/2));border-bottom:1px solid var(--line);background:var(--panel);color:var(--heading);backdrop-filter:blur(12px)}.brand{font-size:18px;font-weight:720;white-space:nowrap}.top-summary{display:flex;align-items:center;gap:16px;color:var(--muted);font-size:13px}.top-summary strong{color:var(--text);font-size:14px}.runtime{display:inline-flex;align-items:center;gap:7px}.runtime-dot{width:8px;height:8px;border-radius:50%;background:#98a29e}.runtime.active .runtime-dot{background:var(--green);box-shadow:0 0 0 4px var(--green-soft)}.generated{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
 main{width:min(1440px,100%);margin:0 auto;padding:24px 22px 60px}.module{scroll-margin-top:74px;padding:22px;margin:0 0 18px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:var(--module-shadow)}.module-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}.module-title{color:var(--heading);margin:0;font-size:21px;line-height:1.3}.module-note{margin:6px 0 0;color:var(--muted);font-size:13px}.module-meta{color:var(--muted);font-size:13px}
@@ -46,13 +46,39 @@ main{width:min(1440px,100%);margin:0 auto;padding:24px 22px 60px}.module{scroll-
 .graph-shell[data-graph-view="knowledge"] .node-copy{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;overflow:hidden}.graph-shell[data-graph-view="knowledge"] .node-heading{justify-content:center}.graph-shell[data-graph-view="knowledge"] .node-heading .node-kind{display:none}.graph-shell[data-graph-view="knowledge"] .node-icon{width:52px;height:52px;color:var(--node-color)}.graph-shell[data-graph-view="knowledge"] .node-title{display:none}.graph-shell[data-graph-view="knowledge"] .node.knowledge-root .node-copy{padding:26px}.graph-shell[data-graph-view="knowledge"] .node.knowledge-root .node-icon{width:64px;height:64px}.graph-shell[data-graph-view="knowledge"] .node.knowledge-root .knowledge-ring{stroke-width:3.5}.graph-shell[data-graph-view="knowledge"] .node.selected .node-shape,.graph-shell[data-graph-view="knowledge"] .node:focus .node-shape{stroke:var(--accent);stroke-width:2.5}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.task-chevron,.exploration-chevron,.node,.edge{transition:none}}
 .graph-legend.knowledge-legend{display:none}.graph-shell[data-graph-view="knowledge"]{border-color:#d6e2ef;box-shadow:0 5px 24px rgba(62,89,132,.045)}.knowledge-guides{pointer-events:none}.knowledge-orbit{fill:none;stroke:#d3deeb;stroke-width:1;stroke-dasharray:2 10;opacity:.32;vector-effect:non-scaling-stroke}
-.graph-shell[data-graph-view="knowledge"] .edge,.knowledge-flow{--edge-color:#7298d5}.graph-shell[data-graph-view="knowledge"] .edge.output,.knowledge-flow.output{--edge-color:#4eaa9d}.graph-shell[data-graph-view="knowledge"] .edge.extends,.knowledge-flow.extends{--edge-color:#9b88c7}.graph-shell[data-graph-view="knowledge"] .edge.retry,.knowledge-flow.retry{--edge-color:#c5a06c}.graph-shell[data-graph-view="knowledge"] .edge{stroke:var(--edge-color);stroke-width:calc(var(--graph-edge-width,1px)*1.5);stroke-linecap:round;stroke-linejoin:round;opacity:.55}.graph-shell[data-graph-view="knowledge"] .edge.retry{stroke-dasharray:calc(var(--graph-edge-width,1px)*5) calc(var(--graph-edge-width,1px)*6)}.graph-shell[data-graph-view="knowledge"] .edge.related{stroke:var(--edge-color);stroke-width:calc(var(--graph-edge-width,1px)*2.2);opacity:.95}.graph-shell[data-graph-view="knowledge"] .edge.unrelated{opacity:.055}
-.knowledge-flow{display:block;fill:none;stroke:var(--edge-color);stroke-width:calc(var(--graph-edge-width,1px)*2.5);stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:calc(var(--graph-edge-width,1px)*2) calc(var(--graph-edge-width,1px)*52);opacity:.55;pointer-events:none;animation:knowledge-flow 10s linear infinite}.knowledge-flow.extends{opacity:.35}.edge.related+.knowledge-flow,.edge.preview-related+.knowledge-flow{display:block;opacity:1;stroke-width:calc(var(--graph-edge-width,1px)*3)}.edge.unrelated+.knowledge-flow{opacity:.04}.edge.preview-unrelated+.knowledge-flow{opacity:.08}.motion-paused .knowledge-flow{animation-play-state:paused}@keyframes knowledge-flow{to{stroke-dashoffset:calc(var(--graph-edge-width,1px)*-216)}}
-.graph-legend{position:absolute;top:14px;left:14px;z-index:4;display:flex;align-items:center;flex-wrap:wrap;gap:12px;max-width:calc(100% - 28px);padding:9px 12px;border:1px solid rgba(210,224,242,.85);border-radius:9px;background:rgba(255,255,255,.92);box-shadow:0 3px 14px rgba(58,86,126,.04);color:#586b83;font-size:12px;line-height:1.3;pointer-events:none;backdrop-filter:blur(8px)}.graph-shell[data-graph-view="knowledge"] .knowledge-legend{display:flex}.graph-shell[data-graph-view="knowledge"] .plane-legend{display:none}.plane-legend{flex-direction:column;align-items:flex-start;gap:8px}.legend-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}.legend-group-name{min-width:28px;color:#78869a;font-weight:600}.legend-row>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.plane-legend i{display:inline-flex;width:20px;height:14px;border:0;background:none;flex:none}.legend-metal{width:100%;height:100%;overflow:visible}.legend-metal rect{stroke:var(--legend-color);stroke-width:1.5;filter:brightness(.88) saturate(1.3)}.legend-row-exploration i{position:relative;width:18px;height:14px;border:0;border-radius:0;background:var(--legend-color);clip-path:polygon(0 0,72% 0,100% 50%,72% 100%,0 100%)}.legend-row-exploration i::after{content:"";position:absolute;inset:2px;background:#fff;clip-path:inherit}.legend-task{--legend-color:#955d30;--legend-soft:#f5eadd}.legend-result{--legend-color:#9a7414;--legend-soft:#faf2d9}.legend-regular{--legend-color:#7b858c;--legend-soft:#edf0f3}.legend-todo{--legend-color:#d4882f}.legend-running{--legend-color:#477dbd}.legend-finished{--legend-color:#17684e}.knowledge-legend>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.knowledge-legend i{width:15px;height:3px;border-radius:3px;background:#7298d5}.knowledge-legend .legend-output i{background:#4eaa9d}.knowledge-legend .legend-extends i{background:#9b88c7}.knowledge-legend .legend-retry i{background:repeating-linear-gradient(90deg,#c5a06c 0 4px,transparent 4px 6px)}.graph-shell[data-graph-view="knowledge"] .graph-controls{border-color:#cddcf0;border-radius:9px;background:rgba(255,255,255,.94);box-shadow:0 5px 20px rgba(65,94,136,.1)}.graph-shell[data-graph-view="knowledge"] .node{filter:drop-shadow(0 3px 5px rgba(49,73,109,.08))}.graph-shell[data-graph-view="knowledge"] .node.selected{filter:drop-shadow(0 0 9px rgba(70,126,222,.3))}.graph-shell[data-graph-view="knowledge"] .node.unrelated{filter:none}
-@media(max-width:700px){.graph-legend{max-width:calc(100% - 20px);top:10px;left:10px;gap:8px;padding:7px 9px;font-size:11px;line-height:1.3}.legend-row{gap:6px 9px}.knowledge-help{display:none!important}}@media(prefers-reduced-motion:reduce){.knowledge-flow{display:none;animation:none}}
-.knowledge-label-frame{overflow:visible;transform:scale(var(--knowledge-label-scale,1));transform-origin:0 0;pointer-events:none}.knowledge-label-wrap{display:block;width:100%;pointer-events:none}.knowledge-label-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--knowledge-label-lines,2);overflow:hidden;overflow-wrap:anywhere}.knowledge-label-copy{display:block;overflow:hidden;max-width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;background:rgba(255,255,255,.96);box-shadow:0 2px 6px rgba(40,61,92,.04);color:#34435a;font:600 13px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:left;overflow-wrap:anywhere;pointer-events:auto}.graph-shell .node.knowledge-root .knowledge-label-copy{border-color:#d7c7b7;color:#70451f;font-size:13px;font-weight:700}.node.selected .knowledge-label-copy,.node.previewed .knowledge-label-copy,.node:focus-visible .knowledge-label-copy{border-color:#83a7e7;background:#f7faff;color:#244e91}.node.preview-unrelated{opacity:.22}.graph-shell[data-graph-view="knowledge"] .edge.preview-related{opacity:.95;stroke-width:calc(var(--graph-edge-width,1px)*2.2)}.graph-shell[data-graph-view="knowledge"] .edge.preview-unrelated{opacity:.08}.graph-shell[data-knowledge-density="overview"] .node:not(.selected):not(.previewed):not(:hover):not(:focus) .knowledge-label{display:none}
+.graph-shell[data-graph-view="knowledge"] .edge{stroke:var(--edge-color);stroke-width:calc(var(--graph-edge-width,1px)*1.5);stroke-linecap:round;stroke-linejoin:round;opacity:.55}.graph-shell[data-graph-view="knowledge"] .edge.retry{stroke-dasharray:calc(var(--graph-edge-width,1px)*5) calc(var(--graph-edge-width,1px)*6)}.graph-shell[data-graph-view="knowledge"] .edge.related{stroke:var(--edge-color);stroke-width:calc(var(--graph-edge-width,1px)*2.2);opacity:.95}.graph-shell[data-graph-view="knowledge"] .edge.unrelated{opacity:.055}
+.graph-legend{position:absolute;top:14px;left:14px;z-index:4;display:flex;align-items:center;flex-wrap:wrap;gap:12px;max-width:calc(100% - 28px);padding:9px 12px;border:1px solid rgba(210,224,242,.85);border-radius:9px;background:rgba(255,255,255,.92);box-shadow:0 3px 14px rgba(58,86,126,.04);color:#586b83;font-size:12px;line-height:1.3;pointer-events:none;backdrop-filter:blur(8px)}.graph-shell[data-graph-view="knowledge"] .knowledge-legend{display:flex}.graph-shell[data-graph-view="knowledge"] .plane-legend{display:none}.plane-legend,.knowledge-legend{flex-direction:column;align-items:flex-start;gap:8px}.legend-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}.legend-group-name{min-width:28px;color:#78869a;font-weight:600}.legend-row>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.plane-legend i{display:inline-flex;width:20px;height:14px;border:0;background:none;flex:none}.legend-metal{width:100%;height:100%;overflow:visible}.legend-metal rect{stroke:var(--legend-color);stroke-width:1.5;filter:brightness(.88) saturate(1.3)}.legend-row-exploration i{position:relative;width:18px;height:14px;border:0;border-radius:0;background:var(--legend-color);clip-path:polygon(0 0,72% 0,100% 50%,72% 100%,0 100%)}.legend-row-exploration i::after{content:"";position:absolute;inset:2px;background:#fff;clip-path:inherit}.legend-task{--legend-color:#955d30;--legend-soft:#f5eadd}.legend-result{--legend-color:#9a7414;--legend-soft:#faf2d9}.legend-regular{--legend-color:#7b858c;--legend-soft:#edf0f3}.legend-todo{--legend-color:#d4882f}.legend-running{--legend-color:#477dbd}.legend-finished{--legend-color:#17684e}.graph-shell[data-graph-view="knowledge"] .graph-controls{border-color:#cddcf0;border-radius:9px;background:rgba(255,255,255,.94);box-shadow:0 5px 20px rgba(65,94,136,.1)}.graph-shell[data-graph-view="knowledge"] .node{filter:drop-shadow(0 3px 5px rgba(49,73,109,.08))}.graph-shell[data-graph-view="knowledge"] .node.selected{filter:drop-shadow(0 0 9px rgba(70,126,222,.3))}.graph-shell[data-graph-view="knowledge"] .node.unrelated{filter:none}
+@media(max-width:700px){.graph-legend{max-width:calc(100% - 20px);top:10px;left:10px;gap:8px;padding:7px 9px;font-size:11px;line-height:1.3}.legend-row{gap:6px 9px}.knowledge-help{display:none!important}}
+.knowledge-label-frame{overflow:visible;transform:scale(var(--knowledge-label-scale,1));transform-origin:0 0;pointer-events:none}.knowledge-label-wrap{display:block;width:100%;pointer-events:none}.knowledge-label-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--knowledge-label-lines,2);overflow:hidden;overflow-wrap:anywhere}.knowledge-label-copy{display:block;overflow:hidden;max-width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;background:rgba(255,255,255,.96);box-shadow:0 2px 6px rgba(40,61,92,.04);color:#34435a;font:600 13px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:left;overflow-wrap:anywhere;pointer-events:auto}.graph-shell .node.knowledge-root .knowledge-label-copy{border-color:#d7c7b7;color:#70451f;font-size:13px;font-weight:700}.node.selected .knowledge-label-copy,.node.previewed .knowledge-label-copy,.node:focus-visible .knowledge-label-copy{border-color:#83a7e7;background:#f7faff;color:#244e91}.node.preview-unrelated{opacity:.22}.graph-shell[data-graph-view="knowledge"] .edge.preview-related{opacity:.95;stroke-width:calc(var(--graph-edge-width,1px)*2.2)}.graph-shell[data-graph-view="knowledge"] .edge.preview-unrelated{opacity:.08}
 .knowledge-label-link{stroke:#8b9bb1;stroke-width:var(--graph-edge-width,1px);opacity:.45;pointer-events:none}.knowledge-root .knowledge-label-link{stroke:#a37545;opacity:.7}
-.knowledge-legend .legend-cognition i{width:10px;height:10px;border:1.5px solid #748399;border-radius:50%;background:transparent}.knowledge-legend .legend-exploration i{width:11px;height:11px;border-radius:0;background:#748399;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}.knowledge-legend .legend-separator{height:14px;border-left:1px solid #dce4ee}.knowledge-help{display:none}.graph-shell[data-graph-view="knowledge"] .knowledge-help{display:block;position:absolute;right:16px;bottom:24px;margin:0;color:#6b7d94;font-size:11px;pointer-events:none}
+.knowledge-legend i{display:inline-flex;width:14px;height:14px;flex:none}.knowledge-legend .legend-metal circle{fill:none;stroke-width:3;filter:brightness(.88) saturate(1.3)}.knowledge-legend .legend-exploration i{position:relative;background:var(--legend-color);clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}.knowledge-legend .legend-exploration i::after{content:"";position:absolute;inset:2px;background:#fff;clip-path:inherit}.knowledge-help{display:none}.graph-shell[data-graph-view="knowledge"] .knowledge-help{display:block;position:absolute;right:16px;bottom:24px;margin:0;color:#6b7d94;font-size:11px;pointer-events:none}
+
+#graph-module{scroll-margin-top:76px}
+.branch-dock{position:absolute;z-index:5;left:18px;right:18px;bottom:12px;display:grid;gap:8px;pointer-events:none}.branch-dock-tools{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px}
+.graph-shell .graph-body{grid-template-columns:minmax(0,1fr)}
+.graph-shell .viewport{background-color:var(--canvas-bg)}
+.graph-shell[data-graph-view=plane] .viewport{background-size:28px 28px;background-position:0 0}
+.graph-shell[data-graph-view=knowledge]{border-color:#d9e3e9;border-radius:12px;box-shadow:0 8px 34px #233f5410}
+.graph-shell[data-graph-view=knowledge] .graph-body{height:800px;grid-template-columns:minmax(0,1fr)}
+.graph-shell[data-graph-view=knowledge] .viewport{height:100%;min-height:0;background-image:none}
+.graph-shell[data-graph-view=knowledge] .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(#8ea5b1 1.1px,transparent 1.1px);background-size:32px 32px;background-position:var(--branch-grid-x,0px) var(--branch-grid-y,0px);opacity:.44}
+.graph-shell .detail{position:absolute;inset:0 0 0 auto;z-index:8;display:none;width:min(350px,90%);background:#fffffff5;backdrop-filter:blur(18px);box-shadow:-8px 0 35px #30495e13}
+.graph-shell .detail.visible{display:block}.graph-shell .detail-close{display:block}
+.graph-shell[data-graph-view=knowledge] .node{filter:none}.graph-shell[data-graph-view=knowledge] .node-copy{padding:10px}.graph-shell[data-graph-view=knowledge] .node-icon{width:23px;height:23px}.graph-shell[data-graph-view=knowledge] .node.knowledge-root .node-copy{padding:16px}.graph-shell[data-graph-view=knowledge] .node.knowledge-root .node-icon{width:37px;height:37px}.graph-shell[data-graph-view=knowledge] .knowledge-ring{stroke-width:2}.graph-shell[data-graph-view=knowledge] .node.knowledge-root .knowledge-ring{stroke-width:2.8}.graph-shell[data-graph-view=knowledge] .node.cognition .knowledge-ring{stroke-width:4;filter:brightness(.88) saturate(1.3)}.graph-shell[data-graph-view=knowledge] .node.cognition.knowledge-root .knowledge-ring{stroke-width:5}.knowledge-root-orbit{display:none}.knowledge-root-halo{fill-opacity:.4}
+.graph-shell[data-graph-view=knowledge] .node .node-shape{stroke:#b8c9d1;stroke-width:1.1;fill:#ffffff}.graph-shell[data-graph-view=knowledge] .node.knowledge-root .node-shape{fill:#fffaf0;stroke:#c4a36f}.graph-shell[data-graph-view=knowledge] .node.selected{filter:drop-shadow(0 0 6px #477dbd4d)}
+.branch-canopy{fill-opacity:.035;stroke-opacity:.13;stroke-width:1;vector-effect:non-scaling-stroke}.branch-canopy.branch-inactive{fill-opacity:.01;stroke-opacity:.04}
+.graph-shell[data-graph-view=knowledge] .edge.backbone{opacity:.66;stroke-width:calc(var(--graph-edge-width)*1.25)}.graph-shell[data-graph-view=knowledge] .edge.cross-edge{opacity:.055;stroke-width:calc(var(--graph-edge-width)*.8)}.graph-shell[data-graph-view=knowledge][data-all-relations=true] .edge.cross-edge{opacity:.31}
+.graph-shell[data-graph-view=knowledge] .edge.related,.graph-shell[data-graph-view=knowledge] .edge.preview-related{opacity:1;stroke-width:calc(var(--graph-edge-width)*1.8)}.graph-shell[data-graph-view=knowledge] .edge.unrelated,.graph-shell[data-graph-view=knowledge] .edge.preview-unrelated{opacity:.035}.graph-shell[data-graph-view=knowledge] .node.branch-inactive{opacity:.12}.graph-shell[data-graph-view=knowledge] .edge.branch-inactive{opacity:.015}
+.knowledge-particles{pointer-events:none}
+.graph-shell[data-graph-view=knowledge][data-knowledge-density] .node .knowledge-label{display:block!important}.knowledge-label-copy{padding:3px 6px;border:0;border-radius:4px;background:#fcfdfdf2;box-shadow:none;color:#506373;font-size:12px;line-height:1.45;font-weight:500}.node.exploration .knowledge-label-copy{color:#263f50;font-weight:650}.node.branch-entry .knowledge-label-copy{color:#214b56;font-weight:700}.graph-shell .node.knowledge-root .knowledge-label-copy{padding:6px 9px;border:1px solid #e8d9be;background:#fffcf4;font-size:13px;color:#77572b}.node.selected .knowledge-label-copy,.node.previewed .knowledge-label-copy{background:#edf4ff;border:1px solid #bad0ed;color:#234f87}.knowledge-label-link{opacity:.25}
+.knowledge-legend{gap:8px;padding:11px 14px;border-color:#dee7eb;border-radius:8px;background:#ffffffed;box-shadow:none;font-size:11px}.knowledge-help{display:none!important}
+.branch-navigation{display:flex;gap:7px;min-width:0;overflow:auto;scrollbar-width:thin;padding:2px 0;pointer-events:auto}.branch-chip{display:inline-flex;align-items:center;gap:7px;max-width:260px;min-width:0;flex:none;padding:7px 10px;border:1px solid #dfe7ec;border-radius:7px;background:#ffffffee;color:#647889;font-size:11px;line-height:1.4;box-shadow:0 2px 6px #203a4a05}.branch-chip::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--branch-color)}.branch-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.branch-chip b{font-size:10px;font-weight:650;color:var(--branch-color);padding:1px 5px;border-radius:4px;background:#f1f5f7}.branch-chip[aria-pressed=true],.branch-chip:hover{border-color:var(--branch-color);color:#284553;background:#fff}
+.branch-footer{display:flex;justify-content:space-between;gap:10px;color:#8a99a4;font-size:10px;letter-spacing:.1px}.graph-shell[data-graph-view=plane] .branch-navigation,.graph-shell[data-graph-view=plane] .branch-footer{display:none}.branch-dock .graph-controls{position:static;flex:none;max-width:100%;pointer-events:auto;border-color:#dce5e9;box-shadow:0 3px 14px #2643540d}
+.graph-search{bottom:calc(var(--branch-dock-height,110px) + 26px)}
+.graph-shell[data-graph-view=knowledge]:fullscreen .graph-body{height:100%;min-height:0}
+@media(min-width:1600px){main{max-width:1600px}.graph-shell[data-graph-view=knowledge] .graph-body{height:860px}}
+@media(max-width:800px){.graph-shell[data-graph-view=knowledge] .graph-body{height:720px}.branch-dock{left:12px;right:12px}.branch-chip{max-width:210px}.branch-footer>span:last-child{display:none}}
+@media(prefers-reduced-motion:reduce){.knowledge-particles{display:none!important}}
 </style>
 </head>
 <body>
@@ -60,7 +86,7 @@ main{width:min(1440px,100%);margin:0 auto;padding:24px 22px 60px}.module{scroll-
 <main>
 <section class="module" id="tasks-module"><div class="module-head"><div><h1 class="module-title" data-i18n="tasksTitle">Tasks</h1><p class="module-note" data-i18n="tasksNote">Task history and lifecycle</p></div><div id="task-module-meta" class="module-meta"></div></div><div id="task-list" class="task-list"></div><div id="task-empty" class="empty-state" hidden data-i18n="noTasks">This Subject has no Tasks</div></section>
 <section class="module" id="graph-module"><div class="module-head"><div><h2 class="module-title" data-i18n="graphTitle">Graph</h2><p class="module-note" data-i18n="graphNote">Task-driven cognition and exploration state graph</p></div></div><div class="graph-summary"><div class="graph-stat-row"><div class="graph-stat-heading" data-i18n="explorationNodes">Explorations</div><div class="metric"><div class="metric-label" data-i18n="total">Total</div><div id="metric-total" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="todoExplorations">Todo</div><div id="metric-todo" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="runningExplorations">Running</div><div id="metric-running" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="finishedExplorations">Finished</div><div id="metric-finished" class="metric-value">0</div></div></div><div class="graph-stat-row"><div class="graph-stat-heading" data-i18n="cognitionNodes">Cognitions</div><div class="metric"><div class="metric-label" data-i18n="total">Total</div><div id="metric-cognitions" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="taskRelatedCognitions">Task-Related</div><div id="metric-relevant" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="commonCognitions">Common</div><div id="metric-regular" class="metric-value">0</div></div><div class="metric"><div class="metric-label" data-i18n="taskInitCognitions">Task-Init</div><div id="metric-task-cognitions" class="metric-value">0</div></div></div></div>
-<div id="graph-shell" class="graph-shell"><div class="graph-body"><div class="graph-main"><div id="viewport" class="viewport"><div id="stage" class="stage"><svg id="edges" class="edges" data-i18n-aria="graphAria" aria-label="Cognition and Exploration graph"></svg></div><div class="graph-legend plane-legend" data-i18n-aria="planeLegend" aria-label="Node types and states"><div class="legend-row"><strong class="legend-group-name" data-i18n="knowledgeCognition">Cognition</strong><span class="legend-task"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-bronze)"></rect></svg></i><span data-i18n="legendTaskInit">Task-Init</span></span><span class="legend-result"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-gold)"></rect></svg></i><span data-i18n="legendTaskRelated">Task-Related</span></span><span class="legend-regular"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-silver)"></rect></svg></i><span data-i18n="legendCommon">Common</span></span></div><div class="legend-row legend-row-exploration"><strong class="legend-group-name" data-i18n="knowledgeExploration">Exploration</strong><span class="legend-todo"><i aria-hidden="true"></i><span data-i18n="todo">Todo</span></span><span class="legend-running"><i aria-hidden="true"></i><span data-i18n="running">Running</span></span><span class="legend-finished"><i aria-hidden="true"></i><span data-i18n="finished">Finished</span></span></div></div><div class="graph-legend knowledge-legend" data-i18n-aria="knowledgeRelations" aria-label="Graph relations"><span class="legend-cognition"><i></i><span data-i18n="knowledgeCognition">Cognition</span></span><span class="legend-exploration"><i></i><span data-i18n="knowledgeExploration">Exploration</span></span><span class="legend-separator" aria-hidden="true"></span><span class="legend-source"><i></i><span data-i18n="knowledgeSource">Source</span></span><span class="legend-output"><i></i><span data-i18n="knowledgeOutput">Output</span></span><span class="legend-extends"><i></i><span data-i18n="knowledgeExtends">Extension</span></span><span class="legend-retry"><i></i><span data-i18n="knowledgeRetry">Retry</span></span></div><p class="knowledge-help" data-i18n="knowledgeHelp">Hover to trace connections · Click to inspect</p><div id="graph-empty" class="graph-empty" hidden data-i18n="noGraphMatch">No nodes match the current search</div><div id="graph-search" class="graph-search"><div class="search-input-row"><input id="search" type="search" data-i18n-placeholder="searchPlaceholder" data-i18n-aria="searchNodes" placeholder="Search ID, title, or content; separate terms with spaces" aria-label="Search nodes"><button id="search-close" type="button" data-i18n-title="closeSearch" data-i18n-aria="closeSearch" title="Close search" aria-label="Close search">&times;</button></div><div class="search-navigation"><span id="search-status" role="status" aria-live="polite"></span><div><button id="search-previous" type="button" data-i18n-title="previousMatch" data-i18n-aria="previousMatch" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button><button id="search-next" type="button" data-i18n-title="nextMatch" data-i18n-aria="nextMatch" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div></div><div class="graph-controls" data-i18n-aria="graphControls" aria-label="Graph controls"><button id="zoom-out" class="graph-control" type="button" data-i18n-title="zoomOut" data-i18n-aria="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button><label class="zoom-value" data-i18n-title="zoomHint" title="Enter a zoom percentage from 1 to 250"><input id="zoom-value" type="number" min="1" max="250" value="100" inputmode="numeric" data-i18n-aria="zoomPercent" aria-label="Zoom percentage"><span>%</span></label><button id="zoom-in" class="graph-control" type="button" data-i18n-title="zoomIn" data-i18n-aria="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button id="fit" class="graph-control" type="button" data-i18n-title="fitAll" data-i18n-aria="fitAll" title="Fit all" aria-label="Fit all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button><button id="fullscreen" class="graph-control" type="button" data-i18n-title="fullscreen" data-i18n-aria="fullscreen" title="Fullscreen" aria-label="Fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M9 9l-6-6M15 9l6-6M9 15l-6 6M15 15l6 6"/></svg></button><button id="search-toggle" class="graph-control" type="button" data-i18n-title="searchNodes" data-i18n-aria="searchNodes" title="Search nodes" aria-label="Search nodes" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button><button id="graph-view-toggle" class="graph-control graph-view-toggle" type="button" data-i18n-title="switchToKnowledge" data-i18n-aria="switchToKnowledge" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m7.5 6 8-1M6.2 8.2l4.6 7.6M16.8 7.3l-3.6 8.4"/></svg></button></div></div></div><aside id="detail" class="detail"><div class="detail-head"><h3 data-i18n="nodeDetails">Node details</h3><button id="detail-close" class="detail-close" type="button" data-i18n-title="closeDetails" data-i18n-aria="closeDetails" title="Close details" aria-label="Close details">&times;</button></div><div id="detail-body" class="detail-body detail-empty" data-i18n="selectNode">Select a node to view its content and relationships</div></aside></div></div></section>
+<div id="graph-shell" class="graph-shell"><div class="graph-body"><div class="graph-main"><div id="viewport" class="viewport"><div id="stage" class="stage"><svg id="edges" class="edges" data-i18n-aria="graphAria" aria-label="Cognition and Exploration graph"></svg></div><div class="graph-legend plane-legend" data-i18n-aria="planeLegend" aria-label="Node types and states"><div class="legend-row"><strong class="legend-group-name" data-i18n="knowledgeCognition">Cognition</strong><span class="legend-task"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-bronze)"></rect></svg></i><span data-i18n="legendTaskInit">Task-Init Cognition</span></span><span class="legend-result"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-gold)"></rect></svg></i><span data-i18n="legendTaskRelated">Directly Task-Related Cognition</span></span><span class="legend-regular"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="url(#cognition-silver)"></rect></svg></i><span data-i18n="legendCommon">Common Cognition</span></span></div><div class="legend-row legend-row-exploration"><strong class="legend-group-name" data-i18n="knowledgeExploration">Exploration</strong><span class="legend-todo"><i aria-hidden="true"></i><span data-i18n="legendTodoExploration">Todo Exploration</span></span><span class="legend-running"><i aria-hidden="true"></i><span data-i18n="legendRunningExploration">Running Exploration</span></span><span class="legend-finished"><i aria-hidden="true"></i><span data-i18n="legendFinishedExploration">Finished Exploration</span></span></div></div><div class="graph-legend knowledge-legend" data-i18n-aria="planeLegend" aria-label="Node types and states"><div class="legend-row"><strong class="legend-group-name" data-i18n="knowledgeCognition">Cognition</strong><span class="legend-task"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" stroke="url(#cognition-bronze)"></circle></svg></i><span data-i18n="legendTaskInit">Task-Init Cognition</span></span><span class="legend-result"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" stroke="url(#cognition-gold)"></circle></svg></i><span data-i18n="legendTaskRelated">Directly Task-Related Cognition</span></span><span class="legend-regular"><i aria-hidden="true"><svg class="legend-metal" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" stroke="url(#cognition-silver)"></circle></svg></i><span data-i18n="legendCommon">Common Cognition</span></span></div><div class="legend-row legend-row-exploration"><strong class="legend-group-name" data-i18n="knowledgeExploration">Exploration</strong><span class="legend-exploration legend-todo"><i aria-hidden="true"></i><span data-i18n="legendTodoExploration">Todo Exploration</span></span><span class="legend-exploration legend-running"><i aria-hidden="true"></i><span data-i18n="legendRunningExploration">Running Exploration</span></span><span class="legend-exploration legend-finished"><i aria-hidden="true"></i><span data-i18n="legendFinishedExploration">Finished Exploration</span></span></div></div><p class="knowledge-help" data-i18n="knowledgeHelp">Hover to trace connections · Click to inspect</p><div id="graph-empty" class="graph-empty" hidden data-i18n="noGraphMatch">No nodes match the current search</div><div id="graph-search" class="graph-search"><div class="search-input-row"><input id="search" type="search" data-i18n-placeholder="searchPlaceholder" data-i18n-aria="searchNodes" placeholder="Search ID, title, or content; separate terms with spaces" aria-label="Search nodes"><button id="search-close" type="button" data-i18n-title="closeSearch" data-i18n-aria="closeSearch" title="Close search" aria-label="Close search">&times;</button></div><div class="search-navigation"><span id="search-status" role="status" aria-live="polite"></span><div><button id="search-previous" type="button" data-i18n-title="previousMatch" data-i18n-aria="previousMatch" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button><button id="search-next" type="button" data-i18n-title="nextMatch" data-i18n-aria="nextMatch" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div></div></div><div class="graph-controls" data-i18n-aria="graphControls" aria-label="Graph controls"><button id="zoom-out" class="graph-control" type="button" data-i18n-title="zoomOut" data-i18n-aria="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button><label class="zoom-value" data-i18n-title="zoomHint" title="Enter a zoom percentage from 1 to 250"><input id="zoom-value" type="number" min="1" max="250" value="100" inputmode="numeric" data-i18n-aria="zoomPercent" aria-label="Zoom percentage"><span>%</span></label><button id="zoom-in" class="graph-control" type="button" data-i18n-title="zoomIn" data-i18n-aria="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button id="fit" class="graph-control" type="button" data-i18n-title="fitAll" data-i18n-aria="fitAll" title="Fit all" aria-label="Fit all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button><button id="fullscreen" class="graph-control" type="button" data-i18n-title="fullscreen" data-i18n-aria="fullscreen" title="Fullscreen" aria-label="Fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M9 9l-6-6M15 9l6-6M9 15l-6 6M15 15l6 6"/></svg></button><button id="search-toggle" class="graph-control" type="button" data-i18n-title="searchNodes" data-i18n-aria="searchNodes" title="Search nodes" aria-label="Search nodes" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button><button id="graph-view-toggle" class="graph-control graph-view-toggle" type="button" data-i18n-title="switchToKnowledge" data-i18n-aria="switchToKnowledge" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m7.5 6 8-1M6.2 8.2l4.6 7.6M16.8 7.3l-3.6 8.4"/></svg></button></div></div></div><aside id="detail" class="detail"><div class="detail-head"><h3 data-i18n="nodeDetails">Node details</h3><button id="detail-close" class="detail-close" type="button" data-i18n-title="closeDetails" data-i18n-aria="closeDetails" title="Close details" aria-label="Close details">&times;</button></div><div id="detail-body" class="detail-body detail-empty" data-i18n="selectNode">Select a node to view its content and relationships</div></aside></div></div></section>
 <section class="module" id="explorations-module"><div class="module-head"><div><h2 class="module-title" data-i18n="explorationsTitle">Explorations</h2><p class="module-note" data-i18n="explorationsNote">Exploration queue and output Cognitions</p></div></div><div id="exploration-controls" class="exploration-controls"><label class="filter-field"><span class="filter-label" data-i18n="taskFilterLabel">Task</span><span class="select-wrap"><select id="exploration-task-filter" class="exploration-task-filter" data-i18n-aria="filterTask" aria-label="Filter Task"><option value="" data-i18n="allTasks">All Tasks</option></select><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></label><div class="filter-field status-filter-field"><span class="filter-label" data-i18n="status">Status</span><div class="filter-segmented"><button class="filter" data-status="" type="button" aria-pressed="true" data-i18n="all">All</button><button class="filter" data-status="todo" type="button" aria-pressed="false" data-i18n="todo">Todo</button><button class="filter" data-status="running" type="button" aria-pressed="false" data-i18n="running">Running</button><button class="filter" data-status="finished" type="button" aria-pressed="false" data-i18n="finished">Finished</button></div></div><span id="exploration-count" class="exploration-count"></span></div><div id="exploration-list" class="exploration-list"></div><div id="exploration-empty" class="empty-state" hidden data-i18n="noExplorations">No Explorations match the current filters</div></section>
 </main>
 <script type="application/json" id="norns-data">{{.Data}}</script>
@@ -81,8 +107,10 @@ Object.assign(messages.en,{explorationProgress:'{finished} / {total} exploration
 Object.assign(messages.zh,{explorationProgress:'已完成 {finished} / {total} 条探索',noTaskExplorations:'尚未发起探索',taskOutputs:'{count} 项产出认知',showContent:'展开正文 ↓',hideContent:'收起正文 ↑',locateInGraph:'在图谱中定位',untitledNode:'未命名节点'});
 Object.assign(messages.en,{knowledgeRelations:'Graph relations',knowledgeSource:'Source',knowledgeOutput:'Output',knowledgeExtends:'Extension',knowledgeRetry:'Retry'});
 Object.assign(messages.zh,{knowledgeRelations:'图谱关系',knowledgeSource:'来源',knowledgeOutput:'产出',knowledgeExtends:'延伸',knowledgeRetry:'重试'});
-Object.assign(messages.en,{planeLegend:'Node types and states',legendTaskInit:'Task-Init',legendTaskRelated:'Task-Related',legendCommon:'Common',knowledgeCognition:'Cognition',knowledgeExploration:'Exploration',knowledgeHelp:'Hover to trace connections · Click to inspect'});
-Object.assign(messages.zh,{planeLegend:'节点类型与状态',legendTaskInit:'任务初始',legendTaskRelated:'任务相关',legendCommon:'常规',knowledgeCognition:'认知',knowledgeExploration:'探索',knowledgeHelp:'悬停高亮关联 · 点击查看详情'});
+Object.assign(messages.en,{planeLegend:'Node types and states',legendTaskInit:'Task-Init Cognition',legendTaskRelated:'Directly Task-Related Cognition',legendCommon:'Common Cognition',legendTodoExploration:'Todo Exploration',legendRunningExploration:'Running Exploration',legendFinishedExploration:'Finished Exploration',knowledgeCognition:'Cognition',knowledgeExploration:'Exploration',knowledgeHelp:'Hover to trace connections · Click to inspect'});
+Object.assign(messages.zh,{planeLegend:'节点类型与状态',legendTaskInit:'任务初始化认知',legendTaskRelated:'任务直接关联认知',legendCommon:'常规认知',legendTodoExploration:'待分配探索',legendRunningExploration:'进行中探索',legendFinishedExploration:'已完成探索',knowledgeCognition:'认知',knowledgeExploration:'探索',knowledgeHelp:'悬停高亮关联 · 点击查看详情'});
+Object.assign(messages.en,{allDirections:'All directions',emphasizeCrossLinks:'Emphasize cross-links',readBackbone:'Read backbone',locateInitialCognition:'Locate initial cognition',branchNodeCount:'{count} nodes; focus branch',showEntireGraph:'Show entire graph',branchStatus:'Branch: {nodes} nodes · {labels} titles shown',graphStatus:'Graph: {nodes} nodes · {labels} titles shown',graphNavigationHint:'Scroll to zoom · Drag to pan · Focus a branch · Select a node to read'});
+Object.assign(messages.zh,{allDirections:'全部方向',emphasizeCrossLinks:'强调跨链关系',readBackbone:'回到主干阅读',locateInitialCognition:'定位初始认知',branchNodeCount:'{count} 个节点；点击聚焦',showEntireGraph:'显示完整图谱',branchStatus:'当前分支 {nodes} 个节点 · 当前展示 {labels} 个标题',graphStatus:'全图 {nodes} 个节点 · 当前展示 {labels} 个标题',graphNavigationHint:'滚轮缩放 · 拖动平移 · 点击分支聚焦 · 点击节点阅读'});
 const language=data.language==='zh'?'zh':'en',locale=language==='zh'?'zh-CN':'en-US';
 const t=(key,values={})=>Object.entries(values).reduce((value,[name,replacement])=>value.replaceAll('{'+name+'}',()=>String(replacement)),messages[language][key]??messages.en[key]??key);
 for(const item of document.querySelectorAll('[data-i18n]'))item.textContent=t(item.dataset.i18n);
@@ -143,43 +171,441 @@ function renderTasks(){
   }
 }
 function cognitionVariant(node){if(node.origin==='task')return 'task-cognition';if(node.task_purpose_relevant)return 'result-cognition';return 'regular'}
+const knowledgeThemes = {
+  'task-cognition': { color: '#955d30', metal: 'cognition-bronze' },
+  'result-cognition': { color: '#9a7414', metal: 'cognition-gold' },
+  regular: { color: '#7b858c', metal: 'cognition-silver' },
+  todo: { color: '#d4882f' },
+  running: { color: '#477dbd' },
+  finished: { color: '#17684e' }
+};
+function knowledgeNodeTheme(node){const variant=node?.kind==='cognition'?cognitionVariant(node):node?.status;return Object.hasOwn(knowledgeThemes,variant)?variant:'regular'}
+function knowledgeEdgeTheme(edge){return knowledgeNodeTheme(byId.get(edge.to))}
 function cognitionLabel(node){const variant=cognitionVariant(node);return variant==='task-cognition'?t('taskInitCognition'):variant==='result-cognition'?t('taskRelatedCognition'):t('commonCognition')}
 function renderMetrics(){const count=status=>data.explorations.filter(item=>item.status===status).length;const taskCognitions=data.cognitions.filter(item=>item.origin==='task').length;const relevant=data.cognitions.filter(item=>item.origin!=='task'&&item.task_purpose_relevant).length;el('metric-total').textContent=String(data.explorations.length);el('metric-todo').textContent=String(count('todo'));el('metric-running').textContent=String(count('running'));el('metric-finished').textContent=String(count('finished'));el('metric-cognitions').textContent=String(data.cognitions.length);el('metric-relevant').textContent=String(relevant);el('metric-regular').textContent=String(data.cognitions.length-taskCognitions-relevant);el('metric-task-cognitions').textContent=String(taskCognitions)}
 function graphMatches(node){const terms=el('search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);if(!terms.length)return true;const hay=[node.id,node.title,node.content,node.status,node.origin,node.task_id].filter(Boolean).join(' ').toLowerCase();return terms.every(term=>hay.includes(term))}
 function graphNodeHeight(node){const probe=document.createElement('div');probe.className='node-title';probe.style.cssText='position:fixed;visibility:hidden;pointer-events:none;left:-10000px;top:0;width:'+(node.kind==='exploration'?187:216)+'px;margin:0';probe.textContent=node.title;document.body.append(probe);const titleHeight=probe.getBoundingClientRect().height;probe.remove();return Math.max(92,Math.ceil(titleHeight+58))}
 function graphNodeCompare(a,b){return String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id)}
 const graphColumnGap=300,graphArrowGap=8;
-function knowledgeNodeSize(node,root=false){return root?184:node.kind==='exploration'?144:132}
-function knowledgeCreatedCompare(first,second){const firstTime=Date.parse(first.created_at),secondTime=Date.parse(second.created_at);return Number.isFinite(firstTime)&&Number.isFinite(secondTime)?firstTime-secondTime||graphNodeCompare(first,second):graphNodeCompare(first,second)}
-function knowledgeGraphLayout(nodes,edges){
-  const positions=new Map(),ordered=[...nodes].sort(knowledgeCreatedCompare),byNode=new Map(nodes.map(node=>[node.id,node])),adjacency=new Map(nodes.map(node=>[node.id,new Set()]));
-  if(!nodes.length){stageWidth=880;stageHeight=540;return{positions,curvePlan:new Map()}}
-  for(const edge of edges)if(byNode.has(edge.from)&&byNode.has(edge.to)&&edge.from!==edge.to){adjacency.get(edge.from).add(edge.to);adjacency.get(edge.to).add(edge.from)}
-  const root=ordered.find(node=>node.kind==='cognition'&&node.origin==='task')||ordered[0],children=new Map(nodes.map(node=>[node.id,[]])),depth=new Map([[root.id,0]]),queue=[root.id];
-  const visit=()=>{for(let index=0;index<queue.length;index++){const parent=queue[index];for(const next of [...adjacency.get(parent)].sort((first,second)=>graphNodeCompare(byNode.get(first),byNode.get(second))))if(!depth.has(next)){depth.set(next,depth.get(parent)+1);children.get(parent).push(next);queue.push(next)}}};
-  visit();for(const node of ordered)if(!depth.has(node.id)){depth.set(node.id,1);children.get(root.id).push(node.id);queue.length=0;queue.push(node.id);visit()}
-  const weights=new Map();for(const id of [...depth.keys()].reverse())weights.set(id,Math.max(1,children.get(id).reduce((total,child)=>total+weights.get(child),0)));
-  const sectors=new Map([[root.id,{start:-Math.PI/2,end:Math.PI*1.5}]]),angles=new Map([[root.id,0]]);
-  for(const id of depth.keys()){const sector=sectors.get(id),total=children.get(id).reduce((sum,child)=>sum+weights.get(child),0);let cursor=sector.start;for(const child of children.get(id)){const span=(sector.end-sector.start)*weights.get(child)/total;sectors.set(child,{start:cursor,end:cursor+span});angles.set(child,cursor+span/2);cursor+=span}}
-  const levels=new Map([[0,[root.id]]]),timeOffsets=new Map([[root.id,0]]),outerOffsets=new Map([[0,0]]);
-  let timeLevel=1,capacity=8,timeIndex=0;
-  for(const node of ordered){if(node.id===root.id)continue;if(timeIndex===capacity){timeLevel++;capacity+=4;timeIndex=0}if(!levels.has(timeLevel))levels.set(timeLevel,[]);levels.get(timeLevel).push(node.id);depth.set(node.id,timeLevel);timeOffsets.set(node.id,timeIndex*18);outerOffsets.set(timeLevel,timeIndex*18);timeIndex++}
-  const radii=new Map([[0,0]]);for(const level of [...levels.keys()].sort((first,second)=>first-second)){
-    if(!level)continue;const preferred=new Map();for(const id of levels.get(level)){const parents=[...adjacency.get(id)].filter(neighbor=>depth.get(neighbor)<level&&depth.get(neighbor)>0);let cosine=Math.cos(angles.get(id))*.35,sine=Math.sin(angles.get(id))*.35;for(const parent of parents){cosine+=Math.cos(angles.get(parent));sine+=Math.sin(angles.get(parent))}preferred.set(id,Math.atan2(sine,cosine))}
-    const wrapped=angle=>(angle+Math.PI/2+Math.PI*2)%(Math.PI*2),ids=levels.get(level).sort((first,second)=>wrapped(preferred.get(first))-wrapped(preferred.get(second))||graphNodeCompare(byNode.get(first),byNode.get(second))),step=Math.PI*2/ids.length;let cosine=0,sine=0;for(let index=0;index<ids.length;index++){const offset=preferred.get(ids[index])-index*step;cosine+=Math.cos(offset);sine+=Math.sin(offset)}const rotation=Math.atan2(sine,cosine);for(let index=0;index<ids.length;index++)angles.set(ids[index],rotation+index*step);
-    const maximumSize=Math.max(...ids.map(id=>knowledgeNodeSize(byNode.get(id)))),radius=Math.max(radii.get(level-1)+outerOffsets.get(level-1)+(level===1?320:300),ids.length>1?(maximumSize+112)/(2*Math.sin(Math.PI/ids.length)):0);radii.set(level,radius);
+const knowledgeState = {
+  palette: ['#387d86', '#7374b6', '#bc8650', '#729b63', '#b56b88', '#5889b8'],
+  branches: [],
+  parent: new Map(),
+  parentEdges: new Map(),
+  branchOf: new Map(),
+  children: new Map(),
+  subtreeSize: new Map(),
+  depth: new Map(),
+  activeBranch: null,
+  allRelations: false,
+  labelCount: 0,
+  hoveredId: null,
+  hoverAnchor: null,
+  labelPlacements: new Map(),
+  root: null,
+};
+
+function branchBuildSkeleton(nodes, edges) {
+  const ordered = [...nodes].sort(knowledgeCreatedCompare);
+  const byNode = new Map(nodes.map(node => [node.id, node]));
+  const incoming = new Map(nodes.map(node => [node.id, []]));
+  const root = ordered.find(node => node.kind === 'cognition' && node.origin === 'task') || ordered[0];
+  const parent = new Map(), parentEdges = new Map(), branchOf = new Map(), depth = new Map();
+  const children = new Map(nodes.map(node => [node.id, []]));
+  const visiting = new Set(), assigned = new Set();
+  for (const edge of edges) {
+    if (byNode.has(edge.from) && byNode.has(edge.to) && edge.from !== edge.to) incoming.get(edge.to).push(edge);
   }
-  let extentX=0,extentY=0;for(const node of nodes){const level=depth.get(node.id),size=knowledgeNodeSize(node,node.id===root.id),radius=radii.get(level)+timeOffsets.get(node.id),centerX=Math.cos(angles.get(node.id))*radius,centerY=Math.sin(angles.get(node.id))*radius;positions.set(node.id,{x:centerX-size/2,y:centerY-size/2,width:size,height:size,level,ringRadius:radii.get(level),root:node.id===root.id});extentX=Math.max(extentX,Math.abs(centerX)+size/2);extentY=Math.max(extentY,Math.abs(centerY)+size/2)}
-  knowledgeRefineRings(positions,adjacency,byNode);extentX=0;extentY=0;for(const position of positions.values()){extentX=Math.max(extentX,Math.abs(position.x+position.width/2)+position.width/2);extentY=Math.max(extentY,Math.abs(position.y+position.height/2)+position.height/2)}
-  stageWidth=Math.max(880,extentX*2+200);stageHeight=Math.max(540,extentY*2+200);for(const position of positions.values()){position.x+=stageWidth/2;position.y+=stageHeight/2}
-  return{positions,curvePlan:new Map()};
+  if (!root) return { root: null, parent, parentEdges, branchOf, depth, children, subtreeSize: new Map() };
+  assigned.add(root.id);
+  depth.set(root.id, 0);
+  branchOf.set(root.id, null);
+  const attach = node => {
+    if (assigned.has(node.id)) return;
+    visiting.add(node.id);
+    const candidates = incoming.get(node.id).filter(edge => !visiting.has(edge.from));
+    for (const edge of [...candidates].sort((first, second) => knowledgeCreatedCompare(byNode.get(first.from), byNode.get(second.from)))) {
+      attach(byNode.get(edge.from));
+    }
+    const available = candidates.filter(edge => assigned.has(edge.from));
+    const support = new Map();
+    for (const edge of available) {
+      const branch = branchOf.get(edge.from);
+      if (branch) support.set(branch, (support.get(branch) || 0) + 1);
+    }
+    const semantic = edge => node.kind === 'cognition'
+      ? edge.kind === 'output' || edge.kind === 'extends' ? 10000 : 0
+      : edge.kind === 'retry' ? 10000 : edge.from === root.id ? 9000 : edge.kind === 'source' ? 1000 : 0;
+    const score = edge => semantic(edge) + (support.get(branchOf.get(edge.from)) || 0) * 100 + (depth.get(edge.from) || 0) * 4;
+    available.sort((first, second) => score(second) - score(first)
+      || knowledgeCreatedCompare(byNode.get(second.from), byNode.get(first.from))
+      || first.kind.localeCompare(second.kind));
+    const chosen = available[0];
+    const parentID = chosen?.from || root.id;
+    parent.set(node.id, parentID);
+    if (chosen) parentEdges.set(node.id, chosen);
+    children.get(parentID).push(node.id);
+    depth.set(node.id, depth.get(parentID) + 1);
+    branchOf.set(node.id, parentID === root.id ? node.id : branchOf.get(parentID));
+    visiting.delete(node.id);
+    assigned.add(node.id);
+  };
+  for (const node of ordered) attach(node);
+  for (const ids of children.values()) ids.sort((first, second) => knowledgeCreatedCompare(byNode.get(first), byNode.get(second)));
+  const subtreeSize = new Map();
+  const measure = id => {
+    const size = 1 + children.get(id).reduce((sum, child) => sum + measure(child), 0);
+    subtreeSize.set(id, size);
+    return size;
+  };
+  measure(root.id);
+  return { root: root.id, parent, parentEdges, branchOf, depth, children, subtreeSize };
 }
-function knowledgeRefineRings(positions,adjacency,nodes){
-  const levels=new Map(),center=position=>({x:position.x+position.width/2,y:position.y+position.height/2});for(const [id,position]of positions)if(position.level){if(!levels.has(position.level))levels.set(position.level,[]);levels.get(position.level).push(id)}for(const ids of levels.values())ids.sort((first,second)=>graphNodeCompare(nodes.get(first),nodes.get(second)));
-  const onAngle=(point,target)=>{const radius=Math.hypot(point.x,point.y),angle=Math.atan2(target.y,target.x);return{x:Math.cos(angle)*radius,y:Math.sin(angle)*radius}};
-  const cost=(id,point,excluded)=>{let total=0;for(const neighbor of [...adjacency.get(id)].sort()){if(neighbor===excluded)continue;const other=center(positions.get(neighbor));total+=(point.x-other.x)**2+(point.y-other.y)**2}return total};
-  for(let pass=0;pass<5;pass++){let changed=false;const rings=[...levels].sort((first,second)=>pass%2?first[0]-second[0]:second[0]-first[0]);for(const [,ids]of rings)for(let first=0;first<ids.length;first++)for(let second=first+1;second<ids.length;second++){const firstId=ids[first],secondId=ids[second],firstPosition=positions.get(firstId),secondPosition=positions.get(secondId),firstCenter=center(firstPosition),secondCenter=center(secondPosition),nextFirst=onAngle(firstCenter,secondCenter),nextSecond=onAngle(secondCenter,firstCenter),before=cost(firstId,firstCenter,secondId)+cost(secondId,secondCenter,firstId),after=cost(firstId,nextFirst,secondId)+cost(secondId,nextSecond,firstId);if(after+1>=before)continue;firstPosition.x=nextFirst.x-firstPosition.width/2;firstPosition.y=nextFirst.y-firstPosition.height/2;secondPosition.x=nextSecond.x-secondPosition.width/2;secondPosition.y=nextSecond.y-secondPosition.height/2;changed=true}if(!changed)break}
+
+function branchPackTree(id, children, crossSize, separation, spacing = new Map()) {
+  const descendants = children.get(id) || [];
+  const local = spacing.get(id) || { across: 0, along: 0 };
+  const halfWidth = (crossSize + local.across) / 2;
+  if (!descendants.length) return { points: [{ id, depth: 0, cross: 0, extra: 0 }], left: [-halfWidth], right: [halfWidth] };
+  const packed = [], left = [], right = [];
+  for (const child of descendants) {
+    const subtree = branchPackTree(child, children, crossSize, separation, spacing);
+    let shift = 0;
+    if (packed.length) {
+      for (let level = 0; level < subtree.left.length; level++) {
+        if (right[level] !== undefined) shift = Math.max(shift, right[level] + separation - subtree.left[level]);
+      }
+    }
+    packed.push({ subtree, shift });
+    for (let level = 0; level < subtree.left.length; level++) {
+      left[level] = Math.min(left[level] ?? Infinity, subtree.left[level] + shift);
+      right[level] = Math.max(right[level] ?? -Infinity, subtree.right[level] + shift);
+    }
+  }
+  const middle = (packed[0].shift + packed.at(-1).shift) / 2;
+  return {
+    points: [{ id, depth: 0, cross: 0, extra: 0 }, ...packed.flatMap(({ subtree, shift }) => subtree.points.map(point => ({ ...point, depth: point.depth + 1, cross: point.cross + shift - middle, extra: point.extra + local.along })))],
+    left: [-halfWidth, ...left.map(value => value - middle)],
+    right: [halfWidth, ...right.map(value => value - middle)],
+  };
 }
+
+function branchAllocateSectors(weights) {
+  if (weights.length === 1) return [Math.PI * 1.65];
+  if (weights.length === 2) return [Math.PI * .88, Math.PI * .88];
+  const gap = Math.min(.22, Math.PI / weights.length * .22);
+  const available = Math.PI * 2 - weights.length * gap;
+  const minimum = Math.min(.7, available / weights.length * .65);
+  const maximum = Math.PI * .92;
+  const result = new Array(weights.length).fill(minimum);
+  let remaining = available - minimum * weights.length;
+  let active = weights.map((weight, index) => index);
+  while (remaining > .00001 && active.length) {
+    const total = active.reduce((sum, index) => sum + weights[index], 0);
+    const capped = active.filter(index => result[index] + remaining * weights[index] / total > maximum);
+    if (!capped.length) {
+      for (const index of active) result[index] += remaining * weights[index] / total;
+      break;
+    }
+    for (const index of capped) { remaining -= maximum - result[index]; result[index] = maximum; }
+    active = active.filter(index => !capped.includes(index));
+  }
+  return result;
+}
+
+function branchHull(points) {
+  const sorted = [...points].sort((first, second) => first.x - second.x || first.y - second.y);
+  const turn = (first, second, third) => (second.x - first.x) * (third.y - first.y) - (second.y - first.y) * (third.x - first.x);
+  const lower = [], upper = [];
+  for (const point of sorted) { while (lower.length > 1 && turn(lower.at(-2), lower.at(-1), point) <= 0) lower.pop(); lower.push(point); }
+  for (const point of [...sorted].reverse()) { while (upper.length > 1 && turn(upper.at(-2), upper.at(-1), point) <= 0) upper.pop(); upper.push(point); }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+function branchCubicPoint(curve, ratio) {
+  const inverse = 1 - ratio;
+  return {
+    x: inverse ** 3 * curve.start.x + 3 * inverse ** 2 * ratio * curve.first.x + 3 * inverse * ratio ** 2 * curve.second.x + ratio ** 3 * curve.end.x,
+    y: inverse ** 3 * curve.start.y + 3 * inverse ** 2 * ratio * curve.first.y + 3 * inverse * ratio ** 2 * curve.second.y + ratio ** 3 * curve.end.y,
+  };
+}
+
+function branchSampleCubic(curve) {
+  const distance = (first, second) => Math.hypot(first.x - second.x, first.y - second.y);
+  const perimeter = distance(curve.start, curve.first) + distance(curve.first, curve.second) + distance(curve.second, curve.end);
+  const count = Math.min(768, Math.max(12, Math.ceil(perimeter / 5)));
+  return Array.from({ length: count + 1 }, (_, index) => branchCubicPoint(curve, index / count));
+}
+
+function branchRepairRoute(input, grid, edge) {
+  const points = input.map(point => ({ ...point }));
+  const source = grid.byId.get(edge.from), target = grid.byId.get(edge.to);
+  let repairs = 0;
+  for (let pass = 0; pass < 8; pass++) {
+    let unsafe = -1;
+    for (let index = 1; index < points.length; index++) {
+      if (!Number.isFinite(knowledgeRouteScore(points[index - 1], points[index], grid, edge))) { unsafe = index; break; }
+    }
+    if (unsafe < 0) break;
+    const start = { ...points[unsafe - 1], index: source?.index || 0 }, end = { ...points[unsafe], index: target?.index || 0 };
+    const routed = knowledgeGridPath(start, end, grid);
+    if (!routed || routed.length < 3) break;
+    const detour = knowledgeSimplifyPath(routed, grid, edge);
+    if (detour.length < 3) break;
+    points.splice(unsafe, 0, ...detour.slice(1, -1).map(point => ({ x: point.x, y: point.y })));
+    repairs++;
+  }
+  return { points, repairs };
+}
+
+function branchCurveClear(curve, obstacles, padding = 12) {
+  const left = Math.min(curve.start.x, curve.first.x, curve.second.x, curve.end.x);
+  const right = Math.max(curve.start.x, curve.first.x, curve.second.x, curve.end.x);
+  const top = Math.min(curve.start.y, curve.first.y, curve.second.y, curve.end.y);
+  const bottom = Math.max(curve.start.y, curve.first.y, curve.second.y, curve.end.y);
+  return obstacles.every(obstacle => {
+    const clearance = obstacle.radius + padding;
+    if (obstacle.x + clearance < left || obstacle.x - clearance > right || obstacle.y + clearance < top || obstacle.y - clearance > bottom) return true;
+    for (let index = 1; index < curve.samples.length; index++) {
+      if (knowledgeSegmentDistance(obstacle, curve.samples[index - 1], curve.samples[index]) < clearance) return false;
+    }
+    return true;
+  });
+}
+
+function branchDirectCurve(grid, edge, input) {
+  const source = grid.byId.get(edge.from), target = grid.byId.get(edge.to);
+  if (!source || !target) return null;
+  const deltaX = target.x - source.x, deltaY = target.y - source.y, distance = Math.hypot(deltaX, deltaY);
+  if (distance < 1) return null;
+  const obstacles = grid.obstacles.filter(obstacle => obstacle.id !== edge.from && obstacle.id !== edge.to);
+  const direction = { x: -deltaY / distance, y: deltaX / distance };
+  const deviation = input.slice(1, -1).reduce((sum, point) => sum + (point.x - source.x) * direction.x + (point.y - source.y) * direction.y, 0);
+  const sign = deviation < 0 ? -1 : 1;
+  const gentle = Math.min(64, distance * .065) * sign;
+  const bends = [gentle, -gentle, 0, ...[.14, .26, .42, .64].flatMap(fraction => [distance * fraction * sign, -distance * fraction * sign])];
+  const round = point => ({ x: graphPathNumber(point.x), y: graphPathNumber(point.y) });
+  const format = point => point.x + ' ' + point.y;
+  for (const bend of bends) {
+    const first = round({ x: source.x + deltaX / 3 + direction.x * bend, y: source.y + deltaY / 3 + direction.y * bend });
+    const second = round({ x: source.x + deltaX * 2 / 3 + direction.x * bend, y: source.y + deltaY * 2 / 3 + direction.y * bend });
+    const start = round(knowledgeNodeBoundary({ ...source.position, id: source.id }, first));
+    const end = round(knowledgeNodeBoundary({ ...target.position, id: target.id }, second, graphArrowGap));
+    const curve = { start, first, second, end };
+    curve.samples = branchSampleCubic(curve);
+    if (curve.samples.some(point => point.x < 12 || point.y < 12 || point.x > stageWidth - 12 || point.y > stageHeight - 12)) continue;
+    if (!branchCurveClear(curve, obstacles)) continue;
+    return { path: 'M ' + format(start) + ' C ' + format(first) + ' ' + format(second) + ' ' + format(end), samples: curve.samples, curves: [curve], smoothKind: 'cubic', smoothingPasses: 0, pathRepairs: 0, compactKind: 'single-cubic' };
+  }
+  return null;
+}
+
+function branchCompactRoute(points, grid, edge) {
+  const obstacles = grid.obstacles.filter(obstacle => obstacle.id !== edge.from && obstacle.id !== edge.to);
+  const result = [points[0]];
+  let current = 0;
+  while (current < points.length - 1) {
+    let limit = points.length - 1, next = current + 1;
+    for (let index = current + 1; index < points.length; index++) {
+      if (points[index].anchor) { limit = index; break; }
+    }
+    for (let candidate = limit; candidate > next; candidate--) {
+      if (obstacles.every(obstacle => knowledgeSegmentDistance(obstacle, points[current], points[candidate]) >= obstacle.radius + 12)) { next = candidate; break; }
+    }
+    result.push(points[next]);
+    current = next;
+  }
+  return result;
+}
+
+function branchClearHover() {
+  if (!knowledgeState.hoveredId) return;
+  knowledgeState.hoveredId = null;
+  knowledgeState.hoverAnchor = null;
+  const focused = document.activeElement?.closest?.('.node');
+  previewKnowledgeNode(focused?.dataset.id || null);
+}
+
+function branchPointerMove(event) {
+  if (graphView !== 'knowledge') return;
+  if (event.buttons || event.pointerType === 'touch') { branchClearHover(); return; }
+  const viewport = el('viewport').getBoundingClientRect();
+  const point = { x: event.clientX - viewport.left, y: event.clientY - viewport.top };
+  const localRect = element => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x - viewport.left, y: rect.y - viewport.top, width: rect.width, height: rect.height };
+  };
+  const hovered = nodeElements.get(knowledgeState.hoveredId);
+  if (hovered) {
+    const label = hovered.querySelector('.knowledge-label');
+    const regions = [knowledgeState.hoverAnchor, localRect(hovered.querySelector('.node-shape'))];
+    if (label.getAttribute('visibility') === 'visible') regions.push(localRect(label.querySelector('.knowledge-label-copy')));
+    if (regions.some(rect => rect && point.x >= rect.x - 4 && point.x <= rect.x + rect.width + 4 && point.y >= rect.y - 4 && point.y <= rect.y + rect.height + 4)) return;
+  }
+  const item = event.target.closest?.('.node');
+  const id = item?.dataset.id || null;
+  if (id === knowledgeState.hoveredId) return;
+  knowledgeState.hoveredId = id;
+  const label = item?.querySelector('.knowledge-label');
+  knowledgeState.hoverAnchor = label?.getAttribute('visibility') === 'visible' ? localRect(label.querySelector('.knowledge-label-copy')) : null;
+  const focused = document.activeElement?.closest?.('.node');
+  previewKnowledgeNode(id || focused?.dataset.id || null);
+}
+
+function branchLabelCandidates(center, size, bounds) {
+  const directions = [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1], [2, 1], [-2, 1], [2, -1], [-2, -1], [1, 2], [-1, 2], [1, -2], [-1, -2]];
+  return [8, 20, 34].flatMap(gap => directions.map(([horizontal, vertical]) => {
+    const length = Math.hypot(horizontal, vertical);
+    const offsetX = center.radius * horizontal / length + gap * horizontal;
+    const offsetY = center.radius * vertical / length + gap * vertical;
+    const rect = {
+      x: center.x + offsetX - (horizontal < 0 ? size.width : horizontal === 0 ? size.width / 2 : 0),
+      y: center.y + offsetY - (vertical < 0 ? size.height : vertical === 0 ? size.height / 2 : 0),
+      width: size.width,
+      height: size.height,
+    };
+    return { ...rect, inside: rect.x >= bounds.left && rect.x + size.width <= bounds.right && rect.y >= bounds.top && rect.y + size.height <= bounds.bottom };
+  }));
+}
+
+function branchRectsOverlap(first, second, gap = 5) {
+  return first.x < second.x + second.width + gap && first.x + first.width + gap > second.x && first.y < second.y + second.height + gap && first.y + first.height + gap > second.y;
+}
+
+function branchUpdateBackground() {
+  if (graphView !== 'knowledge') return;
+  const viewport = el('viewport');
+  const interval = 32;
+  viewport.style.setProperty('--branch-grid-x', ((panX % interval) + interval) % interval + 'px');
+  viewport.style.setProperty('--branch-grid-y', ((panY % interval) + interval) % interval + 'px');
+}
+
+function branchFitPositions(ids, local = false) {
+  const values = ids.map(id => nodePositions.get(id)).filter(Boolean);
+  if (!values.length) return;
+  const left = Math.min(...values.map(position => position.x)) - 70;
+  const top = Math.min(...values.map(position => position.y)) - 45;
+  const right = Math.max(...values.map(position => position.x + position.width)) + 70;
+  const bottom = Math.max(...values.map(position => position.y + position.height)) + 100;
+  const viewport = el('viewport');
+  const usableWidth = Math.max(80, viewport.clientWidth - 80), usableHeight = Math.max(80, viewport.clientHeight - 82 - (el('branch-dock')?.offsetHeight || 110) - 36);
+  scale = Math.max(.01, Math.min(local ? 1.2 : .95, usableWidth / (right - left), usableHeight / (bottom - top)));
+  panX = viewport.clientWidth / 2 - (left + right) / 2 * scale;
+  panY = 82 + usableHeight / 2 - (top + bottom) / 2 * scale;
+  transform();
+}
+
+function branchApplyFocus() {
+  const active = knowledgeState.activeBranch;
+  for (const [id, item] of nodeElements) item.classList.toggle('branch-inactive', graphView === 'knowledge' && !!active && knowledgeState.branchOf.get(id) !== active);
+  for (const item of edgeElements) item.path.classList.toggle('branch-inactive', graphView === 'knowledge' && !!active && knowledgeState.branchOf.get(item.edge.from) !== active && knowledgeState.branchOf.get(item.edge.to) !== active);
+  for (const canopy of el('edges').querySelectorAll('.branch-canopy')) canopy.classList.toggle('branch-inactive', !!active && canopy.dataset.branch !== active);
+  for (const button of document.querySelectorAll('.branch-chip')) button.setAttribute('aria-pressed', String(button.dataset.branch === (active || '')));
+  scheduleKnowledgeLabels();
+}
+
+function branchFocus(id) {
+  clearSelection();
+  knowledgeState.activeBranch = id;
+  branchApplyFocus();
+  fitGraph();
+}
+
+function branchUpdateStatus() {
+  const status = el('branch-status');
+  if (!status) return;
+  const branch = knowledgeState.branches.find(item => item.id === knowledgeState.activeBranch);
+  status.textContent = t(branch ? 'branchStatus' : 'graphStatus', { nodes: branch ? branch.count : nodePositions.size, labels: knowledgeState.labelCount });
+}
+
+function branchRenderNavigation() {
+  const navigation = el('branch-navigation');
+  if (!navigation) return;
+  navigation.replaceChildren();
+  const add = (label, id, color, count) => {
+    const button = document.createElement('button');
+    button.className = 'branch-chip';
+    button.type = 'button';
+    button.dataset.branch = id || '';
+    button.setAttribute('aria-pressed', String(knowledgeState.activeBranch === id));
+    button.title = label + ' · ' + (id ? t('branchNodeCount', { count }) : t('showEntireGraph'));
+    button.style.setProperty('--branch-color', color);
+    const name = document.createElement('span'); name.textContent = label;
+    button.append(name);
+    if (count) { const total = document.createElement('b'); total.textContent = count; button.append(total); }
+    button.addEventListener('click', event => { event.stopPropagation(); branchFocus(id); });
+    navigation.append(button);
+  };
+  add(t('allDirections'), null, '#52677f', nodePositions.size);
+  for (const branch of knowledgeState.branches) add(branch.title, branch.id, branch.color, branch.count);
+}
+
+function branchUpdateDock() {
+  const dock = el('branch-dock');
+  if (dock) el('graph-shell').style.setProperty('--branch-dock-height', dock.offsetHeight + 'px');
+}
+
+function knowledgeNodeSize(node, root = false) { return root ? 150 : node.kind === 'exploration' ? 84 : 72; }
+function knowledgeCreatedCompare(first,second){const firstTime=Date.parse(first.created_at),secondTime=Date.parse(second.created_at);return Number.isFinite(firstTime)&&Number.isFinite(secondTime)?firstTime-secondTime||graphNodeCompare(first,second):graphNodeCompare(first,second)}
+function knowledgeGraphLayout(nodes, edges) {
+  const positions = new Map();
+  const skeleton = branchBuildSkeleton(nodes, edges);
+  Object.assign(knowledgeState, skeleton);
+  knowledgeState.branches = [];
+  if (!skeleton.root) { stageWidth = 880; stageHeight = 600; return { positions, curvePlan: new Map() }; }
+  const byNode = new Map(nodes.map(node => [node.id, node]));
+  const crossDegree = new Map(nodes.map(node => [node.id, 0]));
+  for (const edge of edges) {
+    if (!byNode.has(edge.from) || !byNode.has(edge.to) || skeleton.parentEdges.get(edge.to) === edge) continue;
+    for (const id of [edge.from, edge.to]) crossDegree.set(id, crossDegree.get(id) + 1);
+  }
+  const spacing = new Map(nodes.map(node => {
+    const junction = Math.max(0, skeleton.children.get(node.id).length - 1), pressure = Math.max(0, crossDegree.get(node.id) - 2);
+    return [node.id, { across: Math.min(48, pressure * 5 + junction * 9), along: Math.min(38, pressure * 4 + junction * 6) }];
+  }));
+  knowledgeState.spacing = spacing;
+  const branchIDs = skeleton.children.get(skeleton.root);
+  const preliminary = branchIDs.map(id => branchPackTree(id, skeleton.children, 122, 24));
+  const weights = preliminary.map(tree => Math.sqrt(Math.max(...tree.right.map((right, index) => right - tree.left[index])) / 122));
+  const sectors = branchAllocateSectors(weights);
+  const gap = branchIDs.length > 2 ? (Math.PI * 2 - sectors.reduce((sum, sector) => sum + sector, 0)) / branchIDs.length : Math.PI * .12;
+  const largest = weights.indexOf(Math.max(...weights));
+  let cursor = 0;
+  const angles = sectors.map(sector => { const center = cursor + sector / 2; cursor += sector + gap; return center; });
+  const rotation = -.12 - (angles[largest] || 0);
+  const rootNode = byNode.get(skeleton.root), rootSize = knowledgeNodeSize(rootNode, true);
+  positions.set(skeleton.root, { x: -rootSize / 2, y: -rootSize / 2, width: rootSize, height: rootSize, level: 0, root: true });
+  for (let index = 0; index < branchIDs.length; index++) {
+    const id = branchIDs[index], angle = angles[index] + rotation;
+    const cosine = Math.cos(angle), sine = Math.sin(angle);
+    const crossSize = Math.abs(sine) * 180 + Math.abs(cosine) * 126;
+    const advance = Math.abs(cosine) * 180 + Math.abs(sine) * 126 + 46;
+    const tree = branchPackTree(id, skeleton.children, crossSize, 24, spacing);
+    let offset = 195;
+    if (branchIDs.length > 1) {
+      const tangent = Math.tan(Math.min(sectors[index], Math.PI * .92) / 2);
+      for (const point of tree.points) offset = Math.max(offset, (Math.abs(point.cross) + 110) / tangent - point.depth * advance - point.extra + 110);
+    }
+    const branch = { id, title: byNode.get(id).title, color: knowledgeState.palette[index % knowledgeState.palette.length], count: tree.points.length, angle, sector: sectors[index], index, ids: tree.points.map(point => point.id) };
+    knowledgeState.branches.push(branch);
+    for (const point of tree.points) {
+      const node = byNode.get(point.id), size = knowledgeNodeSize(node);
+      const along = offset + point.depth * advance + point.extra;
+      const centerX = along * cosine - point.cross * sine, centerY = along * sine + point.cross * cosine;
+      positions.set(node.id, { x: centerX - size / 2, y: centerY - size / 2, width: size, height: size, level: skeleton.depth.get(node.id), root: false, branch: id });
+    }
+  }
+  const boxes = [...positions.values()];
+  const left = Math.min(...boxes.map(position => position.x - 94));
+  const top = Math.min(...boxes.map(position => position.y - 36));
+  const right = Math.max(...boxes.map(position => position.x + position.width + 94));
+  const bottom = Math.max(...boxes.map(position => position.y + position.height + 96));
+  stageWidth = Math.max(640, right - left + 120);
+  stageHeight = Math.max(520, bottom - top + 120);
+  for (const position of positions.values()) { position.x += 60 - left; position.y += 60 - top; }
+  return { positions, curvePlan: new Map() };
+}
+
 function knowledgeHexagon(position,inset=0){const radius=position.width/2-inset;return Array.from({length:6},(_,index)=>({x:position.width/2+Math.cos(index*Math.PI/3)*radius,y:position.height/2+Math.sin(index*Math.PI/3)*radius}))}
 function knowledgeNodeShape(node,position,inset,className){return node.kind==='cognition'?svgElement('circle',{class:className,cx:position.width/2,cy:position.height/2,r:position.width/2-inset}):svgElement('polygon',{class:className,points:knowledgeHexagon(position,inset).map(point=>point.x+','+point.y).join(' ')})}
 function knowledgeNodeBoundary(position,toward,gap=0){
@@ -219,23 +645,72 @@ function knowledgeSimplifyPath(points,grid,edge){
   while(current<points.length-1){let next=current+1,limit=points.length-1;for(let index=current+1;index<points.length;index++)if(points[index].anchor){limit=index;break}for(let candidate=limit;candidate>next;candidate--){const score=knowledgeRouteScore(points[current],points[candidate],grid,edge);if(Number.isFinite(score)&&score<=(costs[candidate]-costs[current])*1.08){next=candidate;break}}simplified.push(points[next]);current=next}
   return simplified;
 }
-function knowledgeRoundedPath(points,grid,edge){
-  points=[...points];for(let index=1;index<points.length-2;index++){const first=points[index],second=points[index+1];if(first.anchor||second.anchor||Math.hypot(second.x-first.x,second.y-first.y)>grid.step*2)continue;const previous=points[index-1],next=points[index+2],middle={x:(first.x+second.x)/2,y:(first.y+second.y)/2},before=knowledgeRouteScore(previous,first,grid,edge)+knowledgeRouteScore(first,second,grid,edge)+knowledgeRouteScore(second,next,grid,edge),after=knowledgeRouteScore(previous,middle,grid,edge)+knowledgeRouteScore(middle,next,grid,edge);if(Number.isFinite(after)&&after<=before*1.25){points.splice(index,2,middle);index=Math.max(0,index-1)}}
-  const point=value=>graphPathNumber(value.x)+' '+graphPathNumber(value.y),samples=[points[0]];let path='M '+point(points[0]);
-  for(let index=1;index<points.length-1;index++){
-    const previous=points[index-1],corner=points[index],next=points[index+1],incoming=Math.hypot(corner.x-previous.x,corner.y-previous.y),outgoing=Math.hypot(next.x-corner.x,next.y-corner.y);if(incoming<.001||outgoing<.001)continue;
-    const obstacles=grid.obstacles.filter(obstacle=>obstacle.id!==edge.from&&obstacle.id!==edge.to).map(obstacle=>({obstacle,clearance:Math.min(obstacle.radius+16,Math.max(obstacle.radius+8,Math.min(knowledgeSegmentDistance(obstacle,previous,corner),knowledgeSegmentDistance(obstacle,corner,next))-.5))}));let fraction=.35,start,end,curve;
-    for(let attempt=0;attempt<20;attempt++){
-      start={x:corner.x+(previous.x-corner.x)*fraction,y:corner.y+(previous.y-corner.y)*fraction};end={x:corner.x+(next.x-corner.x)*fraction,y:corner.y+(next.y-corner.y)*fraction};
-      const count=Math.max(8,Math.ceil((incoming+outgoing)*fraction/6));curve=Array.from({length:count+1},(_,step)=>{const ratio=step/count,inverse=1-ratio;return{x:inverse*inverse*start.x+2*inverse*ratio*corner.x+ratio*ratio*end.x,y:inverse*inverse*start.y+2*inverse*ratio*corner.y+ratio*ratio*end.y}});
-      const clear=obstacles.every(({obstacle,clearance})=>curve.slice(1).every((sample,step)=>knowledgeSegmentDistance(obstacle,curve[step],sample)>=clearance));if(clear)break;fraction*=.6;
-    }
-    path+=' L '+point(start)+' Q '+point(corner)+' '+point(end);samples.push(...curve);
+function knowledgeRoundedPath(input, grid, edge) {
+  const cross = knowledgeState.parentEdges.get(edge.to) !== edge;
+  const pairKey = JSON.stringify([edge.from, edge.to].sort());
+  const simple = cross && edge.from !== edge.to && (knowledgeState.routePairs?.get(pairKey) || 1) === 1;
+  if (simple && input.length > 2) {
+    const direct = branchDirectCurve(grid, edge, input);
+    if (direct) return direct;
   }
-  path+=' L '+point(points.at(-1));samples.push(points.at(-1));return{path,samples};
+  const round = point => ({ x: graphPathNumber(point.x), y: graphPathNumber(point.y) });
+  const repaired = branchRepairRoute(input, grid, edge);
+  const compact = simple ? branchCompactRoute(repaired.points, grid, edge) : repaired.points;
+  const points = compact.map(round).filter((point, index, values) => !index || Math.hypot(point.x - values[index - 1].x, point.y - values[index - 1].y) > .01);
+  const format = point => point.x + ' ' + point.y;
+  if (points.length < 3) return { path: 'M ' + points.map(format).join(' L '), samples: points, curves: [], smoothKind: 'straight', smoothingPasses: 0, pathRepairs: repaired.repairs };
+  const handles = points.map((point, index) => {
+    const previous = points[Math.max(0, index - 1)], next = points[Math.min(points.length - 1, index + 1)];
+    const incoming = Math.hypot(point.x - previous.x, point.y - previous.y), outgoing = Math.hypot(next.x - point.x, next.y - point.y);
+    const direction = { x: next.x - previous.x, y: next.y - previous.y };
+    const length = Math.hypot(direction.x, direction.y) || 1;
+    const reach = (index === 0 ? outgoing : index === points.length - 1 ? incoming : Math.min(incoming, outgoing)) * .34;
+    return { x: direction.x / length * reach, y: direction.y / length * reach };
+  });
+  const obstacles = grid.obstacles.filter(obstacle => obstacle.id !== edge.from && obstacle.id !== edge.to).map(obstacle => {
+    let originalClearance = Infinity;
+    for (let index = 1; index < points.length; index++) originalClearance = Math.min(originalClearance, knowledgeSegmentDistance(obstacle, points[index - 1], points[index]));
+    return { ...obstacle, clearance: Math.max(obstacle.radius + 3, Math.min(obstacle.radius + 12, originalClearance - .5)) };
+  });
+  const makeCurves = () => points.slice(1).map((end, index) => {
+    const start = points[index], firstHandle = round(handles[index]), secondHandle = round(handles[index + 1]);
+    const curve = { start, first: round({ x: start.x + firstHandle.x, y: start.y + firstHandle.y }), second: round({ x: end.x - secondHandle.x, y: end.y - secondHandle.y }), end };
+    return { ...curve, samples: branchSampleCubic(curve) };
+  });
+  const blocked = curve => {
+    const left = Math.min(curve.start.x, curve.first.x, curve.second.x, curve.end.x);
+    const right = Math.max(curve.start.x, curve.first.x, curve.second.x, curve.end.x);
+    const top = Math.min(curve.start.y, curve.first.y, curve.second.y, curve.end.y);
+    const bottom = Math.max(curve.start.y, curve.first.y, curve.second.y, curve.end.y);
+    return obstacles.some(obstacle => {
+      if (obstacle.x + obstacle.clearance < left || obstacle.x - obstacle.clearance > right || obstacle.y + obstacle.clearance < top || obstacle.y - obstacle.clearance > bottom) return false;
+      for (let index = 1; index < curve.samples.length; index++) {
+        if (knowledgeSegmentDistance(obstacle, curve.samples[index - 1], curve.samples[index]) < obstacle.clearance) return true;
+      }
+      return false;
+    });
+  };
+  let curves = [], smoothingPasses = 0;
+  for (let pass = 0; pass < 18; pass++) {
+    curves = makeCurves();
+    const conflicts = curves.map((curve, index) => blocked(curve) ? index : -1).filter(index => index >= 0);
+    if (!conflicts.length) break;
+    const adjusted = new Set(conflicts.flatMap(index => [index, index + 1]));
+    for (const index of adjusted) { handles[index].x *= .55; handles[index].y *= .55; }
+    smoothingPasses++;
+  }
+  curves = makeCurves();
+  const path = 'M ' + format(points[0]) + curves.map(curve => ' C ' + format(curve.first) + ' ' + format(curve.second) + ' ' + format(curve.end)).join('');
+  return { path, samples: [points[0], ...curves.flatMap(curve => curve.samples.slice(1))], curves, smoothKind: 'cubic', smoothingPasses, pathRepairs: repaired.repairs };
 }
 function knowledgeReserveRoute(route,grid){const occupied=new Map();for(let index=1;index<route.samples.length;index++){const start=route.samples[index-1],end=route.samples[index],count=Math.max(1,Math.ceil(Math.hypot(end.x-start.x,end.y-start.y)/(grid.step*.4))),direction=(Math.round(Math.atan2(end.y-start.y,end.x-start.x)/(Math.PI/4))+8)%8;for(let step=0;step<=count;step++){const ratio=step/count,cell=knowledgeGridIndex({x:start.x+(end.x-start.x)*ratio,y:start.y+(end.y-start.y)*ratio},grid);occupied.set(cell,(occupied.get(cell)||0)|(1<<direction))}}for(const [index,mask]of occupied){grid.traffic[index]++;grid.headings[index]|=mask}}
 function knowledgeGraphRoutes(edges,positions){
+knowledgeState.routePairs = new Map();
+for (const edge of edges) {
+    const key = JSON.stringify([edge.from, edge.to].sort());
+    knowledgeState.routePairs.set(key, (knowledgeState.routePairs.get(key) || 0) + 1);
+  }
+
   const grid=knowledgeRoutingGrid(positions),valid=edges.filter(edge=>positions.has(edge.from)&&positions.has(edge.to)),routes=[],pairs=new Map(),pairKey=edge=>JSON.stringify([edge.from,edge.to].sort()),length=edge=>{const from=grid.byId.get(edge.from),to=grid.byId.get(edge.to);return Math.hypot(to.x-from.x,to.y-from.y)};for(const edge of valid){const key=pairKey(edge);if(!pairs.has(key))pairs.set(key,{count:0,index:0});pairs.get(key).count++}valid.sort((first,second)=>length(first)-length(second)||first.from.localeCompare(second.from)||first.to.localeCompare(second.to)||first.kind.localeCompare(second.kind));
   for(const edge of valid){const from=grid.byId.get(edge.from),to=grid.byId.get(edge.to);let points;
     if(edge.from===edge.to){const radius=(from.radius+70+routes.filter(route=>route.edge.from===edge.from&&route.edge.to===edge.to).length*28)*.8;let best=Infinity;for(let direction=0;direction<16;direction++){const angle=direction*Math.PI/8,candidate=[[0,0],[radius,-radius],[radius*1.4,0],[radius,radius],[0,0]].map(([deltaX,deltaY])=>({x:from.x+deltaX*Math.cos(angle)-deltaY*Math.sin(angle),y:from.y+deltaX*Math.sin(angle)+deltaY*Math.cos(angle)}));let score=0;for(let index=1;index<candidate.length;index++)score+=knowledgeRouteScore(candidate[index-1],candidate[index],grid,edge);if(!points||score<best){points=candidate;best=score}}}
@@ -244,7 +719,8 @@ function knowledgeGraphRoutes(edges,positions){
     if(edge.from!==edge.to)points=knowledgeSimplifyPath(points,grid,edge);while(points.length>2&&Math.hypot(points[1].x-from.x,points[1].y-from.y)<from.radius+8)points.splice(1,1);while(points.length>2&&Math.hypot(points.at(-2).x-to.x,points.at(-2).y-to.y)<to.radius+8)points.splice(points.length-2,1);
     const source={...from.position,id:from.id},target={...to.position,id:to.id};points[0]=knowledgeNodeBoundary(source,points[1]);points[points.length-1]=knowledgeNodeBoundary(target,points.at(-2),graphArrowGap);const route={edge,plan:{kind:'knowledge'},...knowledgeRoundedPath(points,grid,edge)};routes.push(route);knowledgeReserveRoute(route,grid);
   }
-  return routes;
+  knowledgeState.routes = routes;
+return routes;
 }
 function updateGraphViewControl(){const knowledge=graphView==='knowledge',label=t(knowledge?'switchToPlane':'switchToKnowledge'),button=el('graph-view-toggle');button.title=label;button.setAttribute('aria-label',label);button.setAttribute('aria-pressed',String(knowledge));el('graph-shell').dataset.graphView=graphView}
 function toggleGraphView(){graphViewStates.set(graphView,{scale,panX,panY});graphView=graphView==='plane'?'knowledge':'plane';renderGraph({fit:false,preserveSelection:true});const previous=graphViewStates.get(graphView);if(previous){scale=previous.scale;panX=previous.panX;panY=previous.panY;transform()}else fitGraph()}
@@ -280,17 +756,30 @@ const graphIconPaths={
   finished:['M22 11.1V12a10 10 0 1 1-5.9-9.1','m9 11 3 3L22 4']
 };
 function createGraphIcon(variant){const icon=svgElement('svg',{class:'node-icon',viewBox:'0 0 24 24','aria-hidden':'true'}),glyph=svgElement('g',{class:'node-icon-glyph'});for(const value of graphIconPaths[variant]||[])glyph.append(svgElement('path',{d:value}));icon.append(glyph);return icon}
-function knowledgeGraphGuides(positions){const guides=svgElement('g',{class:'knowledge-guides','aria-hidden':'true'}),root=[...positions.values()].find(position=>position.root);if(!root)return guides;const center={x:root.x+root.width/2,y:root.y+root.height/2},radii=new Map();for(const position of positions.values())if(position.level&&!radii.has(position.level))radii.set(position.level,position.ringRadius??Math.hypot(position.x+position.width/2-center.x,position.y+position.height/2-center.y));guides.append(svgElement('circle',{class:'knowledge-center-glow',cx:center.x,cy:center.y,r:240,fill:'url(#knowledge-center-glow)'}));let previous=0;for(const [,radius]of [...radii].sort((first,second)=>first[0]-second[0])){guides.append(svgElement('circle',{class:'knowledge-orbit',cx:center.x,cy:center.y,r:(previous+radius)/2}));previous=radius}return guides}
-function knowledgeGraphDefinitions(defs){const glow=svgElement('radialGradient',{id:'knowledge-center-glow'});glow.append(svgElement('stop',{offset:'0%','stop-color':'#bad4ff','stop-opacity':'.4'}),svgElement('stop',{offset:'100%','stop-color':'#e8f1ff','stop-opacity':'0'}));defs.append(glow);for(const [kind,color]of Object.entries({source:'#7298d5',output:'#4eaa9d',extends:'#9b88c7',retry:'#c5a06c'})){const marker=svgElement('marker',{id:'knowledge-arrow-'+kind,viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'5',markerHeight:'5',orient:'auto'});marker.append(svgElement('path',{d:'M 1 1 L 9 5 L 1 9 z',fill:color}));defs.append(marker)}}
+function knowledgeGraphGuides(positions) {
+  const guides = svgElement('g', { class: 'knowledge-guides branch-guides', 'aria-hidden': 'true' });
+  for (const branch of knowledgeState.branches) {
+    const points = branch.ids.flatMap(id => {
+      const position = positions.get(id), centerX = position.x + position.width / 2, centerY = position.y + position.height / 2;
+      return [{ x: centerX - 90, y: centerY - 55 }, { x: centerX + 90, y: centerY - 55 }, { x: centerX + 90, y: centerY + 100 }, { x: centerX - 90, y: centerY + 100 }];
+    });
+    const hull = branchHull(points);
+    if (!hull.length) continue;
+    const midpoint = (first, second) => ({ x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 });
+    const start = midpoint(hull.at(-1), hull[0]);
+    let path = 'M ' + start.x + ' ' + start.y;
+    for (let index = 0; index < hull.length; index++) { const end = midpoint(hull[index], hull[(index + 1) % hull.length]); path += ' Q ' + hull[index].x + ' ' + hull[index].y + ' ' + end.x + ' ' + end.y; }
+    guides.append(svgElement('path', { class: 'branch-canopy', d: path + ' Z', fill: branch.color, stroke: branch.color, 'data-branch': branch.id }));
+  }
+  return guides;
+}
+function knowledgeGraphDefinitions(defs){const glow=svgElement('radialGradient',{id:'knowledge-center-glow'});glow.append(svgElement('stop',{offset:'0%','stop-color':'#bad4ff','stop-opacity':'.4'}),svgElement('stop',{offset:'100%','stop-color':'#e8f1ff','stop-opacity':'0'}));defs.append(glow);for(const [theme,{color}]of Object.entries(knowledgeThemes)){const marker=svgElement('marker',{id:'knowledge-arrow-'+theme,viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'5',markerHeight:'5',orient:'auto'});marker.append(svgElement('path',{d:'M 1 1 L 9 5 L 1 9 z',fill:color}));defs.append(marker)}}
 function appendKnowledgeLabel(item,node,position){
   const label=svgElement('g',{class:'knowledge-label',transform:'translate('+position.width/2+' '+position.height/2+')'}),frame=svgElement('foreignObject',{class:'knowledge-label-frame',x:-94,y:position.height/2*scale+8,width:188,height:112});
   const wrap=document.createElementNS('http://www.w3.org/1999/xhtml','div');wrap.setAttribute('class','knowledge-label-wrap');
   const copy=document.createElementNS('http://www.w3.org/1999/xhtml','div');copy.setAttribute('class','knowledge-label-copy');const text=document.createElementNS('http://www.w3.org/1999/xhtml','div');text.setAttribute('class','knowledge-label-text');text.textContent=node.title||t('untitledNode');copy.append(text);wrap.append(copy);frame.append(wrap);label.append(svgElement('line',{class:'knowledge-label-link','aria-hidden':'true'}),frame);item.append(label);
 }
-function knowledgeLabelWidth(textWidth,viewportWidth,expanded){
-  const maximum=Math.max(48,Math.min(expanded?380:280,viewportWidth-24)),natural=Math.max(32,textWidth)+18,preferred=textWidth<=170?natural:Math.sqrt(textWidth*19.5*(expanded?10:6))+18;
-  return Math.ceil(Math.min(maximum,Math.max(Math.min(natural,112),preferred)));
-}
+
 function knowledgeLabelPlacement(center,size,obstacles,occupied,bounds,preferred){
   const directions=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1],[2,1],[-2,1],[2,-1],[-2,-1],[1,2],[-1,2],[1,-2],[-1,-2]],length=Math.hypot(preferred.x,preferred.y)||1;
   let best=null;
@@ -307,32 +796,95 @@ function knowledgeLabelPlacement(center,size,obstacles,occupied,bounds,preferred
   }
   return best;
 }
-function layoutKnowledgeLabels(){
-  if(graphView!=='knowledge')return;
-  const viewport=el('viewport'),legend=viewport.querySelector('.knowledge-legend'),bounds={left:12,right:viewport.clientWidth-12,top:(legend?.offsetTop||0)+(legend?.offsetHeight||58)+12,bottom:viewport.clientHeight-60};
-  const obstacles=new Map([...nodePositions].map(([id,position])=>[id,{id,x:(position.x+position.width/2)*scale+panX,y:(position.y+position.height/2)*scale+panY,radius:position.width/2*scale}])),root=[...obstacles.values()].find(node=>nodePositions.get(node.id).root),occupied=[],entries=[];
-  if(!knowledgeLabelMeasure)knowledgeLabelMeasure=document.createElement('canvas').getContext('2d');
-  const priority=([id,item])=>id===selectedNodeId?3:item.classList.contains('previewed')||item.matches(':focus')?2:nodePositions.get(id).root?1:0;
-  const labels=[...nodeElements].sort((first,second)=>priority(second)-priority(first)||nodePositions.get(first[0]).level-nodePositions.get(second[0]).level||first[0].localeCompare(second[0]));
-  for(const [id,item]of labels){
-    const label=item.querySelector('.knowledge-label');if(!label||getComputedStyle(label).display==='none')continue;
-    const center=obstacles.get(id),visible=center.x+center.radius>=0&&center.x-center.radius<=viewport.clientWidth&&center.y+center.radius>=0&&center.y-center.radius<=viewport.clientHeight;
-    label.setAttribute('visibility',visible?'visible':'hidden');if(!visible)continue;
-    const frame=label.querySelector('.knowledge-label-frame'),copy=label.querySelector('.knowledge-label-copy'),style=getComputedStyle(copy),expanded=item.classList.contains('selected')||item.classList.contains('previewed')||item.matches(':hover,:focus');
-    knowledgeLabelMeasure.font=style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
-    const width=knowledgeLabelWidth(knowledgeLabelMeasure.measureText(copy.textContent.replace(/\s+/g,' ')).width,viewport.clientWidth,expanded);
-    copy.style.width=width+'px';copy.style.setProperty('--knowledge-label-lines',expanded?'6':'2');frame.setAttribute('width',String(width));
-    entries.push({id,label,frame,copy,center,expanded});
+function layoutKnowledgeLabels() {
+  if (graphView !== 'knowledge') return;
+  const viewport = el('viewport'), legend = viewport.querySelector('.knowledge-legend');
+  const bounds = { left: 16, right: viewport.clientWidth - 16, top: (legend?.offsetTop || 14) + (legend?.offsetHeight || 44) + 12, bottom: viewport.clientHeight - (el('branch-dock')?.offsetHeight || 110) - 28 };
+  const obstacles = [...nodePositions].map(([id, position]) => ({ id, x: (position.x + position.width / 2) * scale + panX, y: (position.y + position.height / 2) * scale + panY, radius: position.width / 2 * scale }));
+  const byObstacle = new Map(obstacles.map(obstacle => [obstacle.id, obstacle]));
+  const occupied = [], entries = [];
+  const overview = scale < .26;
+  const important = id => id === selectedNodeId ? 100000 : id === knowledgeState.hoveredId || nodeElements.get(id).matches(':focus') ? 90000
+    : nodeElements.get(id).classList.contains('search-match') ? 80000 : id === knowledgeState.root ? 70000
+    : knowledgeState.parent.get(id) === knowledgeState.root ? 60000 : nodeElements.get(id).classList.contains('related') || nodeElements.get(id).classList.contains('preview-related') ? 50000
+    : ((knowledgeState.children.get(id)?.length || 0) > 1 ? 20000 : byId.get(id).kind === 'exploration' ? 10000 : 0) + Math.min(5000, (knowledgeState.subtreeSize.get(id) || 0) * 20);
+  const sorted = [...nodeElements].sort((first, second) => important(second[0]) - important(first[0]) || knowledgeCreatedCompare(byId.get(first[0]), byId.get(second[0])));
+  if (!knowledgeLabelMeasure) knowledgeLabelMeasure = document.createElement('canvas').getContext('2d');
+  for (const [id, item] of sorted) {
+    const label = item.querySelector('.knowledge-label');
+    if (!label) continue;
+    const center = byObstacle.get(id);
+    if (center.x < -center.radius || center.x > viewport.clientWidth + center.radius || center.y < -center.radius || center.y > viewport.clientHeight + center.radius
+      || knowledgeState.activeBranch && knowledgeState.branchOf.get(id) !== knowledgeState.activeBranch && id !== selectedNodeId) {
+      label.setAttribute('visibility', 'hidden');
+      continue;
+    }
+    const expanded = id === selectedNodeId || id === knowledgeState.hoveredId || item.matches(':focus');
+    const copy = label.querySelector('.knowledge-label-copy'), frame = label.querySelector('.knowledge-label-frame');
+    const style = getComputedStyle(copy);
+    knowledgeLabelMeasure.font = style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily;
+    const textWidth = knowledgeLabelMeasure.measureText(copy.textContent).width;
+    const landmark = id === knowledgeState.root || knowledgeState.parent.get(id) === knowledgeState.root || (knowledgeState.children.get(id)?.length || 0) > 1;
+    const compact = overview && !expanded && !landmark;
+    const maximum = Math.min(expanded ? 310 : id === knowledgeState.root ? 210 : compact ? 118 : overview ? 138 : 172, viewport.clientWidth - 40);
+    const width = Math.ceil(Math.min(maximum, Math.max(62, textWidth + 18)));
+    copy.style.width = width + 'px';
+    copy.style.setProperty('--knowledge-label-lines', expanded ? '6' : compact ? '1' : '2');
+    frame.setAttribute('width', String(width));
+    entries.push({ id, item, label, frame, copy, center, expanded });
   }
-  const measured=entries.map(entry=>({...entry,size:entry.copy.getBoundingClientRect()}));
-  for(const {id,label,frame,size,center,expanded}of measured){
-    let rect;
-    if(expanded&&frame.dataset.placed==='true')rect={x:Math.max(bounds.left,Math.min(center.x+Number(frame.getAttribute('x')),bounds.right-size.width)),y:Math.max(bounds.top,Math.min(center.y+Number(frame.getAttribute('y')),bounds.bottom-size.height)),width:size.width,height:size.height};
-    else rect=knowledgeLabelPlacement(center,size,[...obstacles.values()],occupied,bounds,nodePositions.get(id).root?{x:0,y:1}:{x:center.x-(root?.x??center.x),y:center.y-(root?.y??center.y)});
-    frame.setAttribute('height',String(Math.ceil(size.height)));frame.setAttribute('x',String(rect.x-center.x));frame.setAttribute('y',String(rect.y-center.y));frame.dataset.placed='true';occupied.push(rect);
-    const link=label.querySelector('.knowledge-label-link'),offset={x:Math.max(rect.x,Math.min(center.x,rect.x+rect.width))-center.x,y:Math.max(rect.y,Math.min(center.y,rect.y+rect.height))-center.y},distance=Math.hypot(offset.x,offset.y)||1;
-    link.setAttribute('x1',String(offset.x/distance*(center.radius+3)/scale));link.setAttribute('y1',String(offset.y/distance*(center.radius+3)/scale));link.setAttribute('x2',String(offset.x/scale));link.setAttribute('y2',String(offset.y/scale));
+  const measured = entries.map(entry => ({ ...entry, size: entry.copy.getBoundingClientRect() }));
+  for (const entry of measured) {
+    const { id, label, frame, center, size, expanded } = entry;
+    let best = null;
+    const candidates = branchLabelCandidates(center, size, bounds);
+    const anchor = knowledgeState.hoveredId && (id === knowledgeState.hoveredId ? knowledgeState.hoverAnchor : knowledgeState.labelPlacements.get(id));
+    if (anchor) {
+      const rect = { x: Math.max(bounds.left, Math.min(anchor.x, bounds.right - size.width)), y: Math.max(bounds.top, Math.min(anchor.y, bounds.bottom - size.height)), width: size.width, height: size.height };
+      candidates.unshift({ ...rect, inside: rect.x >= bounds.left && rect.y >= bounds.top && rect.x + rect.width <= bounds.right && rect.y + rect.height <= bounds.bottom });
+    }
+    for (const [index, rect] of candidates.entries()) {
+      if (!rect.inside) continue;
+      const nodeCollision = obstacles.some(obstacle => {
+        const nearestX = Math.max(rect.x, Math.min(obstacle.x, rect.x + rect.width));
+        const nearestY = Math.max(rect.y, Math.min(obstacle.y, rect.y + rect.height));
+        return Math.hypot(nearestX - obstacle.x, nearestY - obstacle.y) < obstacle.radius + 3;
+      });
+      const overlap = occupied.some(other => branchRectsOverlap(rect, other));
+      const score = index + (nodeCollision ? 1000 : 0) + (overlap ? 10000 : 0);
+      if (!best || score < best.score) best = { ...rect, score };
+    }
+    if ((!best || best.score >= 1000) && (expanded || id === knowledgeState.root)) {
+      const arranged = knowledgeLabelPlacement(center, size, obstacles, occupied, bounds, { x: -1, y: -.35 });
+      if (arranged && arranged.score < 1000) best = arranged;
+    }
+    if ((!best || best.score >= 1000) && (expanded || id === knowledgeState.root)) {
+      const preferred = best || { x: center.x - size.width / 2, y: center.y + center.radius + 8 };
+      const rect = { x: Math.max(bounds.left, Math.min(preferred.x, bounds.right - size.width)), y: Math.max(bounds.top, Math.min(preferred.y, bounds.bottom - size.height)), width: size.width, height: size.height };
+      best = { ...rect, score: 0 };
+      for (let index = occupied.length - 1; index >= 0; index--) {
+        if (branchRectsOverlap(rect, occupied[index])) { occupied[index].label.setAttribute('visibility', 'hidden'); occupied.splice(index, 1); }
+      }
+    }
+    if (!best || best.score >= 1000) { label.setAttribute('visibility', 'hidden'); continue; }
+    label.setAttribute('visibility', 'visible');
+    frame.setAttribute('height', String(Math.ceil(size.height)));
+    frame.setAttribute('x', String(best.x - center.x));
+    frame.setAttribute('y', String(best.y - center.y));
+    const link = label.querySelector('.knowledge-label-link');
+    const deltaX = Math.max(best.x, Math.min(center.x, best.x + best.width)) - center.x;
+    const deltaY = Math.max(best.y, Math.min(center.y, best.y + best.height)) - center.y;
+    const distance = Math.hypot(deltaX, deltaY) || 1;
+    link.setAttribute('x1', String(deltaX / distance * (center.radius + 2) / scale));
+    link.setAttribute('y1', String(deltaY / distance * (center.radius + 2) / scale));
+    link.setAttribute('x2', String(deltaX / scale));
+    link.setAttribute('y2', String(deltaY / scale));
+    occupied.push({ ...best, label, id });
   }
+  knowledgeState.labelCount = occupied.length;
+  knowledgeState.labelPlacements = new Map(occupied.map(rect => [rect.id, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }]));
+  knowledgeState.labelStats = { internal: occupied.filter(entry => knowledgeState.children.get(entry.id)?.length).length, overview };
+  branchUpdateStatus();
 }
 function scheduleKnowledgeLabels(){
   if(knowledgeLabelFrame!==null)cancelAnimationFrame(knowledgeLabelFrame);
@@ -345,7 +897,9 @@ function previewKnowledgeNode(id){
   for(const item of edgeElements){const connected=!!id&&(item.edge.from===id||item.edge.to===id);item.path.classList.toggle('preview-related',connected);item.path.classList.toggle('preview-unrelated',!!id&&!connected)}
   scheduleKnowledgeLabels();
 }
-function addNode(node,position,nodeLayer){const variant=node.kind==='cognition'?cognitionVariant(node):node.status;const item=svgElement('g',{class:'node '+node.kind+' '+variant,transform:'translate('+position.x+' '+position.y+')',tabindex:'0',role:'button','aria-label':node.title});item.dataset.id=node.id;if(graphView==='knowledge'&&position.root)item.classList.add('knowledge-root');const tooltip=svgElement('title');tooltip.textContent=node.title;item.append(tooltip);let shape,ring=null;if(graphView==='knowledge'){shape=knowledgeNodeShape(node,position,14,'node-shape');ring=knowledgeNodeShape(node,position,5,'knowledge-ring');if(position.root)item.append(svgElement('circle',{class:'knowledge-root-halo',cx:position.width/2,cy:position.height/2,r:position.width/2+12}),svgElement('circle',{class:'knowledge-root-orbit',cx:position.width/2,cy:position.height/2,r:position.width/2+24}))}else if(node.kind==='cognition')shape=svgElement('rect',{class:'node-shape',width:position.width,height:position.height,rx:7});else{shape=svgElement('path',{class:'node-shape',d:'M 0 0 H '+(position.width-36)+' L '+position.width+' '+(position.height/2)+' L '+(position.width-36)+' '+position.height+' H 0 Z'});ring=svgElement('path',{class:'node-status-ring',d:'M 7 7 H '+(position.width-40)+' L '+(position.width-9)+' '+(position.height/2)+' L '+(position.width-40)+' '+(position.height-7)+' H 7 Z'})}const foreign=svgElement('foreignObject',{width:position.width,height:position.height});const copy=document.createElementNS('http://www.w3.org/1999/xhtml','div');copy.setAttribute('class','node-copy');const heading=document.createElementNS('http://www.w3.org/1999/xhtml','div');heading.setAttribute('class','node-heading');const kind=document.createElementNS('http://www.w3.org/1999/xhtml','div');kind.setAttribute('class','node-kind');kind.textContent=node.kind==='cognition'?cognitionLabel(node):graphView==='knowledge'?(statusNames[node.status]||node.status):t('exploration')+' · '+explorationStateLabel(node);heading.append(createGraphIcon(variant),kind);const title=document.createElementNS('http://www.w3.org/1999/xhtml','div');title.setAttribute('class','node-title');title.textContent=node.title;copy.append(heading,title);foreign.append(copy);const input=svgElement('circle',{class:'node-port in',cx:0,cy:position.height/2,r:4}),output=svgElement('circle',{class:'node-port out',cx:position.width,cy:position.height/2,r:4});const outline=shape.cloneNode(false);outline.setAttribute('class','node-selection-outline');item.append(outline,shape);if(ring)item.append(ring);item.append(foreign,input,output);if(graphView==='knowledge'){appendKnowledgeLabel(item,node,position);item.addEventListener('pointerenter',()=>previewKnowledgeNode(node.id));item.addEventListener('pointerleave',()=>previewKnowledgeNode(null));item.addEventListener('focus',()=>previewKnowledgeNode(node.id));item.addEventListener('blur',()=>previewKnowledgeNode(null))}const activate=()=>focusNode(node.id);item.addEventListener('click',event=>{event.stopPropagation();activate()});item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate()}});nodeLayer.append(item);nodeElements.set(node.id,item);nodePortElements.set(node.id,[input,output])}
+function addNode(node,position,nodeLayer){const variant=node.kind==='cognition'?cognitionVariant(node):node.status;const item=svgElement('g',{class:'node '+node.kind+' '+variant,transform:'translate('+position.x+' '+position.y+')',tabindex:'0',role:'button','aria-label':node.title});item.dataset.id=node.id;if(graphView==='knowledge'&&position.root)item.classList.add('knowledge-root');const tooltip=svgElement('title');tooltip.textContent=node.title;item.append(tooltip);let shape,ring=null;if(graphView==='knowledge'){shape=knowledgeNodeShape(node,position,14,'node-shape');ring=knowledgeNodeShape(node,position,5,'knowledge-ring');if(node.kind==='cognition')ring.setAttribute('style','stroke:url(#'+knowledgeThemes[knowledgeNodeTheme(node)].metal+')');if(position.root)item.append(svgElement('circle',{class:'knowledge-root-halo',cx:position.width/2,cy:position.height/2,r:position.width/2+12}),svgElement('circle',{class:'knowledge-root-orbit',cx:position.width/2,cy:position.height/2,r:position.width/2+24}))}else if(node.kind==='cognition')shape=svgElement('rect',{class:'node-shape',width:position.width,height:position.height,rx:7});else{shape=svgElement('path',{class:'node-shape',d:'M 0 0 H '+(position.width-36)+' L '+position.width+' '+(position.height/2)+' L '+(position.width-36)+' '+position.height+' H 0 Z'});ring=svgElement('path',{class:'node-status-ring',d:'M 7 7 H '+(position.width-40)+' L '+(position.width-9)+' '+(position.height/2)+' L '+(position.width-40)+' '+(position.height-7)+' H 7 Z'})}const foreign=svgElement('foreignObject',{width:position.width,height:position.height});const copy=document.createElementNS('http://www.w3.org/1999/xhtml','div');copy.setAttribute('class','node-copy');const heading=document.createElementNS('http://www.w3.org/1999/xhtml','div');heading.setAttribute('class','node-heading');const kind=document.createElementNS('http://www.w3.org/1999/xhtml','div');kind.setAttribute('class','node-kind');kind.textContent=node.kind==='cognition'?cognitionLabel(node):graphView==='knowledge'?(statusNames[node.status]||node.status):t('exploration')+' · '+explorationStateLabel(node);heading.append(createGraphIcon(variant),kind);const title=document.createElementNS('http://www.w3.org/1999/xhtml','div');title.setAttribute('class','node-title');title.textContent=node.title;copy.append(heading,title);foreign.append(copy);const input=svgElement('circle',{class:'node-port in',cx:0,cy:position.height/2,r:4}),output=svgElement('circle',{class:'node-port out',cx:position.width,cy:position.height/2,r:4});const outline=shape.cloneNode(false);outline.setAttribute('class','node-selection-outline');item.append(outline,shape);if(ring)item.append(ring);item.append(foreign,input,output);if(graphView==='knowledge'){appendKnowledgeLabel(item,node,position);item.addEventListener('focus',()=>previewKnowledgeNode(node.id));item.addEventListener('blur',()=>previewKnowledgeNode(null))}const activate=()=>focusNode(node.id);item.addEventListener('click',event=>{event.stopPropagation();activate()});item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate()}});nodeLayer.append(item);nodeElements.set(node.id,item);nodePortElements.set(node.id,[input,output])
+if(graphView==='knowledge'){item.dataset.branch=knowledgeState.branchOf.get(node.id)||'root';item.dataset.depth=String(knowledgeState.depth.get(node.id)||0);item.classList.toggle('branch-entry',knowledgeState.parent.get(node.id)===knowledgeState.root)}
+}
 function nodePortX(position,side){return side==='out'?position.x+position.width:position.x-graphArrowGap}
 function graphRoutes(edges,positions,curvePlan){const routes=[];for(const edge of edges){const from=positions.get(edge.from),to=positions.get(edge.to);if(!from||!to)continue;routes.push({edge,from,to,sameColumn:from.level===to.level,plan:curvePlan.get(edge)||{kind:'direct'}})}return routes}
 function graphPathNumber(value){return Math.round(value*10)/10}
@@ -357,31 +911,97 @@ function graphRoutePath(route){const {from,to}=route,start={x:nodePortX(from,'ou
   const bend=Math.max(48,(end.x-start.x)*.3);return'M '+graphPathNumber(start.x)+' '+graphPathNumber(start.y)+' C '+graphPathNumber(start.x+bend)+' '+graphPathNumber(start.y)+', '+graphPathNumber(end.x-bend)+' '+graphPathNumber(end.y)+', '+graphPathNumber(end.x)+' '+graphPathNumber(end.y)
 }
 function drawEdges(edges,positions,curvePlan){const svg=el('edges');svg.replaceChildren();svg.setAttribute('width',String(stageWidth));svg.setAttribute('height',String(stageHeight));svg.setAttribute('viewBox','0 0 '+stageWidth+' '+stageHeight);const definitions=graphDefinitions();if(graphView==='knowledge')knowledgeGraphDefinitions(definitions);svg.append(definitions);if(graphView==='knowledge')svg.append(knowledgeGraphGuides(positions));const edgeLayer=svgElement('g',{class:'edge-layer'}),nodeLayer=svgElement('g',{class:'node-layer'});svg.append(edgeLayer,nodeLayer);edgeElements=[];
-  const routes=graphView==='knowledge'?knowledgeGraphRoutes(edges,positions):graphRoutes(edges,positions,curvePlan);for(const [index,route]of routes.entries()){const edge=route.edge,description=route.path||graphRoutePath(route),marker=graphView==='knowledge'?'knowledge-arrow-'+edge.kind:'arrow-relation',path=svgElement('path',{class:'edge '+edge.kind+(route.plan.kind==='gutter'?' long-edge '+route.plan.side+'-curve':''),d:description,'marker-end':'url(#'+marker+')'});edgeLayer.append(path);if(graphView==='knowledge'){const flow=svgElement('path',{class:'knowledge-flow '+edge.kind,d:description,'aria-hidden':'true',style:'animation-delay:-'+(index%13)*.7+'s'});edgeLayer.append(flow)}edgeElements.push({edge,path})}
-  return nodeLayer
+  const routes=graphView==='knowledge'?knowledgeGraphRoutes(edges,positions):graphRoutes(edges,positions,curvePlan);for(const route of routes){const edge=route.edge,description=route.path||graphRoutePath(route),theme=graphView==='knowledge'?knowledgeEdgeTheme(edge):null,marker=theme?'knowledge-arrow-'+theme:'arrow-relation',path=svgElement('path',{class:'edge '+edge.kind+(route.plan.kind==='gutter'?' long-edge '+route.plan.side+'-curve':''),d:description,'marker-end':'url(#'+marker+')'});if(theme)path.setAttribute('style','--edge-color:'+knowledgeThemes[theme].color);edgeLayer.append(path);edgeElements.push({edge,path})}
+  if (graphView === 'knowledge') {
+    for (const item of edgeElements) {
+      const backbone = knowledgeState.parentEdges.get(item.edge.to) === item.edge;
+      item.path.classList.add(backbone ? 'backbone' : 'cross-edge');
+    }
+  }
+return nodeLayer
 }
 function updateSearchStatus(){const querying=el('search').value.trim()!=='';el('search-status').textContent=!querying?'':!searchMatches.length?t('noGraphMatch'):searchIndex>=0?t('searchPosition',{index:searchIndex+1,total:searchMatches.length}):t('searchCount',{count:searchMatches.length});el('search-previous').disabled=el('search-next').disabled=!querying||!searchMatches.length}
 function navigateSearch(direction){if(!searchMatches.length)return;const index=searchIndex<0?(direction>0?0:searchMatches.length-1):(searchIndex+direction+searchMatches.length)%searchMatches.length;focusNode(searchMatches[index],{reveal:true})}
 function applySearch(){const querying=el('search').value.trim()!=='';searchMatches=[];for(const [id,item] of nodeElements){const matched=graphMatches(byId.get(id));if(querying&&matched)searchMatches.push(id);item.classList.toggle('search-match',querying&&matched);item.classList.toggle('search-dimmed',querying&&!matched);for(const port of nodePortElements.get(id)||[])port.classList.toggle('search-dimmed',querying&&!matched)}searchMatches.sort((first,second)=>nodePositions.get(first).x-nodePositions.get(second).x||nodePositions.get(first).y-nodePositions.get(second).y||first.localeCompare(second));searchIndex=searchMatches.indexOf(selectedNodeId);updateSearchStatus()}
-function renderGraph({fit=true,preserveSelection=false}={}){const selection=preserveSelection?selectedNodeId:null;selectedNodeId=null;el('detail').classList.remove('visible');el('detail-body').className='detail-body detail-empty';el('detail-body').textContent=t('selectNode');visible=[...byId.values()];const edges=data.edges;const layout=graphView==='knowledge'?knowledgeGraphLayout(visible,edges):graphLayout(visible,edges);nodeElements=new Map();nodePortElements=new Map();nodePositions=layout.positions;el('stage').style.width=stageWidth+'px';el('stage').style.height=stageHeight+'px';const nodeLayer=drawEdges(edges,layout.positions,layout.curvePlan);for(const node of visible)addNode(node,layout.positions.get(node.id),nodeLayer);el('graph-empty').hidden=visible.length!==0;updateGraphViewControl();applySearch();if(selection&&nodeElements.has(selection))focusNode(selection);if(fit)requestAnimationFrame(fitGraph)}
+function renderGraph({fit=true,preserveSelection=false}={}){
+knowledgeState.hoveredId=null;knowledgeState.hoverAnchor=null;knowledgeState.labelPlacements=new Map();
+const selection=preserveSelection?selectedNodeId:null;selectedNodeId=null;el('detail').classList.remove('visible');el('detail-body').className='detail-body detail-empty';el('detail-body').textContent=t('selectNode');visible=[...byId.values()];const edges=data.edges;const layout=graphView==='knowledge'?knowledgeGraphLayout(visible,edges):graphLayout(visible,edges);nodeElements=new Map();nodePortElements=new Map();nodePositions=layout.positions;el('stage').style.width=stageWidth+'px';el('stage').style.height=stageHeight+'px';const nodeLayer=drawEdges(edges,layout.positions,layout.curvePlan);for(const node of visible)addNode(node,layout.positions.get(node.id),nodeLayer);el('graph-empty').hidden=visible.length!==0;updateGraphViewControl();applySearch();if(selection&&nodeElements.has(selection))focusNode(selection);if(fit)requestAnimationFrame(fitGraph)
+if(graphView==='knowledge'){branchRenderNavigation();branchApplyFocus()}branchUpdateDock();
+}
 function neighborsFor(id,direction){return data.edges.filter(edge=>direction==='in'?edge.to===id:edge.from===id).map(edge=>direction==='in'?edge.from:edge.to)}
 function relationField(fields,label,ids){if(!ids.length)return;const dt=document.createElement('dt');dt.textContent=label;const dd=document.createElement('dd');dd.className='relation-list';for(const id of new Set(ids)){const button=document.createElement('button');button.type='button';button.className='relation-link';const node=byId.get(id);button.textContent=node?.title||id;if(node?.title){const identifier=document.createElement('small');identifier.textContent=id;button.append(identifier)}button.title=t('locate',{id});button.addEventListener('click',()=>focusNode(id,{reveal:true,center:true}));dd.append(button)}fields.append(dt,dd)}
 function identifierField(fields,node){const dt=document.createElement('dt');dt.textContent=node.kind==='exploration'?t('explorationId'):t('cognitionId');const dd=document.createElement('dd');dd.className='relation-list';const value=document.createElement('span');value.className='relation-token';value.textContent=node.id;dd.append(value);fields.append(dt,dd)}
 function showDetail(node){const body=el('detail-body');body.className='detail-body';body.replaceChildren();const context=document.createElement('div');context.className='detail-context';const kind=document.createElement('span');kind.className='related-kind';kind.textContent=node.kind==='exploration'?t('exploration'):cognitionLabel(node);context.append(kind);if(node.kind==='exploration')context.append(explorationBadge(node));const title=document.createElement('div');title.className='detail-title';title.textContent=node.title||t('untitledNode');const content=document.createElement('div');content.className='detail-content';content.append(renderMarkdown(node.id,node.content));const reason=node.kind==='exploration'?explorationReason(node):null;if(reason)content.append(reason);const fields=document.createElement('dl');fields.className='fields';identifierField(fields,node);relationField(fields,t('upstream'),neighborsFor(node.id,'in'));relationField(fields,t('downstream'),neighborsFor(node.id,'out'));body.append(context,title,createDetailActions(node),content,fields);const detail=el('detail');detail.classList.add('visible');detail.scrollTop=0}
 function detailAction(label,activate){const button=document.createElement('button');button.type='button';button.className='detail-action';button.textContent=label;button.addEventListener('click',event=>{event.stopPropagation();activate()});return button}
 function updateSelectionScope(section=el('detail-body')){const mode=section.querySelector('[data-selection-mode]'),note=section.querySelector('.detail-scope-note');if(mode){mode.setAttribute('aria-pressed',String(traceSelection));mode.title=t(traceSelection?'neighborsHint':'fullChainHint')}if(note)note.textContent=t(traceSelection?'scopeFull':'scopeDirect')}
-function createDetailActions(node){const section=document.createElement('section');section.className='detail-actions';const primary=document.createElement('div');primary.className='detail-action-row';const mode=detailAction(t('fullChain'),()=>{traceSelection=!traceSelection;applySelection(node.id);updateSelectionScope();fitGraph()});mode.setAttribute('data-selection-mode','');primary.append(detailAction(t('focusSelection'),fitSelection),mode);section.append(primary);const exploration=owningExploration(node);if(exploration){const navigation=document.createElement('div');navigation.className='detail-action-row';navigation.append(detailAction(t('viewExploration'),()=>revealExplorationForGraphNode(node,{scroll:true})));const outputs=outputCognitions(exploration.id);if(outputs.length)navigation.append(detailAction(t('viewCognitionOutputs'),()=>{revealExplorationForGraphNode(node);openExplorationOutputs(exploration)}));section.append(navigation)}const note=document.createElement('p');note.className='detail-scope-note';note.setAttribute('role','status');section.append(note);updateSelectionScope(section);return section}
+function createDetailActions(node) {
+  const section = document.createElement('section');
+  section.className = 'detail-actions';
+  const primary = document.createElement('div');
+  primary.className = 'detail-action-row';
+  const mode = detailAction(t('fullChain'), () => {
+    traceSelection = !traceSelection;
+    applySelection(node.id);
+    updateSelectionScope();
+    fitGraph();
+  });
+  mode.setAttribute('data-selection-mode', '');
+  primary.append(detailAction(t('focusSelection'), fitSelection), mode);
+  section.append(primary);
+  if (graphView === 'knowledge') {
+    const row = document.createElement('div');
+    row.className = 'detail-action-row branch-detail-actions';
+    const relations = detailAction(t(knowledgeState.allRelations ? 'readBackbone' : 'emphasizeCrossLinks'), () => {
+      knowledgeState.allRelations = !knowledgeState.allRelations;
+      el('graph-shell').dataset.allRelations = String(knowledgeState.allRelations);
+      relations.setAttribute('aria-pressed', String(knowledgeState.allRelations));
+      relations.textContent = t(knowledgeState.allRelations ? 'readBackbone' : 'emphasizeCrossLinks');
+    });
+    relations.id = 'branch-relations';
+    relations.setAttribute('aria-pressed', String(knowledgeState.allRelations));
+    const origin = detailAction(t('locateInitialCognition'), () => focusNode(knowledgeState.root, { reveal: true, center: true }));
+    origin.id = 'branch-origin';
+    row.append(relations, origin);
+    section.append(row);
+  }
+  const exploration = owningExploration(node);
+  if (exploration) {
+    const navigation = document.createElement('div');
+    navigation.className = 'detail-action-row';
+    navigation.append(detailAction(t('viewExploration'), () => revealExplorationForGraphNode(node, { scroll: true })));
+    const outputs = outputCognitions(exploration.id);
+    if (outputs.length) navigation.append(detailAction(t('viewCognitionOutputs'), () => {
+      revealExplorationForGraphNode(node);
+      openExplorationOutputs(exploration);
+    }));
+    section.append(navigation);
+  }
+  const note = document.createElement('p');
+  note.className = 'detail-scope-note';
+  note.setAttribute('role', 'status');
+  section.append(note);
+  updateSelectionScope(section);
+  return section;
+}
 function traverse(start,adjacency){const visited=new Set(),queue=[...(adjacency.get(start)||[])];while(queue.length){const id=queue.shift();if(id===start||visited.has(id))continue;visited.add(id);queue.push(...(adjacency.get(id)||[]))}return visited}
 function applySelection(id){const shown=new Set(nodeElements.keys());const incoming=new Map([...shown].map(value=>[value,[]])),outgoing=new Map([...shown].map(value=>[value,[]]));for(const item of edgeElements){if(shown.has(item.edge.from)&&shown.has(item.edge.to)){outgoing.get(item.edge.from).push(item.edge.to);incoming.get(item.edge.to).push(item.edge.from)}}const ancestors=traceSelection?traverse(id,incoming):new Set(incoming.get(id)||[]),descendants=traceSelection?traverse(id,outgoing):new Set(outgoing.get(id)||[]);for(const [nodeId,node] of nodeElements){const related=nodeId===id||ancestors.has(nodeId)||descendants.has(nodeId);node.classList.toggle('selected',nodeId===id);node.classList.toggle('related',related&&nodeId!==id);node.classList.toggle('unrelated',!related);for(const port of nodePortElements.get(nodeId)||[])port.classList.toggle('unrelated',!related)}for(const item of edgeElements){const related=!traceSelection?(item.edge.from===id||item.edge.to===id):(ancestors.has(item.edge.from)&&(ancestors.has(item.edge.to)||item.edge.to===id))||((item.edge.from===id||descendants.has(item.edge.from))&&descendants.has(item.edge.to));item.path.classList.toggle('related',related);item.path.classList.toggle('unrelated',!related)}const selected=nodeElements.get(id);if(selected)selected.parentNode.append(selected)}
 function centerNode(id){const position=nodePositions.get(id);if(!position)return;const viewport=el('viewport');const x=position.x+position.width/2,y=position.y+position.height/2;panX=viewport.clientWidth/2-x*scale;panY=viewport.clientHeight/2-y*scale;transform()}
-function focusNode(id,{reveal=false,center=false}={}){const node=byId.get(id);if(!node||!nodeElements.has(id))return;closeExplorationPanel();selectedNodeId=id;previewKnowledgeNode(null);applySelection(id);showDetail(node);scheduleKnowledgeLabels();searchIndex=searchMatches.indexOf(id);updateSearchStatus();if(reveal){const viewport=el('viewport'),position=nodePositions.get(id);scale=Math.max(scale,Math.min(1,Math.max(.01,(viewport.clientWidth-70)/position.width),Math.max(.01,(viewport.clientHeight-70)/position.height)))}if(center||reveal)centerNode(id)}
+function focusNode(id,{reveal=false,center=false}={}){
+if(graphView==='knowledge'&&knowledgeState.activeBranch&&knowledgeState.branchOf.get(id)!==knowledgeState.activeBranch){knowledgeState.activeBranch=null;branchApplyFocus()}
+const node=byId.get(id);if(!node||!nodeElements.has(id))return;closeExplorationPanel();selectedNodeId=id;previewKnowledgeNode(null);applySelection(id);showDetail(node);scheduleKnowledgeLabels();searchIndex=searchMatches.indexOf(id);updateSearchStatus();if(reveal){const viewport=el('viewport'),position=nodePositions.get(id);scale=Math.max(scale,Math.min(1,Math.max(.01,(viewport.clientWidth-70)/position.width),Math.max(.01,(viewport.clientHeight-70)/position.height)))}if(center||reveal)centerNode(id)}
 function clearSelection(){selectedNodeId=null;previewKnowledgeNode(null);searchIndex=-1;updateSearchStatus();for(const node of nodeElements.values())node.classList.remove('selected','related','unrelated');for(const ports of nodePortElements.values())for(const port of ports)port.classList.remove('unrelated');for(const item of edgeElements)item.path.classList.remove('related','unrelated');el('detail').classList.remove('visible');el('detail-body').className='detail-body detail-empty';el('detail-body').textContent=t('selectNode')}
-function transform(){el('graph-shell').style.setProperty('--graph-edge-width',(1/scale)+'px');el('graph-shell').style.setProperty('--knowledge-label-scale',String(1/scale));el('graph-shell').dataset.knowledgeDensity=scale<.32?'overview':'detail';el('stage').style.transform='translate('+panX+'px,'+panY+'px) scale('+scale+')';el('zoom-value').value=String(Math.round(scale*100));scheduleKnowledgeLabels()}
+function transform(){
+branchClearHover();
+el('graph-shell').style.setProperty('--graph-edge-width',(1/scale)+'px');el('graph-shell').style.setProperty('--knowledge-label-scale',String(1/scale));el('graph-shell').dataset.knowledgeDensity=scale<.32?'overview':'detail';el('stage').style.transform='translate('+panX+'px,'+panY+'px) scale('+scale+')';el('zoom-value').value=String(Math.round(scale*100));scheduleKnowledgeLabels()
+branchUpdateBackground();
+}
 function setZoom(next,cx,cy){const old=scale;scale=Math.min(2.5,Math.max(.01,next));const ratio=scale/old;panX=cx-(cx-panX)*ratio;panY=cy-(cy-panY)*ratio;transform()}
 function commitZoom(){const value=Number.parseInt(el('zoom-value').value,10);const percent=Number.isFinite(value)?Math.min(250,Math.max(1,value)):Math.round(scale*100);setZoom(percent/100,el('viewport').clientWidth/2,el('viewport').clientHeight/2)}
 function fitBounds(bounds,padding={horizontal:35,vertical:35}){const viewport=el('viewport');scale=Math.min(1,Math.max(.01,Math.min((viewport.clientWidth-padding.horizontal*2)/Math.max(1,bounds.width),(viewport.clientHeight-padding.vertical*2)/Math.max(1,bounds.height))));panX=viewport.clientWidth/2-(bounds.x+bounds.width/2)*scale;panY=viewport.clientHeight/2-(bounds.y+bounds.height/2)*scale;transform()}
 function fitSelection(){if(!selectedNodeId)return;traceSelection=false;applySelection(selectedNodeId);updateSelectionScope();const positions=[...nodeElements].filter(([,node])=>node.classList.contains('selected')||node.classList.contains('related')).map(([id])=>nodePositions.get(id));const left=Math.min(...positions.map(position=>position.x)),top=Math.min(...positions.map(position=>position.y)),right=Math.max(...positions.map(position=>position.x+position.width)),bottom=Math.max(...positions.map(position=>position.y+position.height));fitBounds({x:left,y:top,width:right-left,height:bottom-top})}
-function fitGraph(){const viewport=el('viewport'),knowledge=graphView==='knowledge',legend=viewport.querySelector(knowledge?'.knowledge-legend':'.plane-legend');fitBounds({x:0,y:0,width:stageWidth,height:stageHeight},{horizontal:knowledge?Math.min(180,viewport.clientWidth*.22):35,vertical:Math.max(knowledge?74:35,(legend?.offsetHeight||0)+(legend?.offsetTop||0)+12)})}
+function fitGraph(){
+if(graphView==='knowledge'){const branch=knowledgeState.branches.find(item=>item.id===knowledgeState.activeBranch);branchFitPositions(branch?branch.ids:[...nodePositions.keys()],!!branch);return}
+const viewport=el('viewport'),legend=viewport.querySelector('.plane-legend');fitBounds({x:0,y:0,width:stageWidth,height:stageHeight},{horizontal:35,vertical:Math.max(35,(legend?.offsetHeight||0)+(legend?.offsetTop||0)+12)})}
 function outputCognitions(explorationID){const ids=data.edges.filter(edge=>edge.kind==='output'&&edge.from===explorationID).map(edge=>edge.to);return ids.map(id=>byId.get(id)).filter(node=>node?.kind==='cognition')}
 function closeExplorationPanel(){if(!openRelatedRow)return;openRelatedRow.querySelector('.exploration-related').hidden=true}
 function closeExplorationRelated(){if(!openRelatedRow)return;openRelatedRow.classList.remove('active');openRelatedRow.querySelector('.exploration-toggle').setAttribute('aria-expanded','false');openRelatedRow.querySelector('.exploration-details').hidden=true;openRelatedRow.querySelector('.exploration-related').hidden=true;openRelatedRow=null}
@@ -395,14 +1015,199 @@ function explorationAttribute(parent,label,value,{wide=false,tokens=false}={}){c
 function renderExplorationDetails(item,details){details.replaceChildren();const content=document.createElement('section');content.className='exploration-details-content';const contentTitle=document.createElement('h4');contentTitle.textContent=t('content');content.append(contentTitle,renderMarkdown(item.id,item.content));const reason=explorationReason(item);if(reason)content.append(reason);const properties=document.createElement('section');properties.className='exploration-details-fields';const propertiesTitle=document.createElement('h4');propertiesTitle.textContent=t('properties');const attributes=document.createElement('dl');attributes.className='exploration-attributes';const outputs=outputCognitions(item.id).map(cognition=>cognition.id);explorationAttribute(attributes,t('explorationId'),item.id,{wide:true});explorationAttribute(attributes,t('status'),statusNames[item.status]||item.status);explorationAttribute(attributes,t('createdAt'),formatDateSeconds(item.created_at));if(item.status!=='todo'){explorationAttribute(attributes,t('executorId'),item.executor_id);explorationAttribute(attributes,t('assignedAt'),formatDateSeconds(item.assigned_at))}if(item.status==='finished'){explorationAttribute(attributes,t('outcome'),outcomeName(item.outcome));explorationAttribute(attributes,t('finishedAt'),formatDateSeconds(item.finished_at))}if(item.status!=='todo'){explorationAttribute(attributes,t('sessionFile'),item.output_ref,{wide:true});if(item.retry_of)explorationAttribute(attributes,t('retryFrom'),item.retry_of,{wide:true})}explorationAttribute(attributes,t('taskId'),item.task_id,{wide:true});explorationAttribute(attributes,t('sourceCognitions'),item.source_cognitions,{wide:true,tokens:true});if(item.status!=='todo')explorationAttribute(attributes,t('outputCognitions'),outputs,{wide:true,tokens:true});properties.append(propertiesTitle,attributes);if(outputs.length){const button=detailAction(t('viewOutputs',{count:outputs.length}),()=>openExplorationOutputs(item));const actions=document.createElement('div');actions.className='exploration-output-actions';actions.append(button);content.append(actions)}details.append(content,properties)}
 function renderExplorations(){closeExplorationRelated();const list=el('exploration-list');list.replaceChildren();explorationElements=new Map();const items=data.explorations.filter(item=>(!explorationTaskFilter||item.task_id===explorationTaskFilter)&&(!explorationFilter||item.status===explorationFilter)).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id));el('exploration-count').textContent=t('explorationCount',{count:items.length});el('exploration-empty').hidden=items.length!==0;items.forEach((item,index)=>{const article=document.createElement('article');article.className='exploration-item '+item.status;if(item.status==='finished'&&item.outcome)article.dataset.outcome=item.outcome;article.dataset.id=item.id;const toggle=document.createElement('button');toggle.type='button';toggle.className='exploration-toggle';toggle.setAttribute('aria-expanded','false');const number=document.createElement('span');number.className='exploration-index';number.textContent=String(index+1).padStart(2,'0');const identity=document.createElement('div');identity.className='exploration-identity';const title=document.createElement('div');title.className='exploration-title';title.textContent=item.title;const id=document.createElement('span');id.className='exploration-sub';const outputs=outputCognitions(item.id);id.textContent=t('taskOutputs',{count:outputs.length});id.title=item.id;identity.append(title,id);const time=document.createElement('time');time.className='exploration-time';time.dateTime=item.finished_at||item.assigned_at||item.created_at;time.textContent=item.status==='finished'?t('completedAt',{time:formatDate(item.finished_at),duration:formatElapsed(item.assigned_at,item.finished_at)}):item.status==='running'?t('startedAt',{time:formatDate(item.assigned_at),duration:formatElapsed(item.assigned_at,data.generated_at)}):t('createdAtTime',{time:formatDate(item.created_at)});const details=document.createElement('div');details.className='exploration-details';details.hidden=true;const panel=document.createElement('aside');panel.className='exploration-related';panel.hidden=true;panel.setAttribute('aria-label',t('outputsAria',{title:item.title}));toggle.addEventListener('click',event=>{event.stopPropagation();const shouldOpen=openRelatedRow!==article;closeExplorationRelated();if(shouldOpen)openExplorationArticle(article,item,{syncGraph:true})});panel.addEventListener('click',event=>event.stopPropagation());details.addEventListener('click',event=>event.stopPropagation());const state=document.createElement('span');state.className='exploration-state';state.append(explorationBadge(item));toggle.append(number,identity,time,state);article.append(toggle,details,panel);list.append(article);explorationElements.set(item.id,article)})}
 
+function initKnowledgeMotion() {
+  const svg = el('edges'), shell = el('graph-shell'), viewport = el('viewport');
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  let frame = 0, previousTime = 0, edgeLayer = null, layer = null, tracks = [];
+  const intersectsViewport = () => {
+    const bounds = shell.getBoundingClientRect();
+    return bounds.bottom >= 0 && bounds.top <= window.innerHeight;
+  };
+  let inViewport = intersectsViewport();
+  const highlightColor = color => 'rgb(' + color.match(/[a-f\d]{2}/gi).map(channel => {
+    const value = parseInt(channel, 16);
+    return Math.round(value + (255 - value) * .48);
+  }).join(',') + ')';
+  const makeTrack = (item, route, index) => {
+    let length = 0;
+    const points = route.samples.map((point, position) => {
+      if (position) length += Math.hypot(point.x - route.samples[position - 1].x, point.y - route.samples[position - 1].y);
+      return { x: point.x, y: point.y, distance: length };
+    });
+    return { item, points, length, index, distance: length * (index * .61803398875 % 1), particles: [],
+      theme: knowledgeEdgeTheme(item.edge),
+      bounds: { left: Math.min(...points.map(point => point.x)), right: Math.max(...points.map(point => point.x)), top: Math.min(...points.map(point => point.y)), bottom: Math.max(...points.map(point => point.y)) } };
+  };
+  const sample = (track, distance) => {
+    const points = track.points;
+    const position = Math.max(0, Math.min(track.length, distance));
+    let low = 0, high = points.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >>> 1;
+      if (points[middle].distance < position) low = middle; else high = middle;
+    }
+    const start = points[low], end = points[high];
+    const fraction = (position - start.distance) / (end.distance - start.distance || 1);
+    return { x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction };
+  };
+  function rebuild() {
+    const next = svg.querySelector('.edge-layer');
+    if (edgeLayer === next && (graphView === 'knowledge' ? layer?.isConnected : !layer)) return;
+    edgeLayer = next; layer?.remove(); layer = null; tracks = []; previousTime = 0;
+    if (graphView !== 'knowledge' || !next) return;
+    const definitions = svg.querySelector('defs');
+    for (const [theme, { color }] of Object.entries(knowledgeThemes)) {
+      const id = 'knowledge-motion-glow-' + theme;
+      if (definitions.querySelector('#' + id)) continue;
+      const gradient = svgElement('radialGradient', { id });
+      gradient.append(svgElement('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': '.56' }),
+        svgElement('stop', { offset: '38%', 'stop-color': color, 'stop-opacity': '.24' }),
+        svgElement('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': '0' }));
+      definitions.append(gradient);
+    }
+    layer = svgElement('g', { class: 'knowledge-particles', 'aria-hidden': 'true', 'pointer-events': 'none' });
+    next.after(layer);
+    const byEdge = new Map(knowledgeState.routes.map(route => [route.edge, route]));
+    tracks = edgeElements.map((item, index) => {
+      const route = byEdge.get(item.edge);
+      if (!route?.samples?.length) return null;
+      const track = makeTrack(item, route, index);
+      return track.length > 0 ? track : null;
+    }).filter(Boolean);
+  }
+  const particle = track => {
+    const group = svgElement('g', { class: 'knowledge-particle', visibility: 'hidden', 'data-edge': track.index });
+    const color = knowledgeThemes[track.theme].color;
+    const glow = svgElement('circle', { class: 'knowledge-particle-glow', fill: 'url(#knowledge-motion-glow-' + track.theme + ')' });
+    const core = svgElement('circle', { class: 'knowledge-particle-core', fill: color });
+    const highlight = svgElement('circle', { class: 'knowledge-particle-highlight', fill: highlightColor(color) });
+    group.append(glow, core, highlight); layer.append(group);
+    return { group, glow, core, highlight, sizeKey: null };
+  };
+  const visible = track => {
+    const classes = track.item.path.classList;
+    if (classes.contains('unrelated') || classes.contains('preview-unrelated') || classes.contains('branch-inactive')) return false;
+    if (!classes.contains('backbone') && !knowledgeState.allRelations && !classes.contains('related') && !classes.contains('preview-related')) return false;
+    const bounds = track.bounds;
+    return bounds.right * scale + panX >= -16 && bounds.left * scale + panX <= viewport.clientWidth + 16
+      && bounds.bottom * scale + panY >= -16 && bounds.top * scale + panY <= viewport.clientHeight + 16;
+  };
+  const paint = (track, bead, distance, emphasized) => {
+    const point = sample(track, distance);
+    if (point.x * scale + panX < -16 || point.x * scale + panX > viewport.clientWidth + 16
+      || point.y * scale + panY < -16 || point.y * scale + panY > viewport.clientHeight + 16) {
+      bead.group.setAttribute('visibility', 'hidden'); return;
+    }
+    const sizeKey = scale + ':' + emphasized;
+    if (bead.sizeKey !== sizeKey) {
+      const radius = emphasized ? 1.95 : 1.6;
+      bead.core.setAttribute('r', String(radius / scale));
+      bead.glow.setAttribute('r', String((emphasized ? 5.5 : 4.6) / scale));
+      bead.highlight.setAttribute('r', String(radius * .46 / scale));
+      bead.highlight.setAttribute('cx', String(-radius * .16 / scale));
+      bead.highlight.setAttribute('cy', String(-radius * .16 / scale));
+      bead.sizeKey = sizeKey;
+    }
+    bead.group.setAttribute('visibility', 'visible');
+    bead.group.setAttribute('transform', 'translate(' + point.x.toFixed(3) + ' ' + point.y.toFixed(3) + ')');
+    bead.group.setAttribute('opacity', String(emphasized ? .98 : track.item.path.classList.contains('backbone') ? .76 : .5));
+  };
+  function render(delta = 0) {
+    if (!layer || reducedMotion?.matches) return false;
+    let active = false;
+    for (const track of tracks) {
+      const show = visible(track);
+      const count = Math.min(4, Math.max(1, Math.floor(track.length * scale / 160)));
+      if (show) {
+        active = true;
+        while (track.particles.length < count) track.particles.push(particle(track));
+      }
+      track.distance = (track.distance + delta * 26 / scale) % track.length;
+      const classes = track.item.path.classList;
+      const emphasized = classes.contains('related') || classes.contains('preview-related');
+      for (const [index, bead] of track.particles.entries()) {
+        if (!show || index >= count) { bead.group.setAttribute('visibility', 'hidden'); continue; }
+        paint(track, bead, (track.distance + index * track.length / count) % track.length, emphasized);
+      }
+    }
+    return active;
+  }
+  const canRun = () => graphView === 'knowledge' && !document.hidden && inViewport && !reducedMotion?.matches;
+  function refresh() {
+    rebuild();
+    const active = render();
+    if (canRun() && active) {
+      if (!frame) frame = requestAnimationFrame(tick);
+    } else {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0; previousTime = 0;
+    }
+  }
+  function tick(timestamp) {
+    frame = 0;
+    if (!canRun()) { previousTime = 0; return; }
+    const delta = previousTime ? Math.min(.05, (timestamp - previousTime) / 1000) : 0;
+    previousTime = timestamp;
+    if (render(delta)) frame = requestAnimationFrame(tick);
+    else previousTime = 0;
+  }
+  const geometryObserver = new MutationObserver(refresh);
+  geometryObserver.observe(svg, { childList: true });
+  const relationObserver = new MutationObserver(refresh);
+  relationObserver.observe(svg, { attributes: true, subtree: true, attributeFilter: ['class'] });
+  const modeObserver = new MutationObserver(refresh);
+  modeObserver.observe(shell, { attributes: true, attributeFilter: ['data-graph-view', 'data-all-relations'] });
+  const cameraObserver = new MutationObserver(refresh);
+  cameraObserver.observe(el('stage'), { attributes: true, attributeFilter: ['style'] });
+  if (typeof IntersectionObserver !== 'undefined') {
+    const viewObserver = new IntersectionObserver(entries => { inViewport = entries[0].isIntersecting; refresh(); });
+    viewObserver.observe(shell);
+  } else {
+    const updateVisibility = () => { inViewport = intersectsViewport(); refresh(); };
+    window.addEventListener('scroll', updateVisibility, { passive: true });
+    window.addEventListener('resize', updateVisibility);
+  }
+  document.addEventListener('visibilitychange', refresh);
+  if (reducedMotion?.addEventListener) reducedMotion.addEventListener('change', refresh);
+  else reducedMotion?.addListener?.(refresh);
+  refresh();
+}
+
+function initKnowledgeGraph() {
+  const viewport = el('viewport');
+  viewport.addEventListener('pointermove', branchPointerMove);
+  viewport.addEventListener('pointerleave', branchClearHover);
+  viewport.addEventListener('pointercancel', branchClearHover);
+  const dock = document.createElement('div'); dock.id = 'branch-dock'; dock.className = 'branch-dock';
+  dock.addEventListener('pointerdown', event => event.stopPropagation());
+  dock.addEventListener('click', event => event.stopPropagation());
+  const tools = document.createElement('div'); tools.className = 'branch-dock-tools';
+  tools.append(viewport.querySelector('.graph-controls'));
+  const navigation = document.createElement('div'); navigation.id = 'branch-navigation'; navigation.className = 'branch-navigation';
+  navigation.addEventListener('pointerdown', event => event.stopPropagation());
+  const footer = document.createElement('div'); footer.className = 'branch-footer';
+  const status = document.createElement('span'); status.id = 'branch-status';
+  const hint = document.createElement('span'); hint.textContent = t('graphNavigationHint');
+  footer.append(status, hint); dock.append(tools, navigation, footer); viewport.append(dock);
+  el('graph-shell').dataset.allRelations = 'false';
+  branchRenderNavigation();
+  branchUpdateDock();
+  if (typeof ResizeObserver !== 'undefined') {
+    const dockObserver = new ResizeObserver(() => { branchUpdateDock(); scheduleKnowledgeLabels(); });
+    dockObserver.observe(dock);
+  }
+  requestAnimationFrame(fitGraph);
+}
+
 el('runtime').classList.toggle('active',data.runtime_occupied);el('runtime').querySelector('span').textContent=data.runtime_occupied?t('runtimeActive'):t('runtimeIdle');el('generated').textContent=t('generatedAt',{time:formatDate(data.generated_at)})+' · '+data.display_timezone;
 initExplorationTaskFilter();renderTasks();renderMetrics();renderGraph();renderExplorations();
 function setSearchOpen(open){el('graph-search').classList.toggle('open',open);el('search-toggle').setAttribute('aria-expanded',String(open));if(open)requestAnimationFrame(()=>el('search').focus())}
 el('search').addEventListener('input',applySearch);el('search').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();navigateSearch(event.shiftKey?-1:1)}if(event.key==='Escape'){event.preventDefault();setSearchOpen(false);el('search-toggle').focus()}});el('search-previous').addEventListener('click',()=>navigateSearch(-1));el('search-next').addEventListener('click',()=>navigateSearch(1));el('search-toggle').addEventListener('click',event=>{event.stopPropagation();setSearchOpen(!el('graph-search').classList.contains('open'))});el('search-close').addEventListener('click',event=>{event.stopPropagation();setSearchOpen(false)});el('graph-search').addEventListener('pointerdown',event=>event.stopPropagation());el('exploration-task-filter').addEventListener('change',event=>{explorationTaskFilter=event.target.value;renderExplorations()});document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{explorationFilter=button.dataset.status;document.querySelectorAll('.filter').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));renderExplorations()}));document.addEventListener('click',event=>{if(openRelatedRow&&!openRelatedRow.contains(event.target))closeExplorationPanel()});document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeExplorationPanel();setSearchOpen(false)}});
 el('zoom-value').addEventListener('change',commitZoom);el('zoom-value').addEventListener('focus',event=>event.target.select());el('zoom-value').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();commitZoom();event.target.blur()}});el('zoom-in').addEventListener('click',()=>setZoom(scale*1.2,el('viewport').clientWidth/2,el('viewport').clientHeight/2));el('zoom-out').addEventListener('click',()=>setZoom(scale/1.2,el('viewport').clientWidth/2,el('viewport').clientHeight/2));el('fit').addEventListener('click',fitGraph);el('graph-view-toggle').addEventListener('click',toggleGraphView);el('fullscreen').addEventListener('click',async()=>{if(document.fullscreenElement===el('graph-shell'))await document.exitFullscreen();else await el('graph-shell').requestFullscreen()});document.addEventListener('fullscreenchange',()=>{const active=document.fullscreenElement===el('graph-shell'),label=t(active?'exitFullscreen':'fullscreen');el('fullscreen').title=label;el('fullscreen').setAttribute('aria-label',label);requestAnimationFrame(fitGraph)});el('detail-close').addEventListener('click',clearSelection);
 el('viewport').addEventListener('click',event=>{if(!event.target.closest('.node,.graph-controls,.graph-search'))clearSelection()});el('viewport').addEventListener('wheel',event=>{event.preventDefault();const box=el('viewport').getBoundingClientRect();setZoom(scale*(event.deltaY<0?1.12:1/1.12),event.clientX-box.left,event.clientY-box.top)},{passive:false});el('viewport').addEventListener('pointerdown',event=>{if(event.target.closest('.node,.graph-controls,.graph-search'))return;drag={x:event.clientX,y:event.clientY,px:panX,py:panY,id:event.pointerId};el('viewport').classList.add('dragging');el('viewport').setPointerCapture(event.pointerId)});el('viewport').addEventListener('pointermove',event=>{if(!drag)return;panX=drag.px+event.clientX-drag.x;panY=drag.py+event.clientY-drag.y;transform()});const endDrag=()=>{drag=null;el('viewport').classList.remove('dragging')};el('viewport').addEventListener('pointerup',endDrag);el('viewport').addEventListener('pointercancel',endDrag);window.addEventListener('resize',()=>requestAnimationFrame(fitGraph));
-function updateKnowledgeMotion(){const bounds=el('graph-shell').getBoundingClientRect();el('graph-shell').classList.toggle('motion-paused',document.hidden||bounds.bottom<0||bounds.top>window.innerHeight)}
-if(typeof IntersectionObserver!=='undefined'){const motionObserver=new IntersectionObserver(updateKnowledgeMotion);motionObserver.observe(el('graph-shell'))}document.addEventListener('visibilitychange',updateKnowledgeMotion);
+
+initKnowledgeGraph();
+initKnowledgeMotion();
 </script>
 </body>
 </html>`

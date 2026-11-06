@@ -63,6 +63,9 @@ func TestVisualDetailsScrollWithinGraph(t *testing.T) {
 		".graph-body{height:580px}",
 		".graph-shell:fullscreen .viewport{height:100%;min-height:0}",
 		"detail.classList.add('visible');detail.scrollTop=0",
+		".graph-shell .graph-body{grid-template-columns:minmax(0,1fr)}",
+		".graph-shell .detail{position:absolute;inset:0 0 0 auto;z-index:8;display:none;width:min(350px,90%)",
+		".graph-shell .detail.visible{display:block}.graph-shell .detail-close{display:block}",
 	} {
 		if !strings.Contains(string(html), required) {
 			t.Errorf("Visual omitted bounded-detail behavior %q", required)

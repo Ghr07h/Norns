@@ -28,19 +28,28 @@ func TestVisualTypographyKeepsReadableSizes(t *testing.T) {
 		".exploration-attribute dt": {"font-size:12px"},
 		".exploration-attribute dd": {"font-size:13px"},
 		".node-title":               {"font-size:13px"},
-		".graph-body":               {"grid-template-columns:minmax(0,1fr) 360px"},
+		".graph-shell .graph-body":  {"grid-template-columns:minmax(0,1fr)"},
 		`.graph-shell[data-graph-view="knowledge"] .node-title`:   {"display:none"},
-		`.knowledge-label-copy`:                                   {"font:600 13px/1.5", "text-align:left"},
+		`.knowledge-label-copy`:                                   {"font-size:12px", "line-height:1.45", "font-weight:500"},
 		`.knowledge-label-text`:                                   {"-webkit-line-clamp:var(--knowledge-label-lines,2)", "overflow-wrap:anywhere", "overflow:hidden"},
 		`.graph-shell .node.knowledge-root .knowledge-label-copy`: {"font-size:13px", "font-weight:700"},
 	} {
-		rule := regexp.MustCompile(regexp.QuoteMeta(selector) + `\{([^{}]+)\}`).FindSubmatch(style[1])
-		if len(rule) != 2 {
+		rules := regexp.MustCompile(`(?:^|[{}])\s*`+regexp.QuoteMeta(selector)+`\{([^{}]+)\}`).FindAllSubmatch(style[1], -1)
+		if len(rules) == 0 {
 			t.Errorf("Visual omitted typography selector %q", selector)
 			continue
 		}
+		properties := make(map[string]string)
+		for _, rule := range rules {
+			for _, declaration := range strings.Split(string(rule[1]), ";") {
+				if name, value, ok := strings.Cut(declaration, ":"); ok {
+					properties[name] = value
+				}
+			}
+		}
 		for _, declaration := range declarations {
-			if !strings.Contains(string(rule[1]), declaration) {
+			name, value, _ := strings.Cut(declaration, ":")
+			if !strings.Contains(properties[name], value) {
 				t.Errorf("Visual selector %q omitted %q", selector, declaration)
 			}
 		}

@@ -493,7 +493,7 @@ func TestVisualViewIsSelfContainedAndEscapesUserContent(t *testing.T) {
 			t.Fatalf("Visual omitted content presentation %q", required)
 		}
 	}
-	for _, required := range []string{`function updateSelectionScope`, `traceSelection=false;applySelection(selectedNodeId);updateSelectionScope();const positions=`, `primary.append(detailAction(t('focusSelection'),fitSelection),mode)`, `mode.setAttribute('data-selection-mode','')`, `updateSelectionScope(section);return section`, `.detail-actions{display:grid;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}`, `.detail-action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))`, `fullChain:'显示完整链路'`, `viewCognitionOutputs:'查看认知产出'`, `detailAction(t('viewCognitionOutputs')`, `actions.className='exploration-output-actions'`, `.exploration-output-actions{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}`} {
+	for _, required := range []string{`function updateSelectionScope`, `traceSelection=false;applySelection(selectedNodeId);updateSelectionScope();const positions=`, `primary.append(detailAction(t('focusSelection'), fitSelection), mode)`, `mode.setAttribute('data-selection-mode', '')`, `updateSelectionScope(section);`, `.detail-actions{display:grid;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}`, `.detail-action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))`, `fullChain:'显示完整链路'`, `viewCognitionOutputs:'查看认知产出'`, `detailAction(t('viewCognitionOutputs')`, `actions.className='exploration-output-actions'`, `.exploration-output-actions{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}`} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Visual omitted selection actions or separators %q", required)
 		}
@@ -538,7 +538,7 @@ func TestVisualResearchThemePreservesGraphSemantics(t *testing.T) {
 	}
 	for _, required := range []string{
 		`--bg:#f3f5f8`, `--panel-soft:#f7f9fc`, `--accent:#3563c5`, `--accent-soft:#eaf0fd`,
-		`--canvas-bg:#f8fafc`, `--canvas-grid:#e2e8f04d`,
+		`--canvas-bg:#f6f8fa`, `--canvas-grid:#e2e8f04d`,
 		`background-color:var(--canvas-bg);background-image:linear-gradient(var(--canvas-grid) 1px,transparent 1px),linear-gradient(90deg,var(--canvas-grid) 1px,transparent 1px)`,
 		`.node{color:#17211f;`,
 		`fill:url(#cognition-bronze);stroke:#955d30`,
@@ -590,7 +590,7 @@ func TestVisualKnowledgeGraphViewIsSelfContained(t *testing.T) {
 	if strings.Index(string(html), `<button id="search-toggle"`) > buttonStart {
 		t.Fatal("Visual knowledge graph toggle must follow search")
 	}
-	for _, required := range []string{`function knowledgeHexagon`, `function knowledgeNodeShape`, `knowledge-root-halo`, `knowledge-root-orbit`, `'knowledge-ring'`, `node.origin==='task'`, `root:node.id===root.id`, `function knowledgeRouteScore`, `function knowledgeRoutingGrid`, `function knowledgeGridPath`, `function knowledgeReserveRoute`, `function knowledgeRefineRings`, `function knowledgeGraphGuides`, `knowledge-arrow-`, `class:'knowledge-flow '+edge.kind`, `@keyframes knowledge-flow`, `.motion-paused .knowledge-flow{animation-play-state:paused}`, `.knowledge-flow{display:none;animation:none}`, `knowledgeRelations:'图谱关系'`} {
+	for _, required := range []string{`function knowledgeHexagon`, `function knowledgeNodeShape`, `knowledge-root-halo`, `knowledge-root-orbit`, `'knowledge-ring'`, `node.origin==='task'`, `root: true`, `function knowledgeRouteScore`, `function knowledgeRoutingGrid`, `function knowledgeGridPath`, `function knowledgeReserveRoute`, `function branchBuildSkeleton`, `function knowledgeGraphGuides`, `knowledge-arrow-`, `function initKnowledgeMotion`, `class: 'knowledge-particle-core'`, `class: 'knowledge-particle-glow'`, `.knowledge-particles{display:none!important}`, `knowledgeRelations:'图谱关系'`} {
 		if !strings.Contains(string(html), required) {
 			t.Fatalf("Visual omitted radial knowledge graph presentation %q", required)
 		}
