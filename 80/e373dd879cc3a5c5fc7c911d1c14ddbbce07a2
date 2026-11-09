@@ -1,0 +1,24 @@
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 975
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 947
+domain/redteam/norns_domain_agents/decider.md
+  h_32bccb164adb56 29,31,33,35,62,65-66
+plugin/cc/agents/coordinator.md
+  h_32bccb164adb56 49-50
+plugin/cc/agents/decider.md
+  h_32bccb164adb56 58,60-61
+plugin/cc/agents/explorer.md
+  h_32bccb164adb56 43,110-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "80e373dd879cc3a5c5fc7c911d1c14ddbbce07a2",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
