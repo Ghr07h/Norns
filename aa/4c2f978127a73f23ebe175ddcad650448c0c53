@@ -1,0 +1,16 @@
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 133-134,136,873-874
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 134-135,137,862-863
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "aa4c2f978127a73f23ebe175ddcad650448c0c53",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
