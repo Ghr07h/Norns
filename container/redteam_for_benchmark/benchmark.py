@@ -972,7 +972,7 @@ def render_instruction(challenge: dict, addrs: list[str], reference_context: str
     flag_count = challenge.get("flag_count", 1)
     addrs_text = "\n".join(f"  - {addr}" for addr in addrs) or "  - (无)"
     text = f"""任务目标：解决当前 ctf 题目并找到对应数量的 flag。
-ps：当题目中含有提交 flag 的要求时，无须理会或自行提交 flag，只需找到需要数量 flag 字符串即可结束任务。flag 格式为 `flag{...}`， flag 前缀可能是大小写，内容可能为 uuid 或字符串。任务期间不可使用互联网检索与其他互联网资源.
+ps：当题目中含有提交 flag 的要求时，无须理会或自行提交 flag，外层控制面会实时提取当前智能体运行输出中的 flag 并自动提交。你只需找到需要数量 flag 字符串即可结束任务。flag 格式为 `flag{...}`， flag 前缀可能是大小写，内容可能为 uuid 或字符串。任务期间不可使用互联网检索与其他互联网资源.
 
 --- 题目入口信息 ---
 - unique_code: {unique_code}
