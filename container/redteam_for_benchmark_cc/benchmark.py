@@ -1167,7 +1167,7 @@ class RowContainer:
 
 @dataclass
 class ProcureResult:
-    status: str            # ready | aborted | not_found | unavailable | invalid_state
+    status: str            # ready | completed | aborted | not_found | unavailable | invalid_state
     addrs: list = field(default_factory=list)
     error: str = ""
 
@@ -1215,7 +1215,7 @@ def procure_container(host: RowContainer, challenge: dict, saas: SaaSClient,
                 action = "open"
 
         if action == "open":
-            return _open_container(host, saas, unique_code, stop_event, model=model)
+            return _open_container(host, saas, challenge, stop_event, model=model)
 
         # 复用/等待：等开靶者或关闭者结算(ready.set)，期间可取消。
         while not host.ready.is_set():
@@ -1235,9 +1235,10 @@ def procure_container(host: RowContainer, challenge: dict, saas: SaaSClient,
             return ProcureResult(oc, error=_PROCURE_ERR.get(oc, ""))
 
 
-def _open_container(host: RowContainer, saas: SaaSClient, unique_code: str,
+def _open_container(host: RowContainer, saas: SaaSClient, challenge: dict,
                     stop_event: threading.Event, *, model: str = "") -> ProcureResult:
-    """开靶者：串行 start_challenge + wait_until_available，并把结果结算到 host。"""
+    """确认平台验收进度后开靶，并把结果结算到 host。"""
+    unique_code = challenge.get("unique_code", "")
     addrs: list[str] = []
     started = False
     for attempt in range(1, Config.start_retries + 1):
@@ -1245,7 +1246,31 @@ def _open_container(host: RowContainer, saas: SaaSClient, unique_code: str,
             with host.lock:
                 _finish_host_locked(host, "aborted", addrs)
             return ProcureResult("aborted")
+        operation = "state query"
         try:
+            latest = next((item for item in saas.list_challenges()
+                           if item.get("unique_code") == unique_code), None)
+            if latest is None:
+                with host.lock:
+                    _finish_host_locked(host, "not_found", [])
+                return ProcureResult("not_found", error="challenge_not_found")
+            challenge.update({key: latest[key] for key in (
+                "flag_count", "correct_flag_count", "is_completed", "cumulative_score")
+                if key in latest})
+            flag_count = int(challenge.get("flag_count") or 1)
+            correct_flag_count = int(challenge.get("correct_flag_count") or 0)
+            _diagnostic("platform_preflight", **{key: challenge.get(key) for key in (
+                "unique_code", "flag_count", "correct_flag_count", "is_completed")})
+            if challenge.get("is_completed") or correct_flag_count >= flag_count:
+                challenge["is_completed"] = True
+                with host.lock:
+                    _finish_host_locked(host, "completed", [])
+                return ProcureResult("completed")
+            if stop_event.is_set():
+                with host.lock:
+                    _finish_host_locked(host, "aborted", [])
+                return ProcureResult("aborted")
+            operation = "start"
             addrs = saas.start_challenge(unique_code)
             started = True
             break
@@ -1278,14 +1303,14 @@ def _open_container(host: RowContainer, saas: SaaSClient, unique_code: str,
             raise
         except BenchmarkError as error:
             if attempt < Config.start_retries:
-                log.warning("[%s/%s] start 网络失败，%ss 后重试(%d/%d): %s",
-                            unique_code, model or "?", Config.start_retry_interval, attempt,
+                log.warning("[%s/%s] %s 网络失败，%ss 后重试(%d/%d): %s",
+                            unique_code, model or "?", operation, Config.start_retry_interval, attempt,
                             Config.start_retries, error)
                 time.sleep(Config.start_retry_interval)
                 continue
             with host.lock:
                 _finish_host_locked(host, "unavailable", [])
-            return ProcureResult("unavailable", error=f"start network: {error}")
+            return ProcureResult("unavailable", error=f"{operation} network: {error}")
     if not started:
         with host.lock:
             _finish_host_locked(host, "unavailable", [])
@@ -1382,6 +1407,16 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
     except TaskEnded as error:
         log.warning("[%s/%s] 开靶场时任务已结束(invalid_state): %s", unique_code, model or "?", error)
         result.status = "invalid_state"
+        return result
+
+    result.flag_count = int(challenge.get("flag_count") or 1)
+    result.correct_flag_count = int(challenge.get("correct_flag_count") or 0)
+    result.is_completed = bool(challenge.get("is_completed"))
+    result.cumulative_score = int(challenge.get("cumulative_score") or 0)
+    if proc.status == "completed":
+        result.status = "completed"
+        log.info("[%s/%s] 平台确认已通关(correct=%d/%d)，跳过开靶与 Runtime",
+                 unique_code, model or "?", result.correct_flag_count, result.flag_count)
         return result
 
     if proc.status != "ready":
