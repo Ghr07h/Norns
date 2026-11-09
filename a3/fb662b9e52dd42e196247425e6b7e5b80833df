@@ -1,0 +1,14 @@
+resources/visual/cli-integrated.html
+  h_32bccb164adb56 1-1040
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a3fb662b9e52dd42e196247425e6b7e5b80833df",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
