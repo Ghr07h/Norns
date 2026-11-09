@@ -93,6 +93,9 @@ func TestUninitializedDirectoryExplainsWorkspaceLocation(t *testing.T) {
 				if _, err := os.Stat(filepath.Join(directory, ".norns")); !os.IsNotExist(err) {
 					t.Fatalf("failed commands must not initialize a Workspace: %v", err)
 				}
+				if _, err := os.Stat(filepath.Join(directory, ".norns.lock")); !os.IsNotExist(err) {
+					t.Fatalf("failed commands must not create a lifecycle lock: %v", err)
+				}
 			}
 			t.Chdir(workspace)
 			if code, _, stderr := runCLI("view", "status"); code != 0 {

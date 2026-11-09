@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gofrs/flock"
-
 	"github.com/Ghr07h/norns/norns/internal/domain"
 )
 
@@ -49,40 +47,6 @@ func Resolve(root string) (Paths, error) {
 	}
 	norns := filepath.Join(root, ".norns")
 	return Paths{Root: root, Norns: norns, Database: filepath.Join(norns, "norns.sqlite"), View: filepath.Join(norns, "view"), History: filepath.Join(norns, "history"), Lock: filepath.Join(root, ".norns.lock"), ResetLog: filepath.Join(root, ".norns-reset.json")}, nil
-}
-
-type LifecycleLock struct {
-	file *flock.Flock
-}
-
-func NewLock(paths Paths) *LifecycleLock { return &LifecycleLock{file: flock.New(paths.Lock)} }
-
-func (l *LifecycleLock) Shared(ctx context.Context) (func(), error) {
-	ok, err := l.file.TryRLockContext(ctx, 25*time.Millisecond)
-	if err != nil {
-		return nil, busyWithCause("cannot acquire Workspace lifecycle read lock", "workspace_lifecycle", err)
-	}
-	if !ok {
-		return nil, busy("workspace_lifecycle")
-	}
-	return func() { _ = l.file.Unlock() }, nil
-}
-
-func (l *LifecycleLock) Exclusive(ctx context.Context) (func(), error) {
-	ok, err := l.file.TryLockContext(ctx, 25*time.Millisecond)
-	if err != nil {
-		return nil, busyWithCause("cannot acquire Workspace lifecycle write lock", "workspace_lifecycle", err)
-	}
-	if !ok {
-		return nil, busy("workspace_lifecycle")
-	}
-	return func() { _ = l.file.Unlock() }, nil
-}
-
-func busy(resource string) *domain.Error {
-	e := domain.NewError("WORKSPACE_BUSY", "Workspace is busy")
-	e.Details["resource"] = resource
-	return e
 }
 
 func busyWithCause(message, resource string, cause error) *domain.Error {

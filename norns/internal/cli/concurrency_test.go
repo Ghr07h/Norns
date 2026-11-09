@@ -105,6 +105,9 @@ func TestMultiProcessStateCompetition(t *testing.T) {
 	if len(entries) != len(readers) {
 		t.Fatalf("concurrent readers did not publish unique Views: %d", len(entries))
 	}
+	if _, err := os.Stat(filepath.Join(workspace, ".norns.lock")); !os.IsNotExist(err) {
+		t.Fatalf("concurrent commands left a lifecycle lock: %v", err)
+	}
 }
 
 type helperResult struct {

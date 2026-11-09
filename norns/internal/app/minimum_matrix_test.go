@@ -49,6 +49,9 @@ func TestUninitializedWorkspaceRejectsAllCommandsExceptInitAndTaskOpen(t *testin
 			if service.Store.Initialized() {
 				t.Fatal("rejected command initialized the Workspace")
 			}
+			if _, err := os.Stat(service.Paths.Lock); !os.IsNotExist(err) {
+				t.Fatalf("rejected command created a lifecycle lock: %v", err)
+			}
 		})
 	}
 }

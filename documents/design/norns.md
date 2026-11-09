@@ -228,6 +228,10 @@ workspace_meta.protocol_version = <norns.support_protocol>
 
 普通读写和 View 使用生命周期共享锁；init、reset 和 reset recovery 使用独占锁。文件锁不能代替 SQLite 事务。
 
+依赖已有 Workspace 的操作在加锁前检查 `.norns/` 和数据库文件；缺失时返回 `WORKSPACE_NOT_INITIALIZED`，不产生锁文件。显式 init、首次 task open 和 reset journal 恢复不受此快速检查阻断。数据库验证和读写仍在锁内完成。
+
+最后一个持锁者在独占保护下删除锁文件。共享操作结束后先释放共享锁，再非阻塞获取同一文件的独占锁以尝试清理；仍有其他持锁者时由后续持锁者负责。所有等待者加锁后必须核对打开文件与当前路径的文件身份，不匹配则释放旧锁并重试，防止删除/重建导致互斥失效。正常空闲时不保留 `.norns.lock`；崩溃残留由下一次操作清理。此协议要求同一 Workspace 的并发调用统一使用新版本。
+
 ## 12. Workspace 文件布局
 
 ```text

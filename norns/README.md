@@ -104,7 +104,7 @@ ID 由 CLI 生成，格式分别为 `task_<uuid-v4>`、`cog_<uuid-v4>` 和 `exp_
 
 ~~~text
 <workspace>/
-  .norns.lock                 生命周期共享/独占锁
+  .norns.lock                 操作期间的生命周期共享/独占锁，空闲时清理
   .norns/
     norns.sqlite              带协议和 schema 版本检查的数据库
     view/                     原子发布的 Status、Trace 和 Visual View
@@ -258,6 +258,8 @@ Status 和 Trace 默认生成 YAML，`--json` 生成等价 JSON。编码后的 V
 - 普通读写命令和 View 持有 Workspace 生命周期共享锁。
 - `workspace init`、`workspace reset` 和 reset recovery 持有生命周期独占锁。
 - `.norns.lock` 只保护 `.norns/` 的生命周期和目录替换，不代替 SQLite 事务锁。
+- 依赖已有 Workspace 的命令先检查 `.norns/` 和 `norns.sqlite`，不存在时返回 `WORKSPACE_NOT_INITIALIZED`，不会创建锁文件；`workspace init`、首次 `task open` 和待恢复的 reset journal 保留初始化/恢复入口。
+- 最后一个持锁操作结束后，在独占保护下删除 `.norns.lock`；其他共享操作尚未结束时保留。等待者获取锁后重新核对文件身份，避免使用已删除的旧锁。进程异常退出可能留下锁文件，下次操作会重新加锁并清理；不要混用新旧版本并发操作同一 Workspace。
 - View 在共享生命周期锁内读取 snapshot 并完成原子文件发布，多个 View 使用唯一文件名并发写入。
 
 Runtime 占用保存在 SQLite 的 `workspace_meta.runtime_occupied` 中。CLI 不提供单独设置或清除该值的命令。

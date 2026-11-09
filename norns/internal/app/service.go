@@ -36,22 +36,41 @@ func New(root string) (*Service, error) {
 	return &Service{Paths: paths, Store: storesqlite.New(paths, ids, clock), Lock: workspace.NewLock(paths), IDs: ids, Clock: clock, Files: workspace.OSFileOps{}}, nil
 }
 
-func (s *Service) shared(ctx context.Context, fn func(context.Context) error) error {
+func (s *Service) requireWorkspace() error {
+	info, err := os.Stat(s.Paths.Norns)
+	if err == nil && info.IsDir() && s.Store.Initialized() {
+		return nil
+	}
+	if _, err := os.Stat(s.Paths.ResetLog); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return domain.Wrap("IO_ERROR", "cannot inspect reset recovery log", err)
+	}
+	return domain.NewError("WORKSPACE_NOT_INITIALIZED", domain.WorkspaceNotInitializedMessage)
+}
+
+func (s *Service) shared(ctx context.Context, fn func(context.Context) error) (err error) {
 	for {
-		lockCtx, cancel := workspace.TimeoutContext(ctx)
-		unlock, err := s.Lock.Shared(lockCtx)
-		cancel()
-		if err != nil {
+		if err := s.requireWorkspace(); err != nil {
 			return err
 		}
-		if _, err := os.Stat(s.Paths.ResetLog); errors.Is(err, os.ErrNotExist) {
-			defer unlock()
-			return fn(ctx)
-		} else if err != nil {
-			unlock()
-			return domain.Wrap("IO_ERROR", "cannot inspect reset recovery log", err)
+		lockCtx, cancel := workspace.TimeoutContext(ctx)
+		unlock, lockErr := s.Lock.Shared(lockCtx)
+		cancel()
+		if lockErr != nil {
+			return lockErr
 		}
-		unlock()
+		if _, statErr := os.Stat(s.Paths.ResetLog); errors.Is(statErr, os.ErrNotExist) {
+			defer releaseOperationLock(&err, unlock)
+			return fn(ctx)
+		} else if statErr != nil {
+			err = domain.Wrap("IO_ERROR", "cannot inspect reset recovery log", statErr)
+			releaseOperationLock(&err, unlock)
+			return err
+		}
+		if err := unlock(); err != nil {
+			return err
+		}
 		if err := s.exclusive(ctx, func(context.Context) error { return nil }); err != nil {
 			return err
 		}
@@ -59,13 +78,20 @@ func (s *Service) shared(ctx context.Context, fn func(context.Context) error) er
 }
 
 func (s *Service) exclusive(ctx context.Context, fn func(context.Context) error) error {
+	if err := s.requireWorkspace(); err != nil {
+		return err
+	}
+	return s.withExclusive(ctx, fn)
+}
+
+func (s *Service) withExclusive(ctx context.Context, fn func(context.Context) error) (err error) {
 	lockCtx, cancel := workspace.TimeoutContext(ctx)
 	defer cancel()
 	unlock, err := s.Lock.Exclusive(lockCtx)
 	if err != nil {
 		return err
 	}
-	defer unlock()
+	defer releaseOperationLock(&err, unlock)
 	if _, err := os.Stat(s.Paths.ResetLog); err == nil {
 		if err := s.recoverResetLocked(ctx); err != nil {
 			return err
@@ -76,6 +102,16 @@ func (s *Service) exclusive(ctx context.Context, fn func(context.Context) error)
 	return fn(ctx)
 }
 
+func releaseOperationLock(operationErr *error, unlock func() error) {
+	if err := unlock(); err != nil {
+		if *operationErr == nil {
+			*operationErr = err
+		} else {
+			*operationErr = errors.Join(*operationErr, err)
+		}
+	}
+}
+
 type Result struct {
 	Data     any
 	Warnings []output.Warning
@@ -84,7 +120,7 @@ type Result struct {
 
 func (s *Service) Init(ctx context.Context) (Result, error) {
 	var result Result
-	err := s.exclusive(ctx, func(ctx context.Context) error {
+	err := s.withExclusive(ctx, func(ctx context.Context) error {
 		if s.Store.Initialized() {
 			return s.Store.Read(ctx, func(*sql.Tx) error {
 				result = Result{Data: map[string]any{"initialized": false, "existing": true}, Message: "Workspace already exists"}
@@ -125,7 +161,7 @@ func (s *Service) OpenTask(ctx context.Context, req OpenTaskRequest) (Result, er
 
 	var result Result
 	if !s.Store.Initialized() {
-		err := s.exclusive(ctx, func(ctx context.Context) error {
+		err := s.withExclusive(ctx, func(ctx context.Context) error {
 			if s.Store.Initialized() {
 				return s.openTaskExisting(ctx, purpose, req.Concurrency, info, &result)
 			}
