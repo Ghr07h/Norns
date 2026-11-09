@@ -1,0 +1,38 @@
+documents/design/norns.md
+  h_32bccb164adb56 231-234
+norns/README.md
+  h_32bccb164adb56 107,261-262
+norns/go.mod
+  h_32bccb164adb56 10
+norns/internal/app/minimum_matrix_test.go
+  h_32bccb164adb56 52-54
+norns/internal/app/service.go
+  h_32bccb164adb56 39-52,54-56,58,60-61,63-64,66-72,81-87,94,105-114,123,164
+norns/internal/app/workspace_lock_test.go
+  h_32bccb164adb56 1-189
+norns/internal/cli/concurrency_test.go
+  h_32bccb164adb56 108-110
+norns/internal/cli/root_test.go
+  h_32bccb164adb56 96-98
+norns/internal/cli/workspace_lock_test.go
+  h_32bccb164adb56 1-48
+norns/internal/workspace/lifecycle_lock.go
+  h_32bccb164adb56 1-126
+norns/internal/workspace/lifecycle_lock_test.go
+  h_32bccb164adb56 1-168
+norns/internal/workspace/lifecycle_lock_unix.go
+  h_32bccb164adb56 1-34
+norns/internal/workspace/lifecycle_lock_windows.go
+  h_32bccb164adb56 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "98bdb84346fd35d64dfdef48468eafb043d6cdc6",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
