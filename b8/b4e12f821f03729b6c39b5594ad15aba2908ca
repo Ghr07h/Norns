@@ -1,0 +1,20 @@
+nornsd/README.md
+  h_32bccb164adb56 61-62
+nornsd/internal/cli/root.go
+  h_32bccb164adb56 158-163,202-204
+nornsd/internal/cli/startup_progress.go
+  h_32bccb164adb56 1-42
+nornsd/internal/cli/startup_progress_test.go
+  h_32bccb164adb56 1-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b8b4e12f821f03729b6c39b5594ad15aba2908ca",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
