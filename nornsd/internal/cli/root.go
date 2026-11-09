@@ -155,8 +155,12 @@ func serverCommand(stdout, stderr io.Writer) *cobra.Command {
 		if strings.TrimSpace(options.token) == "" || strings.ContainsAny(options.token, " \t\r\n") {
 			return domain.NewError("INVALID_REQUEST", "server token is required and must not contain whitespace", http.StatusBadRequest)
 		}
-		owner, err := root.Acquire(cmd.Context(), workspace, "server", time.Now().UTC())
-		if err != nil {
+		var owner *root.Owner
+		if err := runServerStartupPhase(stderr, "opening workspace and checking database", serverStartupProgressInterval, func() error {
+			var acquireErr error
+			owner, acquireErr = root.Acquire(cmd.Context(), workspace, "server", time.Now().UTC())
+			return acquireErr
+		}); err != nil {
 			return err
 		}
 		defer owner.Close()
@@ -195,7 +199,9 @@ func serverCommand(stdout, stderr io.Writer) *cobra.Command {
 		profile := runtimeProfile(options.useNorns)
 		logger := slog.New(slog.NewJSONHandler(stderr, nil))
 		manager := runtimemanager.NewManager(cmd.Context(), runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: concurrency, SlotConfigs: loaded, Norns: norns, MemoryLimit: memory / 2, OnError: func(err error) { logger.Error("runtime manager", "error", err) }})
-		if err = manager.Recover(cmd.Context()); err != nil {
+		if err = runServerStartupPhase(stderr, "recovering subjects and runtimes", serverStartupProgressInterval, func() error {
+			return manager.Recover(cmd.Context())
+		}); err != nil {
 			return err
 		}
 		manager.Start()

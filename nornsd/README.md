@@ -58,6 +58,8 @@ nornsd version [--json]
 
 server 默认监听 `127.0.0.1:28081`，API 基础路径为 `/api/`。所有接口（包括健康检查）都要求 `Authorization: Bearer <token>`。Token 必须通过 `--token` 或 `agent.yaml` 的 `NORNS_SERVER_TOKEN` 提供。
 
+启动时会向 stderr 输出目录/数据库检查和 Subject/Runtime 恢复阶段的提示。恢复较大的已有目录可能需要数分钟；每 5 秒会输出当前阶段及已等待时间，结束时报告完成或失败。恢复完成并显示 `nornsd listening on ...` 后，HTTP API 才就绪。
+
 ## 快速开始
 
 ### 批量 Runtime 服务
