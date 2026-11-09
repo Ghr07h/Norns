@@ -130,10 +130,10 @@ class Config:
         if code.strip()
     }
 
-    # 严格 flag 正则(与旧版 benchmark 一致)：大小写不敏感，内容 1~50 且不含引号/
-    # 花括号/点/反斜杠，避免宽松匹配带来的占位文案误报。可通过 FLAG_PATTERN 覆盖。
+    # 严格 flag 正则：大小写不敏感，内容 1~50 且不含空白/反引号/单双引号/
+    # 花括号/点，避免宽松匹配带来的占位文案误报。可通过 FLAG_PATTERN 覆盖。
     generic_flag_re = re.compile(
-        os.environ.get("FLAG_PATTERN") or r"flag\{[^\"'{}.]{1,50}\}",
+        os.environ.get("FLAG_PATTERN") or r"flag\{[^\s`\"'{}.]{1,50}\}",
         re.IGNORECASE,
     )
 
@@ -870,8 +870,8 @@ def _event_text(event: dict) -> str:
 def extract_flags(text: str) -> set[str]:
     """从一段文本中抽取 flag，返回以原文为准的集合。
 
-    统一走严格通用正则(与旧版 benchmark 的 FLAG_PATTERN.findall 等价)：编译带
-    IGNORECASE，大小写不敏感，内容 1~50 且不含引号/花括号/点/反斜杠。对全文
+    统一走严格通用正则：编译带 IGNORECASE，大小写不敏感，内容 1~50 且不含
+    空白/反引号/单双引号/花括号/点。对全文
     (含工具输入/输出、cognition)统一扫描即可覆盖所有合法 flag，避免占位文案或
     宽松匹配带来的误报。最后保留花括号/长度守卫仅用于兜底自定义 FLAG_PATTERN
     覆盖情形；占位文案 flag{原文} 等仍需显式剔除。可通过 FLAG_PATTERN 覆盖正则。
