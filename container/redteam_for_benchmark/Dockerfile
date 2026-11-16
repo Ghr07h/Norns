@@ -5,7 +5,7 @@
 # benchmark.py 与单模型、三 Runtime 并发的 FIFO 轮次入口构成可一键起跑的镜像。
 #
 # 入口要求单个 LLM_MODEL，启动一个 nornsd --concurrency 3，再由三个 FIFO worker
-# 按轮推进题目并递增单题限时。详见 entrypoint.py。
+# 按轮推进题目，首轮单题限时 30 分钟，后续每轮 40 分钟。详见 entrypoint.py。
 
 ARG PYTHON_IMAGE=python:3.13.15-slim
 FROM ${PYTHON_IMAGE}

@@ -43,8 +43,10 @@ nornsd API 固定使用 `/api/`：服务信息请求 `GET /api/`（保留末尾�
 两个 Benchmark 的内部探活继续携带 Bearer Token；外部评测平台的 `/openapi/v1/challenges/*`
 属于独立 SaaS 接口，保持不变。
 
-版本和 API 路径的本地回归测试可运行 `python3 -m unittest discover -s container/tests -v`，
-不依赖 Docker 或镜像内工具；测试覆盖四份验证器和两套 Benchmark 的认证、服务信息与探活。
+容器回归测试统一维护在 `container/tests/`，运行 `python3 -m unittest discover -s container/tests -v`，
+不依赖 Docker 或镜像内工具。用例覆盖四份验证器及两套 Benchmark 的配置与鉴权、
+入口启动和清理、Token 持久化、Event 游标分页、稳定 Runtime ID、FIFO 并发重试、
+轮次限时与收尾不限时、平台验收进度和服务恢复；两套 Benchmark 共用测试用例。
 
 四个镜像使用相同的容器目录约定：
 
@@ -235,15 +237,16 @@ docker run --rm --entrypoint python3 \
 ## Redteam benchmark
 
 `redteam_for_benchmark/` 是自包含评测镜像：镜像内启动一个并发为 3 的 nornsd，三个
-worker 持续消费同一个 FIFO 尝试队列。未完成题目会增加单题限时后回到队尾，不等待
+worker 持续消费同一个 FIFO 尝试队列。首轮单题限时 30 分钟，后续每轮固定 40 分钟，
+不再按重试轮数加时。未完成题目回到队尾，不等待
 其他题目的首轮结束；第二轮及后续轮次使用 `resume_session` 延续最新 Runtime Session。
 
 当所有剩余未完成题目均已运行、没有其他待调度题目（包括待重试题目），且数量为 3 道
 或更少时，进入不限单题时间的收尾阶段。例如最后三道题都已运行，或只剩两道题运行时，
 都会动态忽略单题限时，不停止或重启当前 Runtime；若还有题目排队则暂不进入收尾阶段。
 全局超时、停止信号、SaaS 任务结束和异常处理保持有效。
-进入收尾阶段后，未通关题目仍可重试，不再受名义单题限时上限约束，第八轮及后续轮次
-不会因此被拦截。最后一批待派发题目也不会因该上限被提前判为不可解。
+未通关题目仍可重试，不再通过递增限时及其上限限制重试轮数；进入收尾阶段后，
+后续尝试继续保持不限单题时间。
 
 重试指令使用“对应结束原因的恢复指令前缀 + 公共上下文”：区分正常结束但未通关、
 内存超限、单题超时及外部取消，并填入题目编号、平台验收进度与当前靶场地址，提醒
@@ -307,10 +310,9 @@ docker run --rm \
 
 | 变量 | 默认值 | 用途 |
 | --- | ---: | --- |
-| `BENCHMARK_INITIAL_LIMIT_MINUTES` | 40 | 首轮单题限时 |
+| `BENCHMARK_INITIAL_LIMIT_MINUTES` | 30 | 首轮单题限时，单位分钟 |
+| `BENCHMARK_RETRY_LIMIT_MINUTES` | 40 | 第二轮及后续每轮的固定单题限时，单位分钟 |
 | `BENCHMARK_DIAGNOSTICS` | `0` | 设为 `1` 输出额外诊断日志，不改变调度、重试、超时及 flag 提交行为 |
-| `BENCHMARK_LIMIT_INCREMENT_MINUTES` | 30 | 每轮限时增量 |
-| `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 非收尾阶段的名义单题限时上限；收尾阶段忽略，不限制重试轮数 |
 | `BENCHMARK_EVENT_LIMIT` | 5000 | 单次 Event 读取上限 |
 | `BENCHMARK_POLL_INTERVAL` | 4 | Runtime 和 Event 轮询间隔，单位秒 |
 | `BENCHMARK_SERVICE_RECOVERY_ATTEMPTS` | 3 | 连续服务故障最多恢复次数，0 表示首次故障即停止 |

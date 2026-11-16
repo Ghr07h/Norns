@@ -3,10 +3,10 @@
 
 The module contains both the reusable benchmark core and its executable policy. One
 long-lived nornsd binds one model and exposes three non-Norns Claude Code Runtime
-slots. Every unfinished challenge runs once per round; the next round keeps FIFO
-order and increases the per-challenge timeout. Once all remaining challenges are
-running, with at most three unfinished and none awaiting dispatch, single-challenge
-timeouts are disabled.
+slots. Every unfinished challenge gets 30 minutes on its first round and 40 minutes
+on every later round, keeping FIFO order without increasing retry budgets. Once all
+remaining challenges are running, with at most three unfinished and none awaiting
+dispatch, single-challenge timeouts are disabled.
 
 The nornsd adapter follows the current HTTP contract: readable Events continue with
 opaque response cursors, and each attempt tracks its stable Runtime ID after the
@@ -115,9 +115,8 @@ class Config:
     max_active_containers = _env_int("BENCHMARK_MAX_ACTIVE_CONTAINERS", 3)
 
     # FIFO round scheduler tuning.
-    initial_limit_minutes = _env_float("BENCHMARK_INITIAL_LIMIT_MINUTES", 40.0)
-    increment_minutes = _env_float("BENCHMARK_LIMIT_INCREMENT_MINUTES", 30.0)
-    max_challenge_timeout_minutes = _env_float("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES", 240.0)
+    initial_limit_minutes = _env_float("BENCHMARK_INITIAL_LIMIT_MINUTES", 30.0)
+    retry_limit_minutes = _env_float("BENCHMARK_RETRY_LIMIT_MINUTES", 40.0)
     subject_map_dir = os.environ.get("BENCHMARK_SUBJECT_MAP_DIR", "/workspace")
 
     result_file = os.environ.get("BENCHMARK_RESULT_FILE", "/workspace/benchmark-cc-result.json")
@@ -164,10 +163,8 @@ class Config:
             raise SystemExit("服务恢复次数必须 >= 0，恢复间隔和健康等待时间必须 > 0")
         if cls.initial_limit_minutes <= 0:
             raise SystemExit("BENCHMARK_INITIAL_LIMIT_MINUTES 必须 > 0")
-        if cls.increment_minutes <= 0:
-            raise SystemExit("BENCHMARK_LIMIT_INCREMENT_MINUTES 必须 > 0")
-        if cls.max_challenge_timeout_minutes < cls.initial_limit_minutes:
-            raise SystemExit("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES 不能小于初始限时")
+        if cls.retry_limit_minutes <= 0:
+            raise SystemExit("BENCHMARK_RETRY_LIMIT_MINUTES 必须 > 0")
         cls.models = models
 
 
@@ -1952,28 +1949,10 @@ class RoundQueueScheduler:
                         continue
                     attempt_round = len(task.attempts) + 1
                     timeout_minutes = (
-                        Config.initial_limit_minutes
-                        + (attempt_round - 1) * Config.increment_minutes
+                        Config.initial_limit_minutes if attempt_round == 1
+                        else Config.retry_limit_minutes
                     )
                     with self.lock:
-                        remaining_count = sum(
-                            candidate.status == "pending" for candidate in self.tasks)
-                        if (timeout_minutes > Config.max_challenge_timeout_minutes
-                                and not self.timeout_disabled.is_set()
-                                and remaining_count > self.worker_count):
-                            reason = (
-                                f"next timeout {timeout_minutes:g}min exceeds ceiling "
-                                f"{Config.max_challenge_timeout_minutes:g}min"
-                            )
-                            task.status = "unresolvable"
-                            if task.result is None:
-                                task.result = self._error_result(
-                                    task, RuntimeError(reason))
-                            task.result.status = "unresolvable"
-                            task.result.error = reason
-                            self._update_timeout_policy_locked()
-                            self._write_snapshot_locked()
-                            continue
                         task.running = True
                         self._update_timeout_policy_locked()
 
@@ -2006,10 +1985,7 @@ class RoundQueueScheduler:
                             ready.append(task)
                             continue
                         next_round = len(task.attempts) + 1
-                        next_timeout = (
-                            Config.initial_limit_minutes
-                            + (next_round - 1) * Config.increment_minutes
-                        )
+                        next_timeout = Config.retry_limit_minutes
                         timeout_label = ("unlimited" if self.timeout_disabled.is_set()
                                          else f"{next_timeout:.2f}min")
                         log.info(
@@ -2097,9 +2073,9 @@ def main() -> int:
             for index, challenge in enumerate(order_challenges(challenges))
         ]
         log.info("FIFO 队列就绪: tasks=%d model=%s concurrency=3 initial=%.2fmin "
-                 "increment=%.2fmin ceiling=%.2fmin",
+                 "retry=%.2fmin",
                  len(tasks), Config.models[0], Config.initial_limit_minutes,
-                 Config.increment_minutes, Config.max_challenge_timeout_minutes)
+                 Config.retry_limit_minutes)
         _active_scheduler = RoundQueueScheduler(
             tasks, saas, nor, registry, model=Config.models[0],
             started_iso=started_iso, overall_deadline=overall_deadline,

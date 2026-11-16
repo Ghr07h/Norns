@@ -324,7 +324,7 @@ def _env_float_or(name: str, default: float) -> float:
         raise SystemExit(f"环境变量 {name} 不是合法数字: {value!r}")
 
 
-def run_benchmark(specs: list, token: str, initial: float, increment: float, ceiling: float,
+def run_benchmark(specs: list, token: str, initial: float, retry: float,
                   run_id: str) -> int:
     """Run benchmark.py once against the single healthy nornsd."""
     if len(specs) != 1:
@@ -334,8 +334,9 @@ def run_benchmark(specs: list, token: str, initial: float, increment: float, cei
     env["BENCHMARK_NORNSD_TOKEN"] = token
     env["LLM_MODEL"] = ",".join(spec["model"] for spec in specs)
     env["BENCHMARK_INITIAL_LIMIT_MINUTES"] = str(initial)
-    env["BENCHMARK_LIMIT_INCREMENT_MINUTES"] = str(increment)
-    env["BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES"] = str(ceiling)
+    env["BENCHMARK_RETRY_LIMIT_MINUTES"] = str(retry)
+    env.pop("BENCHMARK_LIMIT_INCREMENT_MINUTES", None)
+    env.pop("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES", None)
     env["BENCHMARK_RUN_ID"] = run_id
     # 旧设计(外层轮×内层模型 + 3 并发池)相关变量必须清除，避免 benchmark.py 误读。
     env.pop("BENCHMARK_CONCURRENCY", None)
@@ -345,7 +346,7 @@ def run_benchmark(specs: list, token: str, initial: float, increment: float, cei
     env.pop("NORNSD_BASE_URL", None)
     env.pop("NORNSD_TOKEN", None)
     log(f"运行 benchmark.py: 初始单题限时={initial}min "
-        f"递增={increment}min 封顶={ceiling}min model={env['LLM_MODEL']}")
+        f"后续每轮={retry}min model={env['LLM_MODEL']}")
     global _benchmark_proc
     proc = subprocess.Popen([sys.executable, str(BENCHMARK_BIN)], env=env)
     _benchmark_proc = proc
@@ -413,9 +414,8 @@ def main() -> int:
     models = parse_models()
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
-    initial = _env_float_or("BENCHMARK_INITIAL_LIMIT_MINUTES", 40.0)
-    increment = _env_float_or("BENCHMARK_LIMIT_INCREMENT_MINUTES", 30.0)
-    ceiling = _env_float_or("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES", 240.0)
+    initial = _env_float_or("BENCHMARK_INITIAL_LIMIT_MINUTES", 30.0)
+    retry = _env_float_or("BENCHMARK_RETRY_LIMIT_MINUTES", 40.0)
     health_wait = _env_float_or("ENTRYPOINT_HEALTH_WAIT", 180.0)
     stop_wait = _env_float_or("ENTRYPOINT_STOP_WAIT", 45.0)
     token = persisted_token()
@@ -432,7 +432,7 @@ def main() -> int:
 
     log(f"模型: {models[0]}; 端口 {DEFAULT_SERVER_PORT}; "
         f"nornsd concurrency={DEFAULT_SERVER_CONCURRENCY}; "
-        f"单题限时初始={initial}min 递增={increment}min 封顶={ceiling}min; 共享 token 已就绪")
+        f"单题限时初始={initial}min 后续每轮={retry}min; 共享 token 已就绪")
 
     started: list = []  # (spec, proc)
     healthy_specs: list = []
@@ -469,7 +469,7 @@ def main() -> int:
         if not healthy_specs:
             warn("nornsd 不健康，benchmark 不启动")
             return 1
-        benchmark_rc = run_benchmark(healthy_specs, token, initial, increment, ceiling, run_id)
+        benchmark_rc = run_benchmark(healthy_specs, token, initial, retry, run_id)
     finally:
         log("停止 nornsd")
         for spec, proc in started:

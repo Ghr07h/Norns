@@ -82,8 +82,7 @@ benchmark*-result.json
 
 ## container
 /container/**/*.zip
-/container/redteam_for_benchmark/tests/
-/container/redteam_for_benchmark_cc/tests/
+/container/tests/
 
 ## well
 /well/vite.config.js
