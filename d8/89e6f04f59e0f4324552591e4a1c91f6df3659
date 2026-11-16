@@ -1,0 +1,26 @@
+.gitignore
+  h_32bccb164adb56 85
+container/README.md
+  h_32bccb164adb56 46-49,240-241,248-249,313-314
+container/redteam_for_benchmark/Dockerfile
+  h_32bccb164adb56 8
+container/redteam_for_benchmark/benchmark.py
+  h_32bccb164adb56 6-9,118-119,166-167,1996-1997,2032,2120,2122
+container/redteam_for_benchmark/entrypoint.py
+  h_32bccb164adb56 327,337-339,349,417-418,435,472
+container/redteam_for_benchmark_cc/benchmark.py
+  h_32bccb164adb56 6-9,118-119,166-167,1952-1953,1988,2076,2078
+container/redteam_for_benchmark_cc/entrypoint.py
+  h_32bccb164adb56 319,329-331,341,409-410,428,465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d889e6f04f59e0f4324552591e4a1c91f6df3659",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
