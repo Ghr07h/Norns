@@ -1,0 +1,16 @@
+QUICKSTART.md
+  h_32bccb164adb56 267-325
+README.md
+  h_32bccb164adb56 5,9-12,14,16,18-21,23,25-28,30,32,34-35,37,39,41-44,46,48-49,51,53,55,57,59,61-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "57eeabf494d5743b149ed062dfcedf0cfb3465c8",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
