@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start one three-slot plain-Claude nornsd and the single-model FIFO benchmark."""
+"""Start one plain-Claude nornsd and the FIFO benchmark with shared concurrency."""
 from __future__ import annotations
 
 import json
@@ -83,6 +83,13 @@ def parse_positive_integer(name: str, value: str) -> int:
     if parsed < 1:
         raise ValueError(f"{name} 必须为正整数，收到 {value!r}")
     return parsed
+
+
+def benchmark_concurrency() -> int:
+    return parse_positive_integer(
+        "BENCHMARK_CONCURRENCY",
+        os.environ.get("BENCHMARK_CONCURRENCY") or str(DEFAULT_SERVER_CONCURRENCY),
+    )
 
 
 def parse_string_list(name: str, value: str) -> list[str]:
@@ -238,7 +245,7 @@ def start_nornsd(workspace: Path, settings: Path, port: int, token: str) -> subp
         str(NORNSD_BIN), "server",
         "--workspace-root", str(workspace),
         "--settings", str(settings),
-        "--concurrency", str(DEFAULT_SERVER_CONCURRENCY),
+        "--concurrency", str(benchmark_concurrency()),
     ]
     # nornsd 的 slog 会把每条 http request(benchmark 轮询事件、抽 flag、提交、健康探活)
     # 全行打到 stderr,量极大;若直接接回 terminal,会淹没 entrypoint/benchmark 自己的输出
@@ -330,8 +337,8 @@ def run_benchmark(specs: list, token: str, initial: float, retry: float,
     env.pop("BENCHMARK_LIMIT_INCREMENT_MINUTES", None)
     env.pop("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES", None)
     env["BENCHMARK_RUN_ID"] = run_id
+    env["BENCHMARK_CONCURRENCY"] = str(benchmark_concurrency())
     # 旧设计(外层轮×内层模型 + 3 并发池)相关变量必须清除，避免 benchmark.py 误读。
-    env.pop("BENCHMARK_CONCURRENCY", None)
     env.pop("BENCHMARK_MODEL_LABEL", None)
     env.pop("BENCHMARK_PER_CHALLENGE_TIMEOUT", None)
     env.pop("BENCHMARK_MAX_PASSES", None)
@@ -404,6 +411,11 @@ def main() -> int:
         return 2
 
     models = parse_models()
+    try:
+        concurrency = benchmark_concurrency()
+    except ValueError as error:
+        warn(str(error))
+        return 2
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
     initial = _env_float_or("BENCHMARK_INITIAL_LIMIT_MINUTES", 30.0)
@@ -424,7 +436,7 @@ def main() -> int:
         return 1
 
     log(f"模式: 普通 Claude Code; 模型: {models[0]}; 端口 {DEFAULT_SERVER_PORT}; "
-        f"nornsd concurrency={DEFAULT_SERVER_CONCURRENCY}; "
+        f"nornsd concurrency={concurrency}; "
         f"单题限时初始={initial}min 后续每轮={retry}min; 共享 token 已就绪")
 
     started: list = []  # (spec, proc)

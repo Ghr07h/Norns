@@ -149,7 +149,8 @@ docker run --detach --rm \
 `NORNS_CUSTOM_AGENTS_DIR`、`CUSTOM_AGENTS_DIR`、`CUSTOM_SKILLS_DIR` 和
 `CUSTOM_PLUGIN_DIRS` 默认均为空。`CUSTOM_PLUGIN_DIRS` 接受单个路径字符串或 YAML/JSON
 字符串列表。`NORNS_SERVER_CONCURRENCY` 控制 Server Runtime 槽位，通用与 redteam Server
-默认均为 1，两个 benchmark 镜像固定为 3。
+默认均为 1；两个 benchmark 镜像使用 `BENCHMARK_CONCURRENCY` 同时控制 Runtime 槽位和
+评测 worker 数，默认均为 3。
 
 前三个入口共同识别以下 nornsd 配置变量：
 
@@ -236,13 +237,17 @@ docker run --rm --entrypoint python3 \
 
 ## Redteam benchmark
 
-`redteam_for_benchmark/` 是自包含评测镜像：镜像内启动一个并发为 3 的 nornsd，三个
-worker 持续消费同一个 FIFO 尝试队列。首轮单题限时 30 分钟，后续每轮固定 40 分钟，
+`redteam_for_benchmark/` 是自包含评测镜像：镜像内启动一个 nornsd，worker 持续消费
+同一个 FIFO 尝试队列。nornsd Runtime 槽位和 worker 数由 `BENCHMARK_CONCURRENCY`
+统一控制，默认均为 3，两套 Benchmark 均支持；例如传入 `--env BENCHMARK_CONCURRENCY=5`
+可同时评测 5 道题。这不改变单个 Task 内的 `NORNS_MAX_CONCURRENT_EXPLORATIONS`。
+首轮单题限时 30 分钟，后续每轮固定 40 分钟，
 不再按重试轮数加时。未完成题目回到队尾，不等待
 其他题目的首轮结束；第二轮及后续轮次使用 `resume_session` 延续最新 Runtime Session。
 
-当所有剩余未完成题目均已运行、没有其他待调度题目（包括待重试题目），且数量为 3 道
-或更少时，进入不限单题时间的收尾阶段。例如最后三道题都已运行，或只剩两道题运行时，
+当所有剩余未完成题目均已运行、没有其他待调度题目（包括待重试题目），且数量不超过
+`BENCHMARK_CONCURRENCY` 时，进入不限单题时间的收尾阶段。默认配置下，最后三道题
+都已运行，或只剩两道题运行时，
 都会动态忽略单题限时，不停止或重启当前 Runtime；若还有题目排队则暂不进入收尾阶段。
 全局超时、停止信号、SaaS 任务结束和异常处理保持有效。
 未通关题目仍可重试，不再通过递增限时及其上限限制重试轮数；进入收尾阶段后，
@@ -310,6 +315,7 @@ docker run --rm \
 
 | 变量 | 默认值 | 用途 |
 | --- | ---: | --- |
+| `BENCHMARK_CONCURRENCY` | 3 | 同时评测的题目数及 nornsd Runtime 槽位数，必须为正整数 |
 | `BENCHMARK_INITIAL_LIMIT_MINUTES` | 30 | 首轮单题限时，单位分钟 |
 | `BENCHMARK_RETRY_LIMIT_MINUTES` | 40 | 第二轮及后续每轮的固定单题限时，单位分钟 |
 | `BENCHMARK_DIAGNOSTICS` | `0` | 设为 `1` 输出额外诊断日志，不改变调度、重试、超时及 flag 提交行为 |

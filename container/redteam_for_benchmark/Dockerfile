@@ -2,9 +2,9 @@
 #
 # 直接以 python:3.13.15-slim 为起点，内置整套红队工具链(渗透工具、Claude Code 2.1.199、
 # norns/nornsd、redteam domain)，不再依赖 nornsd-redteam-server 基镜像。在其上叠加
-# benchmark.py 与单模型、三 Runtime 并发的 FIFO 轮次入口构成可一键起跑的镜像。
+# benchmark.py 与单模型、可配置 Runtime 并发的 FIFO 轮次入口构成可一键起跑的镜像。
 #
-# 入口要求单个 LLM_MODEL，启动一个 nornsd --concurrency 3，再由三个 FIFO worker
+# 入口要求单个 LLM_MODEL，由 BENCHMARK_CONCURRENCY 控制 nornsd 槽位和 FIFO worker 数（默认 3），
 # 按轮推进题目，首轮单题限时 30 分钟，后续每轮 40 分钟。详见 entrypoint.py。
 
 ARG PYTHON_IMAGE=python:3.13.15-slim

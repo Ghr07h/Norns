@@ -2,10 +2,10 @@
 #
 # 直接以 python:3.13.15-slim 为起点，内置整套红队工具链(渗透工具、Claude Code 2.1.199、
 # norns/nornsd、redteam Skill)，与 Norns benchmark 保持相同工具环境。在其上叠加
-# benchmark.py 与单模型、三 Runtime 并发的 FIFO 轮次入口构成可一键起跑的对照组。
+# benchmark.py 与单模型、可配置 Runtime 并发的 FIFO 轮次入口构成可一键起跑的对照组。
 #
 # 入口要求单个 LLM_MODEL，强制关闭 Norns，只为普通 Claude Code 加载 redteam Skill；
-# 启动一个 nornsd --concurrency 3，再由三个 FIFO worker 按轮推进题目。
+# 由 BENCHMARK_CONCURRENCY 控制 nornsd 槽位和 FIFO worker 数（默认 3），按轮推进题目。
 
 ARG PYTHON_IMAGE=python:3.13.15-slim
 FROM ${PYTHON_IMAGE}

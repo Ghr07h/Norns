@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Plain-Claude red-team benchmark with a three-worker FIFO scheduler.
+"""Plain-Claude red-team benchmark with a configurable FIFO scheduler.
 
 The module contains both the reusable benchmark core and its executable policy. One
-long-lived nornsd binds one model and exposes three non-Norns Claude Code Runtime
+long-lived nornsd binds one model and exposes configurable non-Norns Claude Code Runtime
 slots. Every unfinished challenge gets 30 minutes on its first round and 40 minutes
 on every later round, keeping FIFO order without increasing retry budgets. Once all
-remaining challenges are running, with at most three unfinished and none awaiting
+remaining challenges are running, with no more unfinished than Runtime slots and none awaiting
 dispatch, single-challenge timeouts are disabled.
 
 The nornsd adapter follows the current HTTP contract: readable Events continue with
@@ -84,7 +84,6 @@ def _read_nornsd_token() -> str:
 class Config:
     benchmark_base_url = os.environ.get("BENCHMARK_BASE_URL", "").rstrip("/") or None
     benchmark_token = os.environ.get("BENCHMARK_TOKEN") or None
-    # Current deployment uses exactly one three-slot nornsd and one model.
     nornsd_base_urls = [
         url.strip().rstrip("/")
         for url in (os.environ.get("BENCHMARK_NORNSD_BASE_URLS") or "").split(",")
@@ -115,6 +114,7 @@ class Config:
     max_active_containers = _env_int("BENCHMARK_MAX_ACTIVE_CONTAINERS", 3)
 
     # FIFO round scheduler tuning.
+    concurrency = _env_int("BENCHMARK_CONCURRENCY", 3)
     initial_limit_minutes = _env_float("BENCHMARK_INITIAL_LIMIT_MINUTES", 30.0)
     retry_limit_minutes = _env_float("BENCHMARK_RETRY_LIMIT_MINUTES", 40.0)
     subject_map_dir = os.environ.get("BENCHMARK_SUBJECT_MAP_DIR", "/workspace")
@@ -159,6 +159,8 @@ class Config:
             raise SystemExit("BENCHMARK_EVENT_LIMIT 必须在 1..5000 之间")
         if cls.poll_interval <= 0:
             raise SystemExit("BENCHMARK_POLL_INTERVAL 必须 > 0")
+        if cls.concurrency < 1:
+            raise SystemExit("BENCHMARK_CONCURRENCY 必须为正整数")
         if cls.service_recovery_attempts < 0 or cls.service_recovery_interval <= 0 or cls.health_wait <= 0:
             raise SystemExit("服务恢复次数必须 >= 0，恢复间隔和健康等待时间必须 > 0")
         if cls.initial_limit_minutes <= 0:
@@ -1702,13 +1704,15 @@ class QueueTask:
 
 
 class RoundQueueScheduler:
-    """Keep three FIFO attempts in flight and append retries to the queue tail."""
+    """Keep FIFO attempts in flight and append retries to the queue tail."""
 
     def __init__(self, tasks: list[QueueTask], saas, nor, registry, *, model: str,
                  started_iso: str, overall_deadline: float | None = None,
-                 worker_count: int = 3):
-        if worker_count != 3:
-            raise ValueError("benchmark requires exactly three workers")
+                 worker_count: int | None = None):
+        if worker_count is None:
+            worker_count = Config.concurrency
+        if worker_count < 1:
+            raise ValueError("benchmark concurrency must be positive")
         self.tasks = tasks
         self.saas = saas
         self.nor = nor
@@ -2072,9 +2076,9 @@ def main() -> int:
             QueueTask(challenge=challenge, index=index)
             for index, challenge in enumerate(order_challenges(challenges))
         ]
-        log.info("FIFO 队列就绪: tasks=%d model=%s concurrency=3 initial=%.2fmin "
+        log.info("FIFO 队列就绪: tasks=%d model=%s concurrency=%d initial=%.2fmin "
                  "retry=%.2fmin",
-                 len(tasks), Config.models[0], Config.initial_limit_minutes,
+                 len(tasks), Config.models[0], Config.concurrency, Config.initial_limit_minutes,
                  Config.retry_limit_minutes)
         _active_scheduler = RoundQueueScheduler(
             tasks, saas, nor, registry, model=Config.models[0],
