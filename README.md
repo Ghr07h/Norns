@@ -38,15 +38,21 @@ Norns 协议原语：
 
 基于 Norns 的自描述特性，可以手动在任务目录执行 `norns view visual` 命令以获取当前时刻实体状态的快照。示例如下：
 
-![](./resources/readme/norns-1-visual.png)
-![](./resources/readme/norns-2-graph.png)
-![](./resources/readme/norns-3-node.png)
-![](./resources/readme/norns-4-exp.png)
+<p align="center">
+  <a href="./resources/readme/norns-1-visual.jpg"><img src="./resources/readme/norns-1-visual.jpg" alt="Norns 可视化快照" width="48%"></a>
+  <a href="./resources/readme/norns-2-graph.jpg"><img src="./resources/readme/norns-2-graph.jpg" alt="Norns 知识图谱" width="48%"></a>
+</p>
+<p align="center">
+  <a href="./resources/readme/norns-3-node.jpg"><img src="./resources/readme/norns-3-node.jpg" alt="Norns 节点详情" width="48%"></a>
+  <a href="./resources/readme/norns-4-exp.jpg"><img src="./resources/readme/norns-4-exp.jpg" alt="Norns 探索记录" width="48%"></a>
+</p>
 
 在 Norns Server 模式下，则可以通过 Well 客户端连接并获取更方便的实体信息。示例如下：
 
-![](./resources/readme/well-1-visual.png)
-![](./resources/readme/well-2-event.png)
+<p align="center">
+  <a href="./resources/readme/well-1-visual.jpg"><img src="./resources/readme/well-1-visual.jpg" alt="Well 实体状态视图" width="48%"></a>
+  <a href="./resources/readme/well-2-event.jpg"><img src="./resources/readme/well-2-event.jpg" alt="Well 事件记录" width="48%"></a>
+</p>
 
 ## 领域评测
 
@@ -54,7 +60,9 @@ Norns 协议原语：
 
 截至 f17ae8e 提交，以 DeepSeek-4.1-flash 驱动下的网络安全领域的 Tsec Benchmark 领域评测结果如下（不调用 hint 接口）：
 
-![](./resources/benchmark/tsec_d41.png)
+<p align="center">
+  <a href="./resources/benchmark/tsec_d41.jpg"><img src="./resources/benchmark/tsec_d41.jpg" alt="Tsec Benchmark 领域评测结果" width="720"></a>
+</p>
 
 ## 项目结构
 
