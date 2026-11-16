@@ -170,6 +170,9 @@ func (s *Server) writeError(w http.ResponseWriter, requestID string, err error) 
 	if errors.Is(err, context.DeadlineExceeded) {
 		de = domain.NewError("DEADLINE_EXCEEDED", "request deadline exceeded", http.StatusGatewayTimeout)
 	}
+	if de.HTTPStatus >= http.StatusInternalServerError {
+		s.logger.Error("http request failed", "request_id", requestID, "code", de.Code, "error", err, "details", de.Details)
+	}
 	details := de.Details
 	if details == nil {
 		details = map[string]any{}

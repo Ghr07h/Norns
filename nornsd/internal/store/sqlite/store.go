@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -190,11 +191,31 @@ func formatTime(t time.Time) string         { return t.UTC().Format(timeFormat) 
 func parseTime(v string) (time.Time, error) { return time.Parse(timeFormat, v) }
 
 func (s *Store) Health(ctx context.Context) error {
-	var one int
-	return s.db.QueryRowContext(ctx, `SELECT 1`).Scan(&one)
+	return s.withWrite(ctx, func(dbtx) error { return nil })
 }
 
-func (s *Store) withWrite(ctx context.Context, fn func(dbtx) error) error {
+func databaseError(message string, cause error) *domain.Error {
+	err := domain.Wrap("SERVICE_UNAVAILABLE", message, http.StatusServiceUnavailable, cause)
+	var coded interface {
+		error
+		Code() int
+	}
+	if errors.As(cause, &coded) {
+		err.Details["sqlite_code"] = coded.Code()
+		reason := strings.Join(strings.Fields(coded.Error()), " ")
+		if len(reason) > 1024 {
+			reason = reason[:1024] + "...[truncated]"
+		}
+		err.Details["sqlite_error"] = reason
+	}
+	return err
+}
+
+func discardConnection(conn *sql.Conn) {
+	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+}
+
+func (s *Store) withWrite(ctx context.Context, fn func(dbtx) error) (err error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	conn, err := s.db.Conn(ctx)
@@ -203,12 +224,18 @@ func (s *Store) withWrite(ctx context.Context, fn func(dbtx) error) error {
 	}
 	defer conn.Close()
 	if _, err = conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return domain.Wrap("SERVICE_UNAVAILABLE", "cannot begin database transaction", http.StatusServiceUnavailable, err)
+		discardConnection(conn)
+		return databaseError("cannot begin database transaction", err)
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+			cleanupContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if _, cleanupErr := conn.ExecContext(cleanupContext, `ROLLBACK`); cleanupErr != nil {
+				discardConnection(conn)
+				err = databaseError("cannot roll back database transaction", errors.Join(err, cleanupErr))
+			}
 		}
 	}()
 	if err = fn(conn); err != nil {
@@ -218,7 +245,7 @@ func (s *Store) withWrite(ctx context.Context, fn func(dbtx) error) error {
 		return err
 	}
 	if _, err = conn.ExecContext(ctx, `COMMIT`); err != nil {
-		return domain.Wrap("SERVICE_UNAVAILABLE", "cannot commit database transaction", http.StatusServiceUnavailable, err)
+		return databaseError("cannot commit database transaction", err)
 	}
 	committed = true
 	return nil

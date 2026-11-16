@@ -102,6 +102,8 @@ class Config:
     start_retry_interval = _env_float("BENCHMARK_START_RETRY_INTERVAL", 10.0)
     event_limit = _env_int("BENCHMARK_EVENT_LIMIT", 5000)
     health_wait = _env_float("BENCHMARK_HEALTH_WAIT", 300.0)
+    service_recovery_attempts = _env_int("BENCHMARK_SERVICE_RECOVERY_ATTEMPTS", 3)
+    service_recovery_interval = _env_float("BENCHMARK_SERVICE_RECOVERY_INTERVAL", 5.0)
     # start 返回的 container_addr 可能尚未就绪，需轮询 list 直到
     # container_status == available 才有真实直连地址。
     container_ready_timeout = _env_float("BENCHMARK_CONTAINER_READY_TIMEOUT", 120.0)
@@ -157,6 +159,8 @@ class Config:
             raise SystemExit("BENCHMARK_EVENT_LIMIT 必须在 1..5000 之间")
         if cls.poll_interval <= 0:
             raise SystemExit("BENCHMARK_POLL_INTERVAL 必须 > 0")
+        if cls.service_recovery_attempts < 0 or cls.service_recovery_interval <= 0 or cls.health_wait <= 0:
+            raise SystemExit("服务恢复次数必须 >= 0，恢复间隔和健康等待时间必须 > 0")
         if cls.initial_limit_minutes <= 0:
             raise SystemExit("BENCHMARK_INITIAL_LIMIT_MINUTES 必须 > 0")
         if cls.increment_minutes <= 0:
@@ -215,6 +219,19 @@ def _setup_process_log() -> Path | None:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _log_text(value: object) -> str:
+    text = str(value or "")
+    secrets = {Config.benchmark_token, getattr(Config, "nornsd_token", None)}
+    secrets.update(value for key, value in os.environ.items()
+                   if re.search(r"TOKEN|PASSWORD|SECRET|(?:^|_)KEY$", key, re.I))
+    for secret in sorted((value for value in secrets if isinstance(value, str) and value),
+                         key=len, reverse=True):
+        text = text.replace(secret, "[REDACTED]")
+    text = re.sub(r"(?i)\bBearer\s+[^\s\"']+", "Bearer [REDACTED]", text)
+    text = " ".join(text.split())
+    return text[:1024] + ("...[truncated]" if len(text) > 1024 else "")
 
 
 def _diagnostic(event: str, **fields) -> None:
@@ -327,8 +344,19 @@ class TaskEnded(Exception):
 
 
 class NornsdError(Exception):
-    def __init__(self, code: str, message: str, status: int):
-        super().__init__(f"{code}: {message}")
+    def __init__(self, code: str, message: str, status: int, *,
+                 request_id: str = "", details: dict | None = None):
+        self.request_id = request_id
+        self.details = details or {}
+        context = []
+        if isinstance(self.details.get("sqlite_code"), int):
+            context.append(f"sqlite_code={self.details['sqlite_code']}")
+        if isinstance(self.details.get("sqlite_error"), str):
+            context.append(f"sqlite_error={_log_text(self.details['sqlite_error'])}")
+        if request_id:
+            context.append(f"request_id={request_id}")
+        suffix = " (" + ", ".join(context) + ")" if context else ""
+        super().__init__(f"{code}: {message}{suffix}")
         self.code = code
         self.status = status
 
@@ -622,12 +650,16 @@ class NornsdClient:
         payload = _json(raw)
         if status >= 400:
             code, message = "unknown", f"nornsd HTTP {status}"
+            request_id, details = "", {}
             if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
                 error = payload["error"]
                 code = str(error.get("code", code))
                 message = str(error.get("message", message))
+                request_id = str(error.get("request_id") or "")
+                if isinstance(error.get("details"), dict):
+                    details = error["details"]
             error_type = NornsdUnavailable if status >= 500 or code.upper() == "SERVICE_UNAVAILABLE" else NornsdError
-            raise error_type(code, message, status)
+            raise error_type(code, message, status, request_id=request_id, details=details)
         return payload
 
     # -- 健康/信息 -----------------------------------------------------
@@ -1045,6 +1077,17 @@ class ChallengeResult:
         }
 
 
+def _result_log_context(result: ChallengeResult) -> str:
+    return json.dumps({
+        "status": _log_text(result.status),
+        "runtime_state": _log_text(result.runtime_state),
+        "end_reason": _log_text(result.runtime_end_reason),
+        "error_code": _log_text(result.runtime_error_code),
+        "reason": _log_text(result.error or result.runtime_end_reason
+                            or result.runtime_error_code or result.status),
+    }, ensure_ascii=False)
+
+
 def _submit_flags(saas: SaaSClient, unique_code: str, pending: list[str],
                   result: ChallengeResult) -> set[str]:
     """提交 flag，返回 SaaS 已确认接收（含 duplicate）的 flag 集合。"""
@@ -1404,7 +1447,8 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
              reference_context: str = "",
              attempt_round: int = 1,
              timeout_disabled: threading.Event | None = None,
-             previous_result: ChallengeResult | None = None) -> ChallengeResult:
+             previous_result: ChallengeResult | None = None,
+             service_unavailable: threading.Event | None = None) -> ChallengeResult:
     """Run one challenge attempt from container start through Runtime cleanup."""
     unique_code = challenge.get("unique_code", "")
     result = ChallengeResult(
@@ -1428,6 +1472,9 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
         return result
 
     started_at_mono = time.monotonic()
+
+    if service_unavailable is not None and service_unavailable.is_set():
+        raise NornsdUnavailable("SERVICE_RECOVERY_PENDING", "nornsd recovery is pending", 503)
 
     # 1. 开启本次尝试的 SaaS 靶场；由调度器 finally 统一关闭。
     try:
@@ -1589,11 +1636,18 @@ def run_cell(challenge: dict, saas: SaaSClient, nor: NornsdClient,
                 result.runtime_end_reason = str(runtime.get("end_reason") or "")
                 runtime_error = runtime.get("error") or {}
                 result.runtime_error_code = str(runtime_error.get("code") or "")
-                log.info("[%s/%s] runtime 已结束(%s)，提交剩余 flag 后收尾", unique_code, model or "?", state)
                 if result.status == "pending":
                     result.status = state
                 if state == "error":
-                    result.error = result.runtime_error_code or result.runtime_end_reason
+                    error_details = runtime_error.get("details")
+                    error_details = error_details if isinstance(error_details, dict) else {}
+                    result.error = str(runtime_error.get("message") or error_details.get("message")
+                                       or result.runtime_error_code
+                                       or result.runtime_end_reason)
+                    if error_details.get("cause"):
+                        result.error += ": " + str(error_details["cause"])
+                log.info("[%s/%s] runtime 已结束(%s)，提交剩余 flag 后收尾; %s",
+                         unique_code, model or "?", state, _result_log_context(result))
                 break
 
             # 通过 status view 判断是否需要在未通关时下发继续指令
@@ -1678,6 +1732,7 @@ class QueueTask:
     result: ChallengeResult | None = None
     attempts: list[dict] = field(default_factory=list)
     running: bool = False
+    service_failed: bool = False
 
     @property
     def code(self) -> str:
@@ -1707,6 +1762,50 @@ class RoundQueueScheduler:
         self.dispatch_sequence = 0
         self.global_stopped = False
         self.timeout_disabled = threading.Event()
+        self.service_unavailable = threading.Event()
+        self.service_generation = 0
+        self.recovery_attempts = 0
+        self.service_failures: list[dict] = []
+        self.last_service_error = ""
+        self.infrastructure_error = ""
+
+    def _recover_service(self) -> bool:
+        if self.recovery_attempts >= Config.service_recovery_attempts:
+            self.infrastructure_error = self.last_service_error
+            log.error("nornsd 连续恢复失败，停止派发并保留评测进度: %s", self.infrastructure_error)
+            self.request_stop()
+            return False
+        self.recovery_attempts += 1
+        delay = Config.service_recovery_interval * 2 ** (self.recovery_attempts - 1)
+        deadline = time.monotonic() + Config.health_wait
+        if self.overall_deadline is not None:
+            deadline = min(deadline, self.overall_deadline)
+        log.warning("nornsd 不可用，暂停开靶，%.1fs 后检查恢复(%d/%d): %s",
+                    delay, self.recovery_attempts, Config.service_recovery_attempts,
+                    self.last_service_error)
+        while not self.stop_event.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if self.overall_deadline is None or time.monotonic() < self.overall_deadline:
+                    self.infrastructure_error = self.last_service_error
+                    log.error("nornsd 恢复等待超时，保留评测进度: %s", self.infrastructure_error)
+                self.request_stop()
+                return False
+            if self.stop_event.wait(min(delay, remaining)):
+                return False
+            if time.monotonic() >= deadline:
+                continue
+            with self.lock:
+                generation = self.service_generation
+            if self.nor.health():
+                with self.lock:
+                    if generation != self.service_generation:
+                        continue
+                    self.service_unavailable.clear()
+                log.info("nornsd 健康检查通过，恢复派发")
+                return True
+            delay = Config.service_recovery_interval
+        return False
 
     def _update_timeout_policy_locked(self) -> None:
         remaining = [task for task in self.tasks if task.status == "pending"]
@@ -1777,6 +1876,8 @@ class RoundQueueScheduler:
             "timeout_minutes": self.timeout_minutes,
             "timeout_disabled": self.timeout_disabled.is_set(),
             "global_stopped": self.global_stopped,
+            "infrastructure_error": self.infrastructure_error,
+            "service_failures": list(self.service_failures),
             "total": len(self.tasks),
             "completed": sum(task.status == "completed" for task in self.tasks),
             "unresolvable": sum(
@@ -1801,6 +1902,11 @@ class RoundQueueScheduler:
         })
         with self.lock:
             task.running = False
+            task.service_failed = result.status == "infrastructure_error"
+            if result.status == "infrastructure_error":
+                self.service_failures.append(attempt)
+                self._write_snapshot_locked()
+                return
             task.result = result
             task.attempts.append(attempt)
             task.challenge["correct_flag_count"] = max(
@@ -1815,6 +1921,8 @@ class RoundQueueScheduler:
                 self.stop_event.set()
             elif result.error == "challenge_not_found":
                 task.status = "unresolvable"
+            if not self.service_unavailable.is_set() and (result.is_completed or result.runtime_state):
+                self.recovery_attempts = 0
             self._update_timeout_policy_locked()
             self._write_snapshot_locked()
 
@@ -1836,10 +1944,21 @@ class RoundQueueScheduler:
                 attempt_round=attempt_round,
                 timeout_disabled=self.timeout_disabled,
                 previous_result=task.result,
+                service_unavailable=self.service_unavailable,
             )
         except TaskEnded as error:
             result = self._error_result(task, error)
             result.status = "invalid_state"
+        except NornsdUnavailable as error:
+            result = self._error_result(task, error)
+            result.status = "infrastructure_error"
+            result.runtime_error_code = error.code
+            with self.lock:
+                if error.code != "SERVICE_RECOVERY_PENDING":
+                    self.last_service_error = result.error
+                    self.service_generation += 1
+                self.service_unavailable.set()
+            log.error("[%s] nornsd 不可用，暂停队列: %s", task.code, error)
         except (SaaSError, NornsdError, BenchmarkError) as error:
             result = self._error_result(task, error)
             log.error("[%s] attempt failed: %s", task.code, error)
@@ -1865,8 +1984,12 @@ class RoundQueueScheduler:
                         and time.monotonic() >= self.overall_deadline):
                     self.request_stop()
 
+                if self.service_unavailable.is_set() and not self.stop_event.is_set():
+                    self._recover_service()
+
                 while (ready and len(active) < self.worker_count
-                       and not self.stop_event.is_set()):
+                       and not self.stop_event.is_set()
+                       and not self.service_unavailable.is_set()):
                     task = ready.popleft()
                     if task.status != "pending":
                         continue
@@ -1920,6 +2043,11 @@ class RoundQueueScheduler:
                     task = active.pop(future)
                     future.result()
                     if task.status == "pending" and not self.stop_event.is_set():
+                        if task.service_failed or self.service_unavailable.is_set():
+                            log.info("[%s] queued retry pending service recovery; reason=%s",
+                                     task.code, _log_text(self.last_service_error))
+                            ready.append(task)
+                            continue
                         next_round = len(task.attempts) + 1
                         next_timeout = (
                             Config.initial_limit_minutes
@@ -1928,8 +2056,9 @@ class RoundQueueScheduler:
                         timeout_label = ("unlimited" if self.timeout_disabled.is_set()
                                          else f"{next_timeout:.2f}min")
                         log.info(
-                            "[%s] attempt %d complete; queued retry %d timeout=%s",
-                            task.code, next_round - 1, next_round, timeout_label)
+                            "[%s] attempt %d complete; queued retry %d timeout=%s; %s",
+                            task.code, next_round - 1, next_round, timeout_label,
+                            _result_log_context(task.result))
                         _diagnostic("retry_queued", unique_code=task.code,
                                     attempt_round=next_round - 1, next_round=next_round,
                                     status=task.result.status, error=task.result.error,
@@ -2044,7 +2173,7 @@ def main() -> int:
     log.info("benchmark 结束: 完成 %d/%d 道，不可解=%d%s",
              completed, total, summary.get("unresolvable", 0),
              " (任务已结束)" if summary.get("global_stopped") else "")
-    return 0
+    return 1 if summary.get("infrastructure_error") else 0
 
 
 if __name__ == "__main__":

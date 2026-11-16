@@ -255,6 +255,18 @@ worker 持续消费同一个 FIFO 尝试队列。未完成题目会增加单题�
 `timeout_disabled: true` 表示已取消单题时限；原有 `timeout_minutes` 保留各轮的名义预算，
 此时不再用于中止 Runtime。
 
+nornsd 的连接故障或 HTTP 5xx 会暂停整个队列的新派发和开靶，当前失败尝试清理后进入
+有次数上限的服务恢复流程。默认最多恢复 3 次，重新派发前分别等待 5、10、20 秒并检查
+健康状态；每次健康等待最多 300 秒。服务恢复失败或超过次数上限时，保存进度并以非零
+状态退出，不把题目标为不可解。成功执行 Runtime 后重置连续恢复次数，单纯健康检查通过
+不重置。基础设施失败单独记入结果的 `service_failures`，不消耗解题轮次；最终失败原因
+写入 `infrastructure_error`。收尾阶段的不限时策略不绕过这些保护。
+
+错误和服务恢复重试日志默认携带 API 返回的 SQLite 原因、`sqlite_code` 和请求 ID；
+Runtime 结束及普通重试日志携带状态、结束原因、错误码和错误消息，无需开启
+`BENCHMARK_DIAGNOSTICS`。这些原因直接输出到 stdout 和过程日志，便于在托管平台的
+有限日志窗口中定位故障；原因中的已知凭据会脱敏，换行合并为单行，过长内容截断。
+
 构建：
 
 ```sh
@@ -301,6 +313,9 @@ docker run --rm \
 | `BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES` | 240 | 非收尾阶段的名义单题限时上限；收尾阶段忽略，不限制重试轮数 |
 | `BENCHMARK_EVENT_LIMIT` | 5000 | 单次 Event 读取上限 |
 | `BENCHMARK_POLL_INTERVAL` | 4 | Runtime 和 Event 轮询间隔，单位秒 |
+| `BENCHMARK_SERVICE_RECOVERY_ATTEMPTS` | 3 | 连续服务故障最多恢复次数，0 表示首次故障即停止 |
+| `BENCHMARK_SERVICE_RECOVERY_INTERVAL` | 5 | 服务恢复前的基础等待秒数，连续失败时指数增加 |
+| `BENCHMARK_HEALTH_WAIT` | 300 | 启动及每次服务恢复的健康等待上限，单位秒 |
 | `BENCHMARK_STOP_GRACE` | 90 | Runtime 优雅停止等待时间，单位秒 |
 | `BENCHMARK_RESULT_FILE` | `/workspace/benchmark-result.json` | 增量结果文件 |
 | `BENCHMARK_ONLY_CODES` | 空 | 仅运行指定 unique_code，逗号分隔 |

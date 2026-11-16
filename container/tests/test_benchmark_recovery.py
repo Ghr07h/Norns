@@ -111,6 +111,22 @@ class BenchmarkRecoveryTests(unittest.TestCase):
                     if runtime["state"] == "error":
                         self.assertEqual(result.error, expected_code)
 
+    def test_terminal_error_message_is_logged_without_diagnostics(self):
+        for image, module in self.modules.items():
+            with self.subTest(image=image), patch.object(module.Config, "diagnostics", False), \
+                    self.assertLogs(module.log, level="INFO") as captured:
+                result, _ = self.run_terminal_cell(module, {
+                    "state": "error", "end_reason": "runtime launch failed",
+                    "error": {"code": "AGENT_PROTOCOL_ERROR", "details": {
+                        "message": "agent exited during initialize", "cause": "connection closed"}},
+                })
+                line = next(record.getMessage() for record in captured.records
+                            if "runtime 已结束" in record.getMessage())
+                self.assertIn("AGENT_PROTOCOL_ERROR", line)
+                self.assertIn("runtime launch failed", line)
+                self.assertIn("agent exited during initialize: connection closed", line)
+                self.assertEqual(result.error, "agent exited during initialize: connection closed")
+
     def test_previous_runtime_reason_reaches_resumed_subject_instruction(self):
         for image, module in self.modules.items():
             with self.subTest(image=image):
