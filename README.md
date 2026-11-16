@@ -2,29 +2,59 @@
 
 ## 概述
 
-Norns 是一套面向特定模式的开放任务求解的多智能体协作套件，致力于通过任务状态图与领域能力实现更高效、更智能的任务求解效果。
-
-## 特性与模块
-
-Norns 套件特性：
-
-- 任务状态图：以耦合任务求解过程的任务状态图表征任务探索过程与结果，提取更纯净的上下文以供决策使用。
-- 领域能力：通过 Domain Extend Agents 实现领域能力注入，在不影响 Norns 协议的前提下提升领域任务上限与过程约束能力。
-- 轨迹可读性：借助任务状态图与 Session Transcripts 转储机制，实现更易读的轨迹记录，进而支持更便捷的调试与训练数据沉淀需求。
-- 多运行时节点调度：以 Norns Server 为物理机服务基础设施，提供运行时节点的并发调度能力。
+Norns 是一套面向开放任务求解的多智能体套件，致力于通过任务状态的自描述与可选的垂域能力增强实现上限更高、效率更好的任务求解效果。
 
 Norns 套件由以下模块组成：
 
-- Norns CLI：由特定角色智能体调用，遵循 Norns 协议实现对长程任务的独立认知与探索记录
-- Nornsd Agent：包装 Code Agent 实现 Norns 角色规范与领域能力注入，启动交互式终端
-- Nornsd Server：基于 Agent Runtime 实现并发调度批量命题的求解能力，可以耦合 Norns 模式，也可以仅用于原生 Claude Code 的调度管理
-- Well：用于连接 Norns Server 提供的桌面客户端
+- Norns CLI：交由特定角色智能体调用，遵循 Norns 协议实现对长程任务的独立认知与探索记录。
+- Nornsd Agent：通过 Plugin 机制包装 Code Agent 实现 Norns 角色规范与领域能力注入，启动交互式终端。
+- Nornsd Server：对多个 Agent Runtime 进行并发调度以进行批量命题求解。可以耦合 Norns 模式，也可以仅用于原生 Code Agent 的并发调度管理。
+- Well：用于连接 Norns Server 服务的桌面客户端。
 
-## 使用文档
+## 特性与协议
 
-当前版本实现基于 Claude Code 2.1.199 版本的 Norns Agent
+Norns 模式特性：
 
-[快速开始](QUICKSTART.md#安装和使用) | [当前版本边界](QUICKSTART.md#当前版本边界) | [文档索引](QUICKSTART.md#文档)
+- 任务状态图：以耦合任务求解过程的任务状态图表征任务探索过程与结果，提取更纯净的上下文以供决策使用。
+- 领域能力：通过 Domain Extend Agents/Skills 实现领域能力注入，在不影响 Norns 协议的前提下提升领域任务上限并约束求解过程。
+- 轨迹可读性：借助任务状态图与 Session Transcripts 转储机制，实现更易读的轨迹记录，进而支持更便捷的调试与训练数据沉淀、提取需求。
+- 多运行时节点调度：以 Norns Server 为物理机服务基础设施，提供运行时节点的并发调度能力和更高维度的任务协作能力。
+
+Norns 协议原语：
+
+- Subject（目标实体）： 任务域（Task Domain）中待处理的抽象概念或具象化实例。
+- Task（任务意图）： 施加于目标实体的操作规约与预期达成的终态目标。
+- Cognition（先验表征）： 系统已建构的关于目标实体的先验知识集与状态参数。
+- Exploration（启发式探索）： 旨在扩充实体信息边界的主动式数据采集与知识发现机制。
+
+## 安装和使用
+
+当前版本 Norns Agent 实现基于的 Code Agent 范围仅包含 Claude Code v2.1.199。
+
+安装依赖、获取二进制、配置 Agent、启动 nornsd Server 和运行 Docker 镜像的完整步骤见
+[QUICKSTART.md](QUICKSTART.md#安装和使用)。
+
+## 快照示例
+
+基于 Norns 的自描述特性，可以手动在任务目录执行 `norns view visual` 命令以获取当前时刻实体状态的快照。示例如下：
+
+![](./resources/readme/norns-1-visual.png)
+![](./resources/readme/norns-2-graph.png)
+![](./resources/readme/norns-3-node.png)
+![](./resources/readme/norns-4-exp.png)
+
+在 Norns Server 模式下，则可以通过 Well 客户端连接并获取更方便的实体信息。示例如下：
+
+![](./resources/readme/well-1-visual.png)
+![](./resources/readme/well-2-event.png)
+
+## 领域评测
+
+### RedTeam
+
+截至 f17ae8e 提交，以 DeepSeek-4.1-flash 驱动下的网络安全领域的 Tsec Benchmark 领域评测结果如下（不调用 hint 接口）：
+
+![](./resources/benchmark/tsec_d41.png)
 
 ## 项目结构
 
@@ -37,70 +67,6 @@ well/            Nornsd Server 桌面客户端
 domain/          可选领域知识包与模板示例
 container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自包含 Benchmark 及其 CC 对照组的容器构建文件
 ```
-
-## 版本与构建
-
-根目录 `versions.json` 是唯一人工维护的协议、产品及兼容性版本来源。根目录不定义 Go 模块，`norns/` 和 `nornsd/` 保持独立模块。
-
-| 清单字段 | 用途 |
-| --- | --- |
-| `protocol` | 协议规范版本，使用正整数。 |
-| `norns.version`、`nornsd.version`、`well.version` | 各产品的三段式字符串版本，分别维护。 |
-| `norns.support_protocol`、`nornsd.support_protocol` | 各自支持的协议版本；启用 Norns 模式时必须一致。 |
-| `norns.database_schema`、`nornsd.database_schema` | 各自的数据库 schema。 |
-| `nornsd.api_schema`、`well.support_api_schema` | 服务 API schema 与 Well 支持的 schema，配套发布时保持一致。 |
-| `nornsd.agent_config_schema` | Agent 配置的整数 `VERSION`。 |
-| `nornsd.plugins.cc` | CC Plugin 的整数版本，生成 Plugin 元信息时转换为 `<整数>.0.0`。 |
-
-协议和 schema 使用正整数，不参与产品版本或 API 路径拼接。协议文档与 Plugin 源模板不再单独声明这些版本数值；外部工具依赖的版本不属于此清单。
-
-统一构建入口为根目录 `release.sh`：
-
-```sh
-./release.sh                   # 当前平台的 norns、norns-* 插件和 nornsd
-./release.sh norns             # 仅 norns 及其命令插件
-./release.sh nornsd            # 仅 nornsd
-./release.sh well              # 仅 Well 桌面程序与安装包
-./release.sh all               # 当前平台的全部三个产品
-./release.sh --all-platforms   # 六个平台的 Go 产物，不构建 Well
-```
-
-根入口只负责调度、汇总产物和生成校验和；各产品的构建实现与测试放在各自的 `scripts/` 中。Go 产品需要 Go 1.25 或更高版本，不依赖前端或 Rust 工具链。Well 使用自己的 Node.js 构建脚本，不需要 Go，但需要 npm、Rust 及宿主平台的 Tauri 系统依赖，并先在 `well/` 执行 `npm ci`。根入口生成校验和需要 `sha256sum` 或 `shasum`。Well 在对应宿主平台打包，`--all-platforms` 仅支持默认 Go 产品或单个 Go 产品。
-
-也可以在各产品目录内独立构建，不调用兄弟项目的构建脚本，默认仍输出到根目录 `release/`：
-
-```sh
-(cd norns && go run ./scripts/release.go)
-(cd nornsd && go run ./scripts/release.go)
-(cd well && npm run release)
-```
-
-两个 Go 入口均支持 `--all-platforms`；三个入口均支持 `--output <directory>` 指定产物目录，并只读取根版本清单中本产品及所需公共协议字段。各目录自带构建逻辑，但仍共享仓库的 `versions.json`；nornsd 还需共享协议文档和 Plugin 源文件。
-
-产物写入 `release/<os>-<arch>/`；Go 可执行文件放在该目录顶层，Well 可执行文件与 `bundle/` 安装包放在其 `well/` 子目录。单独构建只替换所选产品在所选平台的产物，保留其他产品和平台，并更新覆盖现有全部产物的 `release/SHA256SUMS`。所有所选产品构建成功后才发布到该目录。
-
-构建 nornsd 时，会将 schema 同步后的 `nornsd/configs/nornsd/agent.example.yaml` 一起发布到各目标平台目录，与 nornsd 可执行文件同级并纳入校验和；只更新示例，不覆盖已有的 `agent.yaml`。nornsd 的独立构建入口也保持相同行为。
-
-根入口构建 Well 时，在发布产物及校验和均成功写入后，删除 `well/src-tauri/target/release/bundle/` 原始打包目录；设置 `CARGO_TARGET_DIR` 时清理对应目录。保留编译缓存、可执行文件和 Debug 产物，失败时不执行此清理；仅构建 Go 产品时不清理 Well。
-
-修改清单后运行对应构建入口即可：Go 构建前会更新纳入 Git 的 `internal/version/versions_generated.go` 派生代码；nornsd 同时同步 `configs/nornsd/agent.example.yaml` 的 `VERSION`，并重新生成协议与 Plugin 内嵌资源；Well 复用自身的 Cargo 版本同步流程。派生文件应随清单变更提交，不应手工修改生成的版本字段。普通 `go build` 使用已生成的版本，不会自动刷新；两个模块的版本测试会检查是否与根清单一致。运行二进制不需要版本清单。`VCS_REF` 与 `BUILD_TIME` 仍可设置 Go 构建元数据，产品版本不由 `NORNS_VERSION` 覆盖。
-
-API 路径固定使用 `/api/`，不随 schema 改变；`GET /api/` 的服务信息和 `nornsd version --json` 返回清单中的 `api_schema`。Agent 配置的 `VERSION` 和数据库 schema 必须与清单声明一致，不会自动迁移旧配置或旧数据库。
-
-已有 `agent.yaml` 是用户输入，不会被构建覆盖。升级配置 schema 时，应对照新模板检查字段并手动迁移，不能仅修改 `VERSION` 绕过兼容性检查。已安装产物的实际版本以 `norns version --json`、`nornsd version --json` 及服务信息为准，而不是当前源码目录的清单。
-
-构建工具测试纳入各产品的测试入口，根脚本的调度测试随 norns 运行：
-
-```sh
-(cd norns && go test ./...)
-(cd nornsd && go test ./...)
-(cd well && npm test)
-```
-
-## 快速开始
-
-安装依赖、获取二进制、配置 Agent、启动 nornsd Server 和运行 Docker 镜像的完整步骤见
-[QUICKSTART.md](QUICKSTART.md#安装和使用)。
 
 ## 致谢
 
