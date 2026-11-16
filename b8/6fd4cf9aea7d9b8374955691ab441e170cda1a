@@ -1,0 +1,14 @@
+README.md
+  h_32bccb164adb56 41-48,52-55,63-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b86fd4cf9aea7d9b8374955691ab441e170cda1a",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
