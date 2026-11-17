@@ -116,8 +116,9 @@ Task 生命周期：
 
 Task 必须满足以下约束：
 
-- open Task 的 `outcome`、`outcome_reason` 和 `closed_at` 必须为空，且 Workspace 必须处于 Runtime 占用状态。
-- closed Task 的 `outcome`、`outcome_reason` 和 `closed_at` 必须非空，且 Workspace 不得处于 Runtime 占用状态。
+- open Task 的 `outcome`、`outcome_reason` 和 `closed_at` 必须为空。
+- closed Task 的 `outcome`、`outcome_reason` 和 `closed_at` 必须非空。
+- Workspace 存在唯一 open Task，当且仅当 Workspace 处于 Runtime 占用状态；不存在 open Task 时，Workspace 不得处于 Runtime 占用状态。
 - 关闭 Task 时，必须将该 Task 剩余的 todo 和 running Exploration 结束为 `cancelled`；实际 Explorer 必须已经停止或确认不能继续写入。
 - 任意 outcome 的 closed Task 都可以在没有其他 open Task 时 reopen。
 - reopen 保留 Task 固有字段和现有 Graph，清空关闭字段，不自动恢复或 retry 已结束的 Exploration。
