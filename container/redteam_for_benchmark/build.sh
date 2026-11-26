@@ -14,7 +14,7 @@
 #   --proxy host:port        国外资源下载使用的构建期代理。
 #   --use-mirror             使用阿里云 APT/PyPI/Maven 和 npmmirror，默认关闭。
 #   --use-ecs-mirror         使用阿里云 ECS 内网 APT/PyPI，默认关闭，并启用 --use-mirror。
-#   --no-cache               禁用构建缓存，并从远端拉取基础镜像，默认关闭。
+#   --no-cache               禁用构建层缓存，默认关闭。
 #
 # 前置：项目根目录已执行 ./release.sh --all-platforms --with-ext tsec 生成 release/linux-<arch> 二进制。
 
@@ -129,7 +129,7 @@ build_args=(
   --build-arg "MAVEN_MIRROR_URL=$maven_mirror_url"
 )
 if [ "$no_cache" = 1 ]; then
-  build_args+=(--no-cache --pull)
+  build_args+=(--no-cache)
 fi
 if [ -n "$proxy" ]; then
   build_args+=(

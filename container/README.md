@@ -274,7 +274,7 @@ container/redteam_for_benchmark/build.sh
 `--use-mirror` 和 `--use-ecs-mirror` 参数。
 
 benchmark 构建脚本还支持 `--no-cache`（默认关闭）。启用后，Docker 和 Apple 后端均传入
-`--no-cache --pull`，禁用构建层缓存，并从远端检查、拉取基础镜像：
+`--no-cache`，禁用构建层缓存。基础镜像沿用后端默认策略，不强制刷新；本地缺少时仍会拉取：
 
 ```sh
 container/redteam_for_benchmark/build.sh --no-cache
