@@ -183,7 +183,7 @@ npm ci --registry=https://registry.npmmirror.com
 npm run release
 ```
 
-### 领域知识
+### 7. 领域知识
 
 `nornsd.yaml` 可以通过 `AGENT_NORNS_EXTENDS_AGENTS_DIR` 插入领域知识。项目提供数学示例：
 
@@ -197,7 +197,7 @@ AGENT_NORNS_EXTENDS_AGENTS_DIR: "/absolute/path/to/norns/domain/math"
 nornsd 会根据 `domain/math/meta.json` 动态生成数学领域的 Decider 和 Explorer，
 而不会改变协议状态机或通用角色边界。格式说明见 [domain/README.md](domain/README.md)。
 
-### 单独使用 norns
+### 8. 单独使用 norns
 
 `norns` 也可以作为纯本地协议 CLI 使用，不需要启动 nornsd：
 
@@ -217,7 +217,7 @@ norns view visual --lang zh --open
 
 完整命令、状态机和输出格式见 [norns/README.md](norns/README.md)。
 
-### Docker
+### 9. Docker
 
 当前镜像只封装预编译文件，不在 Docker 内编译 Go 源码。先生成六个平台目标：
 
@@ -278,6 +278,26 @@ docker stop nornsd
 
 同一目录还提供 `redteam/` 领域服务镜像和 `redteam_for_benchmark/` 自包含评测镜像，两者工具链一致。评测镜像固定使用 3 个 Runtime槽位，首轮默认限时 30 分钟，后续每轮默认 40 分钟；所有剩余题目都在运行且数量不超过 3 时取消单题限时。少于 3 道题时，优先为并行实例最少的题目补位，同数时按原题目顺序；每次补位创建全新 Subject，同题共享靶场，任一分支通关后停止同题其他分支，全部收尾后关闭靶场。开靶、关靶均最多尝试 5 次，重试间隔为 5、10、30、30 秒。
 评测所需 SaaS 地址、Token、模型环境变量及完整运行命令见上述 Container 文档。
+
+已结束 Benchmakr 容器复用
+
+ECS 已结束容器复用，执行前需修改镜像为实际可用名称 `<norns-redteam-benchmark>:latest`：
+
+```sh
+docker run -d \
+  --name norns-history \
+  --volumes-from norns-redteam-benchmark \
+  -p 28081:28081 \
+  --entrypoint /norns/bin/nornsd \
+  <norns-redteam-benchmark>:latest \
+  server --configs /workspace/.nornsd/configs/nornsd.yaml
+```
+
+复用后需要处理取消的 Subject，因此需要几十秒或数分钟的启动时间，可以查看 docker log：
+
+```sh
+docker logs --tail 100 norns-history
+```
 
 ## 版本与构建
 
