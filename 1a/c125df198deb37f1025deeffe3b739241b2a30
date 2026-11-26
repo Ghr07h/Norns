@@ -1,0 +1,14 @@
+QUICKSTART.md
+  h_32bccb164adb56 186,200,220,282-301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ac125df198deb37f1025deeffe3b739241b2a30",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
