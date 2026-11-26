@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/Ghr07h/norns/nornsd/internal/root"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,11 +18,11 @@ import (
 
 func TestPublishInjectsNornsRuntimeConfiguration(t *testing.T) {
 	subject := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(subject, ".nornsd", "staging"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root.SubjectDataPath(subject), "staging"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{NornsMaxConcurrentExplorations: 5, NornsExplorationTimeoutSeconds: 1500, NornsAllowHumanIntervention: true}
-	path, _, err := Publish(subject, "runtime-1", cfg)
+	path, _, _, err := Publish(subject, "runtime-1", cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestPublishInjectsNornsRuntimeConfiguration(t *testing.T) {
 
 func TestPublishIncludesNornsPluginMetadata(t *testing.T) {
 	subject := t.TempDir()
-	path, _, err := Publish(subject, "runtime-metadata", nil)
+	path, _, _, err := Publish(subject, "runtime-metadata", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestPublishIncludesNornsPluginMetadata(t *testing.T) {
 
 func TestPublishedUgrepGuard(t *testing.T) {
 	subject := t.TempDir()
-	pluginPath, _, err := Publish(subject, "runtime-ugrep-guard", nil)
+	pluginPath, _, _, err := Publish(subject, "runtime-ugrep-guard", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +253,7 @@ func TestSupportsUgrepGuard(t *testing.T) {
 
 func TestPublishGeneratesDomainAgents(t *testing.T) {
 	subject := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(subject, ".nornsd", "staging"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root.SubjectDataPath(subject), "staging"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
@@ -265,7 +266,7 @@ func TestPublishGeneratesDomainAgents(t *testing.T) {
 			ExplorerExtraInfo:   "## 领域探索知识\n\n运行最小测试。\n",
 		},
 	}
-	path, _, err := Publish(subject, "runtime-domain", cfg)
+	path, _, _, err := Publish(subject, "runtime-domain", cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,8 +304,14 @@ func TestPublishGeneratesDomainAgents(t *testing.T) {
 	if strings.Contains(coordinator, "当前领域为 `code_review`") {
 		t.Fatalf("domain selection leaked into runtime configuration:\n%s", coordinator)
 	}
-	front, _, err := parseAgentMarkdown(coordinatorBytes, "coordinator.md")
+	frontNode, _, err := parseAgentMarkdown(coordinatorBytes, "coordinator.md")
 	if err != nil {
+		t.Fatal(err)
+	}
+	var front struct {
+		Tools toolList `yaml:"tools"`
+	}
+	if err = frontNode.Decode(&front); err != nil {
 		t.Fatal(err)
 	}
 	wantAgentTool := "Agent(norns:decider, norns:decider-for-code_review, norns:explorer, norns:explorer-for-code_review)"
@@ -327,45 +334,63 @@ func TestPublishGeneratesDomainAgents(t *testing.T) {
 	}
 }
 
-func TestPublishBuildsCoordinatorAllowlistFromAllAgentSources(t *testing.T) {
+func TestPublishPreservesCustomAgentsAndIncludesExtensionsInAllowlist(t *testing.T) {
 	subject := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(subject, ".nornsd", "staging"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	sources := t.TempDir()
-	nornsAgents := filepath.Join(sources, "norns-agents")
-	customAgents := filepath.Join(sources, "custom-agents")
-	externalPlugin := filepath.Join(sources, "external-plugin")
-	for _, dir := range []string{nornsAgents, customAgents, filepath.Join(externalPlugin, ".claude-plugin"), filepath.Join(externalPlugin, "agents")} {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeTestFile(t, filepath.Join(nornsAgents, "specialist.md"), "---\nname: specialist\ndescription: domain specialist\n---\n")
-	writeTestFile(t, filepath.Join(customAgents, "reviewer.md"), "---\nname: reviewer\ndescription: reviewer\ntools:\n  - Read\n---\n")
-	writeTestFile(t, filepath.Join(externalPlugin, ".claude-plugin", "plugin.json"), `{"name":"external-tools"}`)
-	writeTestFile(t, filepath.Join(externalPlugin, "agents", "researcher.md"), "---\nname: researcher\ndescription: researcher\n---\n")
-
-	cfg := &config.Config{
-		NornsCustomAgentsDir: nornsAgents,
-		CustomAgentsDir:      customAgents,
-		CustomPluginDirs:     []string{externalPlugin},
-	}
-	path, _, err := Publish(subject, "runtime-custom-agents", cfg)
+	agents := t.TempDir()
+	source := "---\nname: domain-reviewer\ndescription: domain reviewer\ntools:\n  - Read\n  - Bash\nmodel: sonnet\npermissionMode: plan\n---\nCustom Norns role instructions.\n"
+	writeTestFile(t, filepath.Join(agents, "reviewer.md"), source)
+	cfg := &config.Config{NornsEnable: true, NornsCustomAgentsDir: agents, Domain: &config.Domain{
+		Name: "math", DeciderDescription: "Math decisions", ExplorerDescription: "Math exploration",
+		DeciderExtraInfo: "Domain decision knowledge", ExplorerExtraInfo: "Domain exploration knowledge",
+	}}
+	path, _, _, err := Publish(subject, "runtime-custom-agents", cfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+	copied, err := os.ReadFile(filepath.Join(path, "agents", "reviewer.md"))
+	if err != nil || string(copied) != source {
+		t.Fatalf("custom Agent was rewritten: %s %v", copied, err)
 	}
 	coordinator, err := os.ReadFile(filepath.Join(path, "agents", "coordinator.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	front, _, err := parseAgentMarkdown(coordinator, "coordinator.md")
+	frontNode, _, err := parseAgentMarkdown(coordinator, "coordinator.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Agent(norns:decider, norns:explorer, norns:specialist, nornsd-custom:reviewer, external-tools:researcher)"
+	var front struct {
+		Tools toolList `yaml:"tools"`
+	}
+	if err = frontNode.Decode(&front); err != nil {
+		t.Fatal(err)
+	}
+	want := "Agent(norns:decider, norns:decider-for-math, norns:domain-reviewer, norns:explorer, norns:explorer-for-math)"
 	if !containsTool(front.Tools, want) {
 		t.Fatalf("Coordinator tools = %#v, want %q", front.Tools, want)
+	}
+}
+
+func TestNornsPluginRejectsOrdinaryResources(t *testing.T) {
+	for _, cfg := range []*config.Config{
+		{CustomAgentsDir: t.TempDir()}, {CustomSkillsDir: t.TempDir()}, {CustomPluginDirs: []string{t.TempDir()}},
+	} {
+		if _, _, _, err := Publish(t.TempDir(), "runtime", cfg); err == nil {
+			t.Fatal("ordinary resources accepted in Norns Plugin")
+		}
+	}
+}
+
+func TestCustomAgentCannotDuplicateBuiltinOrGeneratedRole(t *testing.T) {
+	for _, name := range []string{"decider", "explorer", "coordinator", "decider-for-math"} {
+		t.Run(name, func(t *testing.T) {
+			agents := t.TempDir()
+			writeTestFile(t, filepath.Join(agents, "different-filename.md"), "---\nname: "+name+"\ndescription: conflicting role\n---\n")
+			cfg := &config.Config{NornsCustomAgentsDir: agents, Domain: &config.Domain{Name: "math", DeciderDescription: "decide", ExplorerDescription: "explore"}}
+			if _, _, _, err := Publish(t.TempDir(), "runtime", cfg); err == nil {
+				t.Fatal("duplicate Agent role accepted")
+			}
+		})
 	}
 }
 

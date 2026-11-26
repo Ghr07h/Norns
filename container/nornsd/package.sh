@@ -17,7 +17,7 @@ required_paths=(
   "release/linux-arm64/nornsd"
   "release/linux-x64/norns"
   "release/linux-x64/nornsd"
-  "nornsd/configs/nornsd/agent.example.yaml"
+  "nornsd/configs/nornsd/nornsd.example.yaml"
   "domain"
   "container/nornsd/Dockerfile"
   "container/nornsd/Dockerfile.dockerignore"
@@ -42,7 +42,7 @@ cd "$project_root"
 zip -X -q -r "$tmp_archive" \
   release/linux-arm64 \
   release/linux-x64 \
-  nornsd/configs/nornsd/agent.example.yaml \
+  nornsd/configs/nornsd/nornsd.example.yaml \
   domain \
   container/nornsd/Dockerfile \
   container/nornsd/Dockerfile.dockerignore \

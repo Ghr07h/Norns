@@ -1,0 +1,256 @@
+[
+  {
+    "name": "replay",
+    "source_scenario": "overlap-replay",
+    "frame": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": "fixture input"
+      },
+      "session_id": "fixture-session_id",
+      "parent_tool_use_id": null,
+      "uuid": "fixture-uuid",
+      "isReplay": true
+    },
+    "events": [
+      "instruction.replayed"
+    ]
+  },
+  {
+    "name": "interrupted",
+    "source_scenario": "interrupt",
+    "frame": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[Request interrupted by user for tool use]"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fixture-session_id",
+      "uuid": "fixture-uuid"
+    },
+    "events": [
+      "agent.interrupted"
+    ]
+  },
+  {
+    "name": "synthetic-rate-limit",
+    "source_scenario": "rate429-default-exhaust",
+    "frame": {
+      "type": "assistant",
+      "message": {
+        "model": "<synthetic>",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "API Error: Request rejected (429) · AUDIT_HTTP_429_TOO_FREQUENT"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fixture-session_id",
+      "uuid": "fixture-uuid",
+      "error": "rate_limit"
+    },
+    "events": [
+      "agent.text"
+    ]
+  },
+  {
+    "name": "retry",
+    "source_scenario": "rate429-default-exhaust",
+    "frame": {
+      "type": "system",
+      "subtype": "api_retry",
+      "attempt": 1,
+      "max_retries": 10,
+      "retry_delay_ms": 509.9832782375545,
+      "error_status": 429,
+      "error": "rate_limit",
+      "session_id": "fixture-session_id",
+      "uuid": "fixture-uuid"
+    },
+    "events": [
+      "agent.api_retry"
+    ]
+  },
+  {
+    "name": "startup-error",
+    "source_scenario": "resume-missing",
+    "frame": {
+      "type": "result",
+      "subtype": "error_during_execution",
+      "is_error": true,
+      "num_turns": 0,
+      "stop_reason": null,
+      "session_id": "fixture-session_id",
+      "total_cost_usd": 0,
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 0,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "",
+        "iterations": [],
+        "speed": "standard"
+      },
+      "modelUsage": {},
+      "uuid": "fixture-uuid",
+      "errors": [
+        "No conversation found with session ID: fixture-session"
+      ]
+    },
+    "events": [
+      "agent.result"
+    ]
+  },
+  {
+    "name": "api-error-success-subtype",
+    "source_scenario": "rate429-default-exhaust",
+    "frame": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": true,
+      "api_error_status": 429,
+      "num_turns": 1,
+      "result": "API Error: Request rejected (429) · AUDIT_HTTP_429_TOO_FREQUENT",
+      "stop_reason": "stop_sequence",
+      "session_id": "fixture-session_id",
+      "total_cost_usd": 0,
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 0,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "",
+        "iterations": [],
+        "speed": "standard"
+      },
+      "modelUsage": {},
+      "terminal_reason": "completed",
+      "uuid": "fixture-uuid"
+    },
+    "events": [
+      "agent.result"
+    ]
+  },
+  {
+    "name": "task-progress",
+    "source_scenario": "background-live",
+    "frame": {
+      "type": "system",
+      "subtype": "task_progress",
+      "task_id": "fixture-task_id",
+      "tool_use_id": "fixture-tool_use_id",
+      "description": "Running Sleep 5 seconds then print audit marker",
+      "subagent_type": "audit-worker",
+      "usage": {
+        "total_tokens": 1184,
+        "tool_uses": 1,
+        "duration_ms": 1097
+      },
+      "last_tool_name": "Bash",
+      "uuid": "fixture-uuid",
+      "session_id": "fixture-session_id"
+    },
+    "events": [
+      "agent.task_progress"
+    ]
+  },
+  {
+    "name": "task-notification",
+    "source_scenario": "background-live",
+    "frame": {
+      "type": "system",
+      "subtype": "task_notification",
+      "task_id": "fixture-task_id",
+      "tool_use_id": "fixture-tool_use_id",
+      "status": "completed",
+      "output_file": "/tmp/fixture-output.txt",
+      "summary": "Sleep 5 seconds then print audit marker",
+      "uuid": "fixture-uuid",
+      "session_id": "fixture-session_id"
+    },
+    "events": [
+      "agent.task_notification"
+    ]
+  },
+  {
+    "name": "notification-result",
+    "source_scenario": "background-live",
+    "frame": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "api_error_status": null,
+      "num_turns": 1,
+      "result": "Audit worker 1 completed with output `AUDIT_WORKER_DONE`. Waiting on worker 2.",
+      "stop_reason": "end_turn",
+      "session_id": "fixture-session_id",
+      "total_cost_usd": 0.047505,
+      "usage": {
+        "input_tokens": 503,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 17152,
+        "output_tokens": 21,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "",
+        "iterations": [],
+        "speed": "standard"
+      },
+      "modelUsage": {
+        "fixture-model": {
+          "inputTokens": 3148,
+          "outputTokens": 221,
+          "cacheReadInputTokens": 52480,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.047505,
+          "contextWindow": 200000,
+          "maxOutputTokens": 32000
+        }
+      },
+      "terminal_reason": "completed",
+      "origin": {
+        "kind": "task-notification"
+      },
+      "uuid": "fixture-uuid"
+    },
+    "events": [
+      "agent.result"
+    ]
+  }
+]

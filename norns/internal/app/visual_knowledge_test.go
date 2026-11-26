@@ -27,14 +27,16 @@ const distance=(first,second)=>Math.hypot(first.x-second.x,first.y-second.y);
 assert.equal(knowledgeGraphLayout([],[]).positions.size,0);
 assert.equal(stageWidth,880);
 const root={...makeNode('root','cognition','task'),created_at:'0000'};
-const nodes=[root,makeNode('explore','exploration'),makeNode('result'),makeNode('other','exploration'),makeNode('island'),makeNode('cycle')];
+const nodes=[root,makeNode('explore','exploration'),makeNode('result'),makeNode('other','exploration'),makeNode('island'),makeNode('cycle','exploration')];
 for(const node of nodes)byId.set(node.id,node);
-const edges=[{from:'root',to:'explore',kind:'source'},{from:'explore',to:'result',kind:'output'},{from:'root',to:'other',kind:'source'},{from:'other',to:'result',kind:'output'},{from:'result',to:'cycle',kind:'extends'},{from:'cycle',to:'result',kind:'extends'},{from:'missing',to:'root',kind:'source'}];
+const edges=[{from:'root',to:'explore',kind:'source'},{from:'explore',to:'result',kind:'output'},{from:'root',to:'other',kind:'source'},{from:'other',to:'result',kind:'output'},{from:'result',to:'cycle',kind:'source'},{from:'cycle',to:'result',kind:'output'},{from:'missing',to:'root',kind:'source'}];
 const layout=knowledgeGraphLayout(nodes,edges),rootPosition=layout.positions.get(root.id);
 assert.equal(layout.positions.size,nodes.length);
 assert.equal(knowledgeState.root,root.id);
 assert.equal(knowledgeState.parent.get('result'),'other');
 assert.equal(knowledgeState.parent.get('cycle'),'result');
+assert.equal(knowledgeState.parent.has('island'),false,'isolated nodes must not gain fabricated parents');
+assert.equal(layout.positions.get('island').root,true);
 assert.equal(rootPosition.root,true);
 assert.ok(rootPosition.width>layout.positions.get('result').width);
 for(const [id,position] of layout.positions){assert.ok(Number.isFinite(position.x)&&Number.isFinite(position.y));if(id!==root.id)assert.ok(distance(center(rootPosition),center(position))>(rootPosition.width+position.width)/2+20)}
@@ -46,7 +48,7 @@ assert.deepEqual(knowledgeNodeBoundary(circle,{x:92,y:-1000}),{x:92,y:5});
 const hexagon={id:'explore',x:0,y:0,width:144,height:144};
 assert.equal(knowledgeHexagon(hexagon,5).length,6);
 assert.ok(Math.abs(knowledgeNodeBoundary(hexagon,{x:72,y:-1000}).y-(72-67*Math.sin(Math.PI/3)))<.001);
-const routes=knowledgeGraphRoutes([...edges,{from:'root',to:'explore',kind:'retry'},{from:'root',to:'root',kind:'extends'}],layout.positions);
+const routes=knowledgeGraphRoutes([...edges,{from:'root',to:'explore',kind:'retry'},{from:'root',to:'root',kind:'retry'}],layout.positions);
 assert.equal(routes.length,edges.length+1);
 for(const route of routes)assert.ok(!/NaN|Infinity/.test(route.path),route.path);
 assert.equal(new Set(routes.map(route=>route.path)).size,routes.length);
@@ -80,7 +82,7 @@ assert.equal(knowledgeGraphLayout([makeNode('fallback','exploration')],[]).posit
 stageWidth=1280;stageHeight=1000;
 const wall=new Map([['left',{x:40,y:400,width:132,height:132}],['right',{x:1020,y:400,width:132,height:132}],...Array.from({length:4},(_,index)=>['wall-'+index,{x:500,y:140+index*170,width:144,height:144}])]);
 for(const id of wall.keys())byId.set(id,makeNode(id));
-const detours=knowledgeGraphRoutes([{from:'left',to:'right',kind:'source'},{from:'left',to:'right',kind:'retry'},{from:'right',to:'left',kind:'extends'}],wall);
+const detours=knowledgeGraphRoutes([{from:'left',to:'right',kind:'source'},{from:'left',to:'right',kind:'retry'},{from:'right',to:'left',kind:'output'}],wall);
 assert.equal(new Set(detours.map(route=>route.path)).size,3);
 for(const route of detours)for(const [id,position]of wall){if(id===route.edge.from||id===route.edge.to)continue;for(let index=1;index<route.samples.length;index++)assert.ok(knowledgeSegmentDistance(center(position),route.samples[index-1],route.samples[index])>position.width/2-5,'detour intersects obstacle wall')}
 for(const count of [1,12,80]){const fan=[root,...Array.from({length:count},(_,index)=>makeNode('fan-'+index,'exploration'))],links=fan.slice(1).map(node=>({from:root.id,to:node.id,kind:'source'}));const result=knowledgeGraphLayout(fan,links);assert.equal(result.positions.get(root.id).root,true);const values=[...result.positions.values()];for(let first=0;first<values.length;first++)for(let second=first+1;second<values.length;second++)assert.ok(distance(center(values[first]),center(values[second]))>(values[first].width+values[second].width)/2+20,'fan overlaps')}
@@ -95,7 +97,14 @@ assert.equal(knowledgeGraphLayout([late,early],[]).positions.get('early').root,t
 const retryNodes=[root,makeNode('first','exploration'),makeNode('retry','exploration'),makeNode('output')];
 const retryEdges=[{from:root.id,to:'first',kind:'source'},{from:root.id,to:'retry',kind:'source'},{from:'first',to:'retry',kind:'retry'},{from:'retry',to:'output',kind:'output'}];
 const skeleton=branchBuildSkeleton(retryNodes,retryEdges);
-assert.equal(skeleton.parent.get('retry'),'first');assert.equal(skeleton.parent.get('output'),'retry');
+assert.equal(skeleton.parent.get('retry'),'root');assert.equal(skeleton.parent.get('output'),'retry');
+const disconnected=Array.from({length:20},(_,index)=>makeNode('independent-'+index,'cognition','task'));
+const forest=knowledgeGraphLayout(disconnected,[]);
+assert.equal(knowledgeState.roots.length,disconnected.length);
+assert.equal(knowledgeState.parent.size,0,'multiple inputs must remain unrelated');
+for(const position of forest.positions.values())assert.equal(position.root,true);
+const forestPositions=[...forest.positions.values()];
+for(let first=0;first<forestPositions.length;first++)for(let second=first+1;second<forestPositions.length;second++)assert.ok(distance(center(forestPositions[first]),center(forestPositions[second]))>(forestPositions[first].width+forestPositions[second].width)/2+20,'independent inputs overlap');
 console.log('Knowledge graph geometry checks passed');
 ` + "`" + `);
 checks(assert);

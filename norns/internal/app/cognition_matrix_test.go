@@ -83,9 +83,9 @@ func TestCognitionOriginMatrixAndExplorationHintStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	assertCognitionRow(t, db, firstOrigin, cognitionRow{taskID: &firstTask, origin: "task", relevant: false})
-	assertCognitionRow(t, db, secondOrigin, cognitionRow{taskID: &secondTask, origin: "task", originCognition: &firstOrigin, relevant: false})
-	assertCognitionRow(t, db, globalID, cognitionRow{origin: "user", originCognition: &secondOrigin, relevant: false})
+	assertCognitionRow(t, db, firstOrigin, cognitionRow{taskID: &firstTask, origin: "task", originTask: &firstTask, relevant: false})
+	assertCognitionRow(t, db, secondOrigin, cognitionRow{taskID: &secondTask, origin: "task", originTask: &secondTask, relevant: false})
+	assertCognitionRow(t, db, globalID, cognitionRow{origin: "user", originTask: &secondTask, relevant: false})
 	assertCognitionRow(t, db, resultID(t, todoHint), cognitionRow{taskID: &secondTask, origin: "user", originExploration: &explorationID, relevant: false})
 	assertCognitionRow(t, db, resultID(t, todoOutput), cognitionRow{taskID: &secondTask, origin: "exploration", originExploration: &explorationID, relevant: true})
 	assertCognitionRow(t, db, resultID(t, runningHint), cognitionRow{taskID: &secondTask, origin: "user", originExploration: &explorationID, relevant: true})
@@ -142,21 +142,21 @@ func TestInvalidCognitionArgumentsNeverInsertRows(t *testing.T) {
 type cognitionRow struct {
 	taskID            *string
 	origin            string
-	originCognition   *string
+	originTask        *string
 	originExploration *string
 	relevant          bool
 }
 
 func assertCognitionRow(t *testing.T, db *sql.DB, id string, want cognitionRow) {
 	t.Helper()
-	var taskID, originCognition, originExploration sql.NullString
+	var taskID, originTask, originExploration sql.NullString
 	var origin string
 	var relevant bool
-	if err := db.QueryRow(`SELECT task_id,origin,origin_cognition_id,origin_exploration_id,task_purpose_relevant FROM cognitions WHERE id=?`, id).Scan(&taskID, &origin, &originCognition, &originExploration, &relevant); err != nil {
+	if err := db.QueryRow(`SELECT task_id,origin,origin_task_id,origin_exploration_id,task_purpose_relevant FROM cognitions WHERE id=?`, id).Scan(&taskID, &origin, &originTask, &originExploration, &relevant); err != nil {
 		t.Fatal(err)
 	}
-	if nullableString(taskID) != stringValue(want.taskID) || origin != want.origin || nullableString(originCognition) != stringValue(want.originCognition) || nullableString(originExploration) != stringValue(want.originExploration) || relevant != want.relevant {
-		t.Fatalf("Cognition %s mismatch: task=%q origin=%q origin_cognition=%q origin_exploration=%q relevant=%v want=%#v", id, nullableString(taskID), origin, nullableString(originCognition), nullableString(originExploration), relevant, want)
+	if nullableString(taskID) != stringValue(want.taskID) || origin != want.origin || nullableString(originTask) != stringValue(want.originTask) || nullableString(originExploration) != stringValue(want.originExploration) || relevant != want.relevant {
+		t.Fatalf("Cognition %s mismatch: task=%q origin=%q origin_task=%q origin_exploration=%q relevant=%v want=%#v", id, nullableString(taskID), origin, nullableString(originTask), nullableString(originExploration), relevant, want)
 	}
 }
 

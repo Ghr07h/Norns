@@ -1,0 +1,5 @@
+# Set NORNS_EXTENSION_DEEPSEEKSEARCH_CONFIG to your own YAML or JSON file.
+api_key: "YOUR_DEEPSEEK_API_KEY"
+# The API origin; a trailing /v1 is also accepted.
+base_url: "https://api.deepseek.com"
+timeout_seconds: 30

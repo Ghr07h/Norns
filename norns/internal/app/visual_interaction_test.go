@@ -72,3 +72,28 @@ func TestVisualDetailsScrollWithinGraph(t *testing.T) {
 		}
 	}
 }
+
+func TestVisualNumericEntityIDOrdering(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is required to exercise generated Visual JavaScript")
+	}
+	html, err := visualHTML([]byte(`{}`), "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const script = `const assert=require('node:assert/strict'),html=require('node:fs').readFileSync(0,'utf8');
+const start=html.indexOf('function graphNodeCompare('),end=html.indexOf('\nconst graphColumnGap=',start);
+const compare=new Function(html.slice(start,end)+';return graphNodeCompare')();
+const item=id=>({id,created_at:'2026-11-19T00:00:00Z'});
+for(const prefix of ['cog_','exp_']){
+assert.ok(compare(item(prefix+'2'),item(prefix+'10'))<0);
+assert.ok(compare(item(prefix+'9223372036854775806'),item(prefix+'9223372036854775807'))<0);
+assert.ok(compare(item(prefix+'10'),item(prefix+'2'))>0);
+}`
+	command := exec.Command(node, "-e", script)
+	command.Stdin = strings.NewReader(string(html))
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("Visual numeric ordering: %v\n%s", err, output)
+	}
+}

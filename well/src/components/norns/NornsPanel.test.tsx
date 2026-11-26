@@ -93,3 +93,58 @@ it("saves a generated view with the server file timestamp and suffix", async () 
   expect(notice).toBeInTheDocument();
   expect(notice.parentElement).toHaveClass("norns-view-feedback");
 });
+
+it("defaults to rendered Markdown, separates format caches and saves the original document", async () => {
+  await i18n.changeLanguage("en");
+  const requests: string[] = [];
+  const markdown = "# Status View\n\n## Task\n\n> task_1\n\n| ID | Title |\n| --- | --- |\n| cog_1 | Finding |\n";
+  window.__WELL_BRIDGE__ = { invoke: async <T,>(_command: string, args?: Record<string, unknown>) => {
+    const { format } = args!.input as { format: string }; requests.push(format);
+    return { data: format === "md" ? markdown : format === "yaml" ? "task: {id: task_1}\n" : '{"task":{"id":"task_1"}}', filename: `status-test.${format}` } as T;
+  } };
+  vi.mocked(save).mockResolvedValue("/tmp/status.md");
+  render(<NornsPanel serverId="s" kind="status" connection={{ base_url: "http://server", password: "secret" }} subjectId="subject" />);
+  expect(screen.getByRole("combobox", { name: "Output format" })).toHaveValue("md");
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(await screen.findByRole("heading", { name: "Status View" })).toBeInTheDocument();
+  expect(screen.getByRole("table")).toHaveTextContent("Finding");
+  fireEvent.click(screen.getByRole("button", { name: "Save view" }));
+  await waitFor(() => expect(writeTextFile).toHaveBeenCalledWith("/tmp/status.md", markdown));
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "yaml" } });
+  expect(screen.queryByRole("heading", { name: "Status View" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(document.querySelector(".norns-code pre")).toHaveTextContent("task:"));
+  expect(document.querySelector(".norns-code pre")!.textContent).toBe("task:\n  id: task_1\n");
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "json" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(await screen.findByText('"task_1"')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "md" } });
+  expect(screen.getByRole("heading", { name: "Status View" })).toBeInTheDocument();
+  expect(requests).toEqual(["md", "yaml", "json"]);
+});
+
+it.each(["WORKSPACE_NOT_INITIALIZED", "NORNS_UNAVAILABLE"])("keeps the Norns entry usable and presents %s", async (code) => {
+  await i18n.changeLanguage("en");
+  window.__WELL_BRIDGE__ = { invoke: async () => { throw { code, message: code }; } };
+  render(<NornsPanel serverId="s" kind="status" enabled={false} connection={{ base_url: "http://server", password: "secret" }} subjectId="subject" />);
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(code === "NORNS_UNAVAILABLE" ? "current service" : "not a Norns workspace");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+});
+
+it("queries both Cog and Exp in the Norns information bar", async () => {
+  await i18n.changeLanguage("en");
+  const calls: unknown[] = [];
+  window.__WELL_BRIDGE__ = { invoke: async <T,>(command: string, args?: Record<string, unknown>) => { calls.push([command, args?.input]); return { id: "cog_1", content: "finding" } as T; } };
+  render(<NornsViewsPanel serverId="s" enabled={false} connection={{ base_url: "http://server", password: "secret" }} subjectId="subject" />);
+  fireEvent.click(screen.getByRole("button", { name: "Cognition" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "cog_1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Query" }));
+  expect(await screen.findByText('"finding"')).toBeInTheDocument();
+  expect(calls[0]).toEqual(["get_norns_entity", { connection: { base_url: "http://server", password: "secret" }, subject_id: "subject", kind: "cognition", id: "cog_1" }]);
+  fireEvent.click(screen.getByRole("button", { name: "Exploration" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "exp_1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Query" }));
+  await waitFor(() => expect(calls).toHaveLength(2));
+  expect(calls[1]).toEqual(["get_norns_entity", expect.objectContaining({ kind: "exploration", id: "exp_1" })]);
+});

@@ -21,7 +21,6 @@ function snapshot(serverId: string): ProbeSnapshot {
       server_id: serverId,
       version: "dev",
       api_schema: supportedApiSchema,
-      runtime_profile: { agent: "cc", agent_version: "1", capabilities: [] },
       protocol_versions: { norns: null, agent_config: 1 },
       capacity: { concurrency: 1, using: 0, queuing: 0 },
       capabilities: [],

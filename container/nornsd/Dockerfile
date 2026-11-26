@@ -99,7 +99,7 @@ RUN set -eux; \
 
 COPY ${NORNS_RELEASE_DIR}/ /norns/bin/
 COPY domain/ /norns/domain/
-COPY nornsd/configs/nornsd/agent.example.yaml /norns/config/agent.example.yaml
+COPY nornsd/configs/nornsd/nornsd.example.yaml /norns/config/nornsd.example.yaml
 COPY container/nornsd/entrypoint.py /usr/local/bin/nornsd-entrypoint
 COPY container/nornsd/verify.py /usr/local/bin/nornsd-verify
 
@@ -107,7 +107,7 @@ RUN set -eux; \
     chmod 0755 /norns/bin/norns /norns/bin/nornsd \
       /usr/local/bin/nornsd-entrypoint /usr/local/bin/nornsd-verify; \
     find /norns/bin -maxdepth 1 -type f -name 'norns-*' -exec chmod 0755 {} \;; \
-    chmod 0600 /norns/config/agent.example.yaml; \
+    chmod 0600 /norns/config/nornsd.example.yaml; \
     printf '%s\n' '{' '  "hasCompletedOnboarding": true' '}' > /root/.claude.json; \
     chmod 0600 /root/.claude.json; \
     python3 /usr/local/bin/nornsd-verify --build

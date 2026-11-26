@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
+	"github.com/Ghr07h/norns/nornsd/internal/root"
 	storesqlite "github.com/Ghr07h/norns/nornsd/internal/store/sqlite"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
@@ -26,6 +27,7 @@ type Logger struct {
 	state                                       *logState
 	tools                                       map[string]uint64
 	closeTools                                  map[string]bool
+	agents                                      map[string]*agentTracker
 }
 
 type logState struct {
@@ -54,10 +56,10 @@ type rawProjection struct {
 const sessionResumedEventType = "runtime.session_resumed"
 
 func New(store *storesqlite.Store, subjectPath, subjectID, runtimeID string) *Logger {
-	logPath := filepath.Join(subjectPath, ".nornsd", "log")
+	logPath := filepath.Join(root.SubjectDataPath(subjectPath), "logs")
 	state, _ := subjectLogs.LoadOrStore(logPath, &logState{})
 	log := state.(*logState)
-	return &Logger{store: store, subjectID: subjectID, runtimeID: runtimeID, rawPath: filepath.Join(logPath, "raw.jsonl"), readablePath: filepath.Join(logPath, "readable.jsonl"), mu: &log.mu, state: log, tools: map[string]uint64{}, closeTools: map[string]bool{}}
+	return &Logger{store: store, subjectID: subjectID, runtimeID: runtimeID, rawPath: filepath.Join(logPath, "raw.jsonl"), readablePath: filepath.Join(logPath, "readable.jsonl"), mu: &log.mu, state: log, tools: map[string]uint64{}, closeTools: map[string]bool{}, agents: map[string]*agentTracker{}}
 }
 
 func (l *Logger) RawHandler(ctx context.Context) func(string, string, json.RawMessage) error {
@@ -232,6 +234,7 @@ func appendJSONLine(path string, value any) error {
 }
 
 type MessageResult struct {
+	RawSeq            uint64
 	IsResult          bool
 	IsError           bool
 	Usage             any
@@ -266,7 +269,9 @@ func (l *Logger) projectRecordLocked(ctx context.Context, record rawEnvelope) (M
 		return MessageResult{}, err
 	}
 
-	result, drafts, tools, closeTools, err := l.buildProjection(record.Payload)
+	tracker := l.agents[record.RuntimeID].clone()
+	result, drafts, tools, closeTools, err := l.buildProjection(record.Payload, tracker)
+	result.RawSeq = record.RawSeq
 	if err != nil {
 		return MessageResult{}, err
 	}
@@ -304,6 +309,7 @@ func (l *Logger) projectRecordLocked(ctx context.Context, record rawEnvelope) (M
 		l.tools[id] = ref.seq
 	}
 	l.closeTools = closeTools
+	l.agents[record.RuntimeID] = tracker
 	if projected {
 		result.projectionChanged = true
 		if err = syncReadableLocked(ctx, l.store, l.readablePath, l.subjectID, l.state); err != nil {
@@ -313,34 +319,39 @@ func (l *Logger) projectRecordLocked(ctx context.Context, record rawEnvelope) (M
 	return result, nil
 }
 
-func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDraft, map[string]toolReference, map[string]bool, error) {
+func (l *Logger) buildProjection(raw json.RawMessage, tracker *agentTracker) (MessageResult, []eventDraft, map[string]toolReference, map[string]bool, error) {
 	var envelope struct {
-		Type             string `json:"type"`
-		Subtype          string `json:"subtype"`
-		SessionID        string `json:"session_id"`
-		IsError          bool   `json:"is_error"`
-		NumTurns         int    `json:"num_turns"`
-		Usage            any    `json:"usage"`
-		Result           any    `json:"result"`
-		StopReason       string `json:"stop_reason"`
-		TerminalReason   string `json:"terminal_reason"`
-		APIErrorStatus   any    `json:"api_error_status"`
-		AttributionAgent string `json:"attributionAgent"`
-		SubagentType     string `json:"subagent_type"`
-		Origin           struct {
+		agentEnvelope
+		SessionID      string `json:"session_id"`
+		IsError        bool   `json:"is_error"`
+		NumTurns       int    `json:"num_turns"`
+		Usage          any    `json:"usage"`
+		Result         any    `json:"result"`
+		StopReason     string `json:"stop_reason"`
+		TerminalReason string `json:"terminal_reason"`
+		APIErrorStatus any    `json:"api_error_status"`
+		UUID           string `json:"uuid"`
+		IsReplay       bool   `json:"isReplay"`
+		Errors         any    `json:"errors"`
+		Error          any    `json:"error"`
+		ModelUsage     any    `json:"modelUsage"`
+		TotalCostUSD   any    `json:"total_cost_usd"`
+		Origin         struct {
 			Kind string `json:"kind"`
 		} `json:"origin"`
 		Message struct {
-			Content []json.RawMessage `json:"content"`
+			Content json.RawMessage `json:"content"`
+			Model   string          `json:"model"`
 		} `json:"message"`
-		Content []json.RawMessage `json:"content"`
+		Content       json.RawMessage `json:"content"`
+		ToolUseResult json.RawMessage `json:"tool_use_result"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return MessageResult{}, nil, nil, nil, err
 	}
 	result := MessageResult{}
 	drafts := []eventDraft{}
-	agent := projectedAgent(envelope.AttributionAgent, envelope.SubagentType)
+	agent := tracker.frameAgent(envelope.agentEnvelope)
 	tools := make(map[string]toolReference, len(l.tools))
 	for id, seq := range l.tools {
 		tools[id] = toolReference{seq: seq}
@@ -349,9 +360,26 @@ func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDra
 	for id, closeTool := range l.closeTools {
 		closeTools[id] = closeTool
 	}
-	blocks := envelope.Message.Content
-	if len(blocks) == 0 {
-		blocks = envelope.Content
+	content := envelope.Message.Content
+	if len(content) == 0 || string(content) == "null" {
+		content = envelope.Content
+	}
+	blocks, err := contentBlocks(content)
+	if err != nil {
+		return MessageResult{}, nil, nil, nil, err
+	}
+	if envelope.Type == "user" && envelope.IsReplay && agent.Role == "main" {
+		drafts = append(drafts, eventDraft{typeName: "instruction.replayed", source: "agent", payload: map[string]any{"input_uuid": envelope.UUID}})
+		blocks = nil
+	}
+	resultBlocks := 0
+	for _, rawBlock := range blocks {
+		var block struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(rawBlock, &block) == nil && block.Type == "tool_result" {
+			resultBlocks++
+		}
 	}
 	for _, blockRaw := range blocks {
 		var block map[string]any
@@ -362,12 +390,36 @@ func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDra
 		switch kind {
 		case "text":
 			if text, _ := block["text"].(string); text != "" {
-				drafts = append(drafts, eventDraft{typeName: "agent.text", source: "agent", payload: map[string]any{"text": text, "agent": agent}})
+				typeName := "agent.text"
+				if envelope.Type != "assistant" {
+					typeName = "agent.user_message"
+				}
+				if envelope.Type == "user" && (text == "[Request interrupted by user]" || text == "[Request interrupted by user for tool use]") {
+					typeName = "agent.interrupted"
+				}
+				payload := map[string]any{"text": text, "agent": agent}
+				if envelope.Error != nil {
+					payload["error"] = envelope.Error
+				}
+				if envelope.Message.Model != "" {
+					payload["model"] = envelope.Message.Model
+				}
+				drafts = append(drafts, eventDraft{typeName: typeName, source: "agent", payload: payload})
 			}
 		case "tool_use":
 			id, _ := block["id"].(string)
 			name, _ := block["name"].(string)
 			payload := map[string]any{"tool_call_id": id, "name": name, "input": block["input"], "agent": agent}
+			if id != "" {
+				tracker.toolOwners[id] = agent
+				tracker.toolNames[id] = name
+			}
+			if spawned := tracker.spawned(id, name, block["input"]); spawned != nil {
+				payload["spawned_agent"] = spawned
+			}
+			if target := tracker.targeted(id, name, block["input"]); target != nil {
+				payload["target_agent"] = target
+			}
 			index := len(drafts)
 			drafts = append(drafts, eventDraft{typeName: "agent.tool_call", source: "agent", payload: payload})
 			if id != "" {
@@ -382,16 +434,50 @@ func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDra
 			if !found {
 				drafts = append(drafts, eventDraft{typeName: "diagnostic", source: "runtime", payload: map[string]any{"code": "UNMATCHED_TOOL_RESULT", "tool_call_id": id}})
 			}
-			draft := eventDraft{typeName: "agent.tool_result", source: "agent", payload: map[string]any{"tool_call_id": id, "content": block["content"], "is_error": block["is_error"], "agent": agent}}
+			caller := agent
+			if owner, ok := tracker.toolOwners[id]; ok {
+				caller = tracker.current(owner)
+			}
+			isError, _ := block["is_error"].(bool)
+			draft := eventDraft{typeName: "agent.tool_result", source: "agent", payload: map[string]any{"tool_call_id": id, "content": block["content"], "is_error": block["is_error"], "agent": caller}}
+			var metadata any
+			if resultBlocks == 1 {
+				metadata = agentMetadata(envelope.ToolUseResult)
+			}
+			if spawned := tracker.completedAgent(id, metadata, block["content"]); spawned != nil {
+				if status := subagentResultStatus(metadata, isError, tracker.toolNames[id]); status != "" {
+					draft.payload["subagent_status"] = status
+				}
+				if tracker.toolNames[id] == "SendMessage" {
+					draft.payload["target_agent"] = spawned
+				} else {
+					draft.payload["spawned_agent"] = spawned
+				}
+			}
+			delete(tracker.toolNames, id)
+			delete(tracker.toolOwners, id)
 			if found {
 				draft.linkIndex = ref.index
 				draft.linkSeq = ref.seq
 			}
 			drafts = append(drafts, draft)
-			isError, _ := block["is_error"].(bool)
 			result.CloseSucceeded = result.CloseSucceeded || (closeTools[id] && !isError && hasCloseSuccess(block["content"]))
 			delete(tools, id)
 			delete(closeTools, id)
+		}
+	}
+	if envelope.Type == "system" {
+		switch envelope.Subtype {
+		case "api_retry", "status", "task_started", "task_progress", "task_notification", "task_updated":
+			var fields map[string]any
+			_ = json.Unmarshal(raw, &fields)
+			payload := map[string]any{"agent": agent}
+			for _, key := range []string{"session_id", "uuid", "parent_tool_use_id", "attempt", "max_retries", "retry_delay_ms", "error_status", "error", "status", "task_id", "tool_use_id", "description", "summary", "output_file", "usage", "last_tool_name", "task_type", "subagent_type", "agent_id", "patch"} {
+				if value, ok := fields[key]; ok {
+					payload[key] = value
+				}
+			}
+			drafts = append(drafts, eventDraft{typeName: "agent." + envelope.Subtype, source: "agent", payload: payload})
 		}
 	}
 	if envelope.Type == "result" {
@@ -399,6 +485,18 @@ func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDra
 		result.IsError = envelope.IsError
 		result.Usage = envelope.Usage
 		payload := map[string]any{"subtype": envelope.Subtype, "is_error": envelope.IsError, "num_turns": envelope.NumTurns, "usage": envelope.Usage, "agent": agent}
+		if envelope.UUID != "" {
+			payload["uuid"] = envelope.UUID
+		}
+		if envelope.Errors != nil {
+			payload["errors"] = envelope.Errors
+		}
+		if envelope.ModelUsage != nil {
+			payload["model_usage"] = envelope.ModelUsage
+		}
+		if envelope.TotalCostUSD != nil {
+			payload["total_cost_usd"] = envelope.TotalCostUSD
+		}
 		if envelope.SessionID != "" {
 			payload["session_id"] = envelope.SessionID
 		}
@@ -419,29 +517,32 @@ func (l *Logger) buildProjection(raw json.RawMessage) (MessageResult, []eventDra
 		}
 		drafts = append(drafts, eventDraft{typeName: "agent.result", source: "agent", payload: payload})
 	}
+	for _, draft := range drafts {
+		if envelope.ParentToolUseID != "" {
+			draft.payload["parent_tool_use_id"] = envelope.ParentToolUseID
+		}
+		if envelope.AgentID != "" {
+			draft.payload["agent_id"] = envelope.AgentID
+		}
+	}
 	return result, drafts, tools, closeTools, nil
 }
 
-func projectedAgent(attribution, subagentType string) map[string]any {
-	source := strings.TrimSpace(subagentType)
-	if source == "" {
-		source = strings.TrimSpace(attribution)
+func contentBlocks(raw json.RawMessage) ([]json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
 	}
-	if source == "" {
-		return map[string]any{"role": "main", "name": "Coordinator"}
-	}
-	name := source
-	if index := strings.LastIndex(name, ":"); index >= 0 {
-		name = name[index+1:]
-	}
-	parts := strings.Split(name, "-")
-	for index, part := range parts {
-		if part == "" {
-			continue
+	if raw[0] == '"' {
+		var text string
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return nil, err
 		}
-		parts[index] = strings.ToUpper(part[:1]) + part[1:]
+		block, _ := json.Marshal(map[string]any{"type": "text", "text": text})
+		return []json.RawMessage{block}, nil
 	}
-	return map[string]any{"role": "sub", "name": strings.Join(parts, "-"), "source": source}
+	var blocks []json.RawMessage
+	err := json.Unmarshal(raw, &blocks)
+	return blocks, err
 }
 
 func toolCommand(input any) string {
@@ -496,7 +597,7 @@ func hasCloseSuccess(value any) bool {
 // before the SQLite checkpoint are read to reconstruct tool correlation state,
 // while ProjectRaw keeps their stable Events idempotent.
 func ReplayRaw(ctx context.Context, store *storesqlite.Store, subjectPath, subjectID string) error {
-	path := filepath.Join(subjectPath, ".nornsd", "log", "raw.jsonl")
+	path := filepath.Join(root.SubjectDataPath(subjectPath), "logs", "raw.jsonl")
 	file, err := os.OpenFile(path, os.O_RDWR, 0600)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -604,7 +705,7 @@ func bytesTrimNewline(line []byte) []byte {
 }
 
 func RepairReadable(ctx context.Context, store *storesqlite.Store, subjectPath, subjectID string) error {
-	path := filepath.Join(subjectPath, ".nornsd", "log", "readable.jsonl")
+	path := filepath.Join(root.SubjectDataPath(subjectPath), "logs", "readable.jsonl")
 	value, _ := subjectLogs.LoadOrStore(filepath.Dir(path), &logState{})
 	state := value.(*logState)
 	state.mu.Lock()
@@ -653,7 +754,7 @@ func RepairReadable(ctx context.Context, store *storesqlite.Store, subjectPath, 
 // readable projection. It falls back to a full rebuild if the existing file is
 // malformed or has a sequence gap.
 func SyncReadable(ctx context.Context, store *storesqlite.Store, subjectPath, subjectID string) error {
-	path := filepath.Join(subjectPath, ".nornsd", "log", "readable.jsonl")
+	path := filepath.Join(root.SubjectDataPath(subjectPath), "logs", "readable.jsonl")
 	value, _ := subjectLogs.LoadOrStore(filepath.Dir(path), &logState{})
 	state := value.(*logState)
 	state.mu.Lock()

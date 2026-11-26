@@ -12,7 +12,6 @@ export interface ServiceInfo {
   server_id?: string;
   version: string;
   api_schema: number;
-  runtime_profile: RuntimeProfile;
   protocol_versions: { norns: number | null; agent_config: number };
   capacity: { concurrency: number; using: number; queuing: number };
   capabilities: string[];
@@ -56,7 +55,6 @@ export interface SubjectDetail {
   id: string;
   name: string | null;
   state: SubjectState;
-  runtime_profile: RuntimeProfile;
   workspace: {
     materialized: boolean;
     directory_name: string;
@@ -121,7 +119,8 @@ export interface RuntimeDetail {
   id: string;
   subject_id: string;
   state: RuntimeState;
-  agent: string;
+  agent: string | null;
+  runtime_profile: RuntimeProfile | null;
   session_id: string;
   queued_at: string | null;
   started_at: string | null;

@@ -10,11 +10,14 @@ import (
 
 func TestUninitializedWorkspaceRejectsAllCommandsExceptInitAndTaskOpen(t *testing.T) {
 	service, _ := newTestService(t)
-	id := "exp_ffffffff-ffff-4fff-8fff-ffffffffffff"
+	id := "exp_9223372036854775807"
 	tests := []struct {
 		name string
 		call func() error
 	}{
+		{"workspace-check", func() error { _, err := service.CheckWorkspace(context.Background()); return err }},
+		{"workspace-free", func() error { _, err := service.FreeWorkspace(context.Background()); return err }},
+		{"task-list", func() error { _, err := service.ListTasks(context.Background(), ""); return err }},
 		{"task-close", func() error { _, err := service.CloseTask(context.Background(), "cancelled", "No Task"); return err }},
 		{"task-reopen", func() error { _, err := service.ReopenTask(context.Background(), nil); return err }},
 		{"cognition-add", func() error {
@@ -36,8 +39,8 @@ func TestUninitializedWorkspaceRejectsAllCommandsExceptInitAndTaskOpen(t *testin
 		}},
 		{"exploration-todo", func() error { _, err := service.ListExplorations(context.Background(), "todo"); return err }},
 		{"exploration-running", func() error { _, err := service.ListExplorations(context.Background(), "running"); return err }},
-		{"view-status", func() error { _, _, err := service.StatusView(context.Background(), nil, false); return err }},
-		{"view-trace", func() error { _, _, err := service.TraceView(context.Background(), id, false); return err }},
+		{"view-status", func() error { _, _, err := service.StatusView(context.Background(), nil, ViewYAML); return err }},
+		{"view-trace", func() error { _, _, err := service.TraceView(context.Background(), id, ViewYAML); return err }},
 		{"view-visual", func() error { _, err := service.VisualView(context.Background(), false, ""); return err }},
 		{"workspace-reset", func() error { _, err := service.Reset(context.Background()); return err }},
 	}
@@ -61,7 +64,7 @@ func TestNoOpenTaskRejectsGraphLifecycleCommands(t *testing.T) {
 	if _, err := service.Init(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	id := "exp_ffffffff-ffff-4fff-8fff-ffffffffffff"
+	id := "exp_9223372036854775807"
 	tests := []struct {
 		name string
 		call func() error
@@ -152,7 +155,7 @@ func TestTaskCloseMissingReasonDoesNotModifyState(t *testing.T) {
 func TestResetArchivesViewsAndExtraFilesAndRequiresNewSubjectInfo(t *testing.T) {
 	service, _ := newTestService(t)
 	createClosedTask(t, service)
-	view, viewPath, err := service.StatusView(context.Background(), nil, false)
+	view, viewPath, err := service.StatusView(context.Background(), nil, ViewYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +188,7 @@ func TestResetArchivesViewsAndExtraFilesAndRequiresNewSubjectInfo(t *testing.T) 
 	if _, err := service.OpenTask(context.Background(), OpenTaskRequest{Purpose: "New Subject", Concurrency: 1}); errorCode(err) != "INVALID_ARGUMENT" {
 		t.Fatalf("first Task after reset without info returned %v", err)
 	}
-	viewAfter, _, err := service.StatusView(context.Background(), nil, true)
+	viewAfter, _, err := service.StatusView(context.Background(), nil, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}

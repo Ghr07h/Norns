@@ -17,6 +17,7 @@ import (
 	"github.com/Ghr07h/norns/nornsd/internal/app"
 	"github.com/Ghr07h/norns/nornsd/internal/config"
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
+	nornsadapter "github.com/Ghr07h/norns/nornsd/internal/norns"
 	"github.com/Ghr07h/norns/nornsd/internal/root"
 	runtimemanager "github.com/Ghr07h/norns/nornsd/internal/runtime"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
@@ -33,6 +34,7 @@ while IFS= read -r line; do
       printf '{"type":"control_response","response":{"request_id":"%s","subtype":"success","response":{}}}\n' "$id"
       ;;
 	*'"type":"user"'*)
+      printf '%s\n' "$line" | sed 's/"type":"user"/"type":"user","isReplay":true/'
 	  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}\n'
 	  printf '{"type":"result","subtype":"success","session_id":"runtime-session","is_error":false,"num_turns":1,"usage":{"input_tokens":1},"result":"done"}\n'
 	  printf '{"type":"result","subtype":"success","session_id":"runtime-session","is_error":false,"num_turns":1,"origin":{"kind":"task-notification"},"usage":{"input_tokens":12,"output_tokens":4},"result":"background task completed"}\n'
@@ -58,7 +60,7 @@ done
 		}
 	}
 	setting := filepath.Join(dir, "agent.yaml")
-	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nCUSTOM_AGENTS_DIR: " + customAgents + "\nCUSTOM_PLUGIN_DIRS:\n  - " + customPluginOne + "\n  - " + customPluginTwo + "\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "AGENT_LLM_URL: https://example.test\nAGENT_LLM_KEY: secret\nAGENT_LLM_MODEL: fake\nAGENT_CUSTOM_AGENTS_DIR: " + customAgents + "\nAGENT_CUSTOM_PLUGIN_DIRS:\n  - " + customPluginOne + "\n  - " + customPluginTwo + "\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -72,13 +74,12 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
 	slots := make([]*config.Config, 2)
 	slots[1] = &cfg
-	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: 1, SlotConfigs: slots, MemoryLimit: ^uint64(0)})
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1, SlotConfigs: slots, MemoryLimit: ^uint64(0)})
 	manager.Start()
 	defer func() { manager.Close(); _ = owner.Close() }()
-	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
 	instruction := "do work"
 	subject, err := service.CreateSubject(ctx, nil, &instruction)
 	if err != nil {
@@ -97,8 +98,8 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtimeRoot := filepath.Join(subjectPath, ".nornsd", "runtimes", runtimeID)
-	memorySamplesPath := filepath.Join(runtimeRoot, "memory-samples.jsonl")
+	runtimeRoot := root.RuntimeDataPath(subjectPath, runtimeID)
+	memorySamplesPath := filepath.Join(runtimeRoot, "memory", "memory-samples.jsonl")
 	waitFor(t, 5*time.Second, func() bool {
 		data, readErr := os.ReadFile(memorySamplesPath)
 		return readErr == nil && len(bytes.TrimSpace(data)) > 0
@@ -204,13 +205,9 @@ done
 	if err = json.Unmarshal(firstSample, &sample); err != nil || sample.SampledAt.IsZero() || sample.MemoryBytes == 0 {
 		t.Fatalf("invalid memory sample %q: %#v, %v", firstSample, sample, err)
 	}
-	for _, name := range []string{"snapshot.json", "launch.json", "config.snapshot.json"} {
-		data, readErr := os.ReadFile(filepath.Join(runtimeRoot, name))
-		if readErr != nil {
-			t.Fatalf("read %s: %v", name, readErr)
-		}
-		if bytes.Contains(data, []byte("secret")) || bytes.Contains(data, []byte(script)) {
-			t.Fatalf("%s contains a credential or wrapper argument", name)
+	for _, name := range []string{"snapshot.json", "config.snapshot.json"} {
+		if _, err = os.Stat(filepath.Join(runtimeRoot, name)); !os.IsNotExist(err) {
+			t.Fatalf("obsolete snapshot %s: %v", name, err)
 		}
 	}
 	launchData, err := os.ReadFile(filepath.Join(runtimeRoot, "launch.json"))
@@ -218,6 +215,13 @@ done
 		t.Fatal(err)
 	}
 	var launchArtifact struct {
+		Agent struct {
+			Argv []string `json:"argv"`
+		} `json:"agent"`
+		Session struct {
+			ID string `json:"id"`
+		} `json:"session"`
+		Plugins     []any    `json:"plugins"`
 		Argv        []string `json:"argv"`
 		PluginCount int      `json:"plugin_count"`
 		SessionID   string   `json:"session_id"`
@@ -225,14 +229,20 @@ done
 	if err = json.Unmarshal(launchData, &launchArtifact); err != nil {
 		t.Fatal(err)
 	}
-	customPlugin := filepath.Join(runtimeRoot, "artifacts", "custom-plugin")
+	launchArtifact.Argv = launchArtifact.Agent.Argv
+	launchArtifact.SessionID = launchArtifact.Session.ID
+	launchArtifact.PluginCount = len(launchArtifact.Plugins)
+	if !slices.Contains(launchArtifact.Argv, script) {
+		t.Fatalf("wrapper argv was redacted: %s", launchData)
+	}
+	customPlugin := filepath.Join(runtimeRoot, "plugins", "custom-plugin")
 	var loadedPluginDirs []string
 	for i, argument := range launchArtifact.Argv {
 		if argument == "--plugin-dir" && i+1 < len(launchArtifact.Argv) {
 			loadedPluginDirs = append(loadedPluginDirs, launchArtifact.Argv[i+1])
 		}
 	}
-	wantPluginDirs := []string{customPluginOne, customPluginTwo, customPlugin}
+	wantPluginDirs := []string{filepath.Join(runtimeRoot, "plugins", "external-plugin-1"), filepath.Join(runtimeRoot, "plugins", "external-plugin-2"), customPlugin}
 	if launchArtifact.PluginCount != len(wantPluginDirs) || !slices.Equal(loadedPluginDirs, wantPluginDirs) {
 		t.Fatalf("loaded Plugin directories = %#v (count %d), want %#v", loadedPluginDirs, launchArtifact.PluginCount, wantPluginDirs)
 	}
@@ -260,7 +270,7 @@ done
 	if _, err = os.Stat(filepath.Join(subjectPath, ".claude")); !os.IsNotExist(err) {
 		t.Fatalf("Runtime wrote Subject .claude directory: %v", err)
 	}
-	artifactConfig, err := os.ReadFile(filepath.Join(runtimeRoot, "artifacts", "config", "agent.yaml"))
+	artifactConfig, err := os.ReadFile(filepath.Join(runtimeRoot, "configs", "nornsd.yaml"))
 	if err != nil || !bytes.Contains(artifactConfig, []byte("secret")) {
 		t.Fatalf("restricted config artifact is incomplete: %v", err)
 	}
@@ -270,7 +280,6 @@ func TestManagedResumeForkRecordsOneResumeEvent(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "fake-cc-resume.sh")
 	source := `#!/bin/sh
-printf '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":0}}\n'
 while IFS= read -r line; do
   case "$line" in
     *'"type":"control_request"'*)
@@ -287,6 +296,7 @@ while IFS= read -r line; do
 	  printf '{"type":"result","subtype":"success","is_error":false,"num_turns":0,"origin":{"kind":"task-notification"},"usage":{"input_tokens":0,"output_tokens":0}}\n'
 	  printf '{"type":"system","subtype":"init"}\n'
 	  printf '{"type":"result","subtype":"success","is_error":false,"num_turns":0,"origin":{"kind":"task-notification"},"usage":{"input_tokens":0,"output_tokens":0}}\n'
+      printf '%s\n' "$line" | sed 's/"type":"user"/"type":"user","isReplay":true/'
       printf '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}}\n'
       ;;
   esac
@@ -296,7 +306,7 @@ done
 		t.Fatal(err)
 	}
 	setting := filepath.Join(dir, "agent.yaml")
-	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "AGENT_LLM_URL: https://example.test\nAGENT_LLM_KEY: secret\nAGENT_LLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -310,12 +320,11 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
 	slots := make([]*config.Config, 2)
 	slots[1] = &cfg
-	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: 1, SlotConfigs: slots, MemoryLimit: ^uint64(0)})
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1, SlotConfigs: slots, MemoryLimit: ^uint64(0)})
 	defer func() { manager.Close(); _ = owner.Close() }()
-	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
 	subject, err := service.CreateSubject(ctx, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -340,7 +349,7 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	launchData, err := os.ReadFile(filepath.Join(subjectPath, ".nornsd", "runtimes", runtime.ID, "launch.json"))
+	launchData, err := os.ReadFile(filepath.Join(root.RuntimeDataPath(subjectPath, runtime.ID), "launch.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +398,7 @@ done
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.State != domain.RuntimeWaiting || current.InflightTurns != 0 || current.ErrorCode != nil {
+	if current.State != domain.RuntimeWaiting || current.InflightInputs != 0 || current.ErrorCode != nil {
 		t.Fatalf("runtime after replay notifications=%#v", current)
 	}
 	if _, err = service.Stop(ctx, subject.ID, "force"); err != nil {
@@ -412,6 +421,7 @@ while IFS= read -r line; do
       printf '{"type":"control_response","response":{"request_id":"%s","subtype":"success","response":{}}}\n' "$id"
       ;;
     *'"type":"user"'*)
+      printf '%s\n' "$line" | sed 's/"type":"user"/"type":"user","isReplay":true/'
       printf '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}}\n'
       ;;
   esac
@@ -421,7 +431,7 @@ done
 		t.Fatal(err)
 	}
 	setting := filepath.Join(dir, "agent-close.yaml")
-	yaml := "VERSION: " + strconv.Itoa(version.AgentConfigVersion) + "\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
+	yaml := "AGENT_LLM_URL: https://example.test\nAGENT_LLM_KEY: secret\nAGENT_LLM_MODEL: fake\nAGENT_EXEC:\n  - /bin/sh\n  - " + script + "\n"
 	if err := os.WriteFile(setting, []byte(yaml), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -436,13 +446,12 @@ done
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
 	slots := make([]*config.Config, 2)
 	slots[1] = &cfg
-	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: 1, SlotConfigs: slots})
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1, SlotConfigs: slots})
 	manager.Start()
 	defer manager.Close()
-	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
 	instruction := "wait for shutdown"
 	subject, err := service.CreateSubject(ctx, nil, &instruction)
 	if err != nil {
@@ -486,4 +495,125 @@ func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("condition was not met before timeout")
+}
+
+func TestRuntimeProfilesAndOverridesAreIndependentWithinSubject(t *testing.T) {
+	dir := t.TempDir()
+	mainFile := filepath.Join(dir, "main.md")
+	mainContent := "---\nname: runtime-main\ntools: Read, Agent\nmaxTurns: 50\n---\n{{NORNS_RUNTIME_CONFIGURATION}}\n"
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "fake.sh")
+	source := `#!/bin/sh
+while IFS= read -r line; do
+ case "$line" in
+ *'"type":"control_request"'*) id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p'); printf '{"type":"control_response","response":{"request_id":"%s","subtype":"success","response":{}}}\n' "$id";;
+ *'"type":"user"'*) printf '%s\n' "$line" | sed 's/"type":"user"/"type":"user","isReplay":true/'; printf '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"done"}\n';;
+ esac
+done
+`
+	if err := os.WriteFile(script, []byte(source), 0700); err != nil {
+		t.Fatal(err)
+	}
+	fakeNorns := filepath.Join(dir, "norns")
+	if err := os.WriteFile(fakeNorns, []byte("#!/bin/sh\nif [ \"$1\" = version ]; then printf '{\"protocol_version\":"+strconv.Itoa(version.NornsProtocol)+"}'; fi\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	setting := filepath.Join(dir, "nornsd.yaml")
+	cfgBytes, _ := json.Marshal(map[string]any{"AGENT_TYPE": "cc", "AGENT_LLM_URL": "https://example.test", "AGENT_LLM_KEY": "secret", "AGENT_LLM_MODEL": "template", "AGENT_EXEC": []string{"/bin/sh", script}})
+	if err := os.WriteFile(setting, cfgBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	template, err := config.Load(setting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	owner, err := root.Acquire(ctx, filepath.Join(dir, "root"), "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1, SlotConfigs: []*config.Config{nil, &template}, Norns: &nornsadapter.Adapter{Executable: fakeNorns}})
+	manager.Start()
+	defer manager.Close()
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
+	subject, err := service.CreateSubject(ctx, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeIDs := []string{}
+	for i := 0; i < 3; i++ {
+		values := map[string]any{"AGENT_NORNS_ENABLE": i == 0, "AGENT_MAINAGENT_FILE": mainFile, "AGENT_LLM_MODEL": "plain-model"}
+		if i == 0 {
+			values["AGENT_LLM_MODEL"] = "norns-model"
+		}
+		if i == 2 {
+			delete(values, "AGENT_MAINAGENT_FILE")
+			values["AGENT_REUSE_RUNTIME_DIR"] = root.RuntimeDataPath(filepath.Join(owner.Path, subject.DirectoryName), runtimeIDs[1])
+			values["AGENT_LLM_MODEL"] = "reused-model"
+		}
+		raw, _ := json.Marshal(values)
+		runtime, _, err := service.Submit(ctx, subject.ID, "work", false, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtimeIDs = append(runtimeIDs, runtime.ID)
+		waitFor(t, 5*time.Second, func() bool {
+			r, err := owner.Store.GetRuntime(ctx, subject.ID, runtime.ID, false)
+			return err == nil && r.State == domain.RuntimeWaiting
+		})
+		r, err := owner.Store.GetRuntime(ctx, subject.ID, runtime.ID, false)
+		if err != nil || r.Profile.Has("norns") != (i == 0) {
+			t.Fatalf("wrong Runtime profile: %+v %v", r, err)
+		}
+		launch, err := os.ReadFile(filepath.Join(root.RuntimeDataPath(filepath.Join(owner.Path, subject.DirectoryName), runtime.ID), "launch.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mainID := "nornsd-custom:runtime-main"
+		if i == 0 {
+			mainID = "norns:runtime-main"
+		}
+		var snapshot struct {
+			Agent struct {
+				Argv []string `json:"argv"`
+			} `json:"agent"`
+		}
+		if err = json.Unmarshal(launch, &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for j, arg := range snapshot.Agent.Argv {
+			if arg == "--agent" && j+1 < len(snapshot.Agent.Argv) && snapshot.Agent.Argv[j+1] == mainID {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("managed launch did not select custom main: %s", launch)
+		}
+		if i == 2 {
+			old := root.RuntimeDataPath(filepath.Join(owner.Path, subject.DirectoryName), runtimeIDs[1])
+			if bytes.Contains(launch, []byte(old)) {
+				t.Fatalf("reused startup still references source Runtime: %s", launch)
+			}
+			copied, err := os.ReadFile(filepath.Join(root.RuntimeDataPath(filepath.Join(owner.Path, subject.DirectoryName), runtime.ID), "plugins", "custom-plugin", "agents", "main.md"))
+			if err != nil || string(copied) != mainContent {
+				t.Fatalf("managed reuse did not preserve main: %s %v", copied, err)
+			}
+		}
+		if _, err := service.Stop(ctx, subject.ID, "force"); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, 5*time.Second, func() bool {
+			s, err := owner.Store.GetSubject(ctx, subject.ID)
+			return err == nil && s.State == domain.SubjectIdle
+		})
+	}
+	first, _ := owner.Store.GetRuntime(ctx, subject.ID, runtimeIDs[0], false)
+	second, _ := owner.Store.GetRuntime(ctx, subject.ID, runtimeIDs[1], false)
+	if !first.Profile.Has("norns") || second.Profile.Has("norns") || !bytes.Contains(first.EffectiveConfig, []byte("norns-model")) || !bytes.Contains(second.EffectiveConfig, []byte("plain-model")) || template.LLMModel != "template" || template.NornsEnable {
+		t.Fatal("configuration or Profile leaked across Runtimes")
+	}
 }

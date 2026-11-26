@@ -8,6 +8,7 @@ import { keys } from "../../api/query-keys";
 import { StatusBadge } from "../common/StatusBadge";
 import { CopyButton } from "../common/CopyButton";
 import { Dialog } from "../common/Dialog";
+import { RuntimeConfigEditor, parseRuntimeConfig } from "./RuntimeConfigEditor";
 import { HistoryPanel } from "./HistoryPanel";
 import { errorMessage, formatBytes, formatTime } from "../../lib/format";
 
@@ -15,6 +16,9 @@ export function RuntimePanel({ serverId, connection, subject, runtime }: { serve
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const [instruction, setInstruction] = useState("");
+  const [configText, setConfigText] = useState("");
+  const [resumeSession, setResumeSession] = useState(false);
+  const parsedConfig = parseRuntimeConfig(configText);
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [stopMode, setStopMode] = useState<"graceful" | "force" | null>(null);
   const [notice, setNotice] = useState("");
@@ -22,10 +26,10 @@ export function RuntimePanel({ serverId, connection, subject, runtime }: { serve
   const active = Boolean(runtime && ["queued", "running", "waiting"].includes(runtime.state));
   const closing = Boolean(runtime?.closing || runtime && ["ended", "error", "cancelled"].includes(runtime.state));
   const refresh = async () => { await Promise.all([client.invalidateQueries({ queryKey: keys.subjects(serverId) }), client.invalidateQueries({ queryKey: keys.subject(serverId, subject.id) }), client.invalidateQueries({ queryKey: keys.currentRuntime(serverId, subject.id) }), client.invalidateQueries({ queryKey: keys.runtimes(serverId, subject.id) }), client.invalidateQueries({ queryKey: keys.queue(serverId) }), client.invalidateQueries({ queryKey: keys.probe(serverId) })]); };
-  const send = useMutation({ mutationFn: () => submitInstruction(connection, subject.id, instruction), onSuccess: async () => { setInstruction(""); setInstructionOpen(false); setNotice(""); await refresh(); }, onError: (error) => { const uncertain = typeof error === "object" && error && "kind" in error && ["timeout", "connection"].includes(String((error as { kind?: string }).kind)); setNotice(`${errorMessage(error, t)}${uncertain ? ` ${t("runtime.uncertain")}` : ""}`); } });
+  const send = useMutation({ mutationFn: () => submitInstruction(connection, subject.id, instruction, active ? undefined : parsedConfig.config, active ? false : resumeSession), onSuccess: async () => { setInstruction(""); setConfigText(""); setResumeSession(false); setInstructionOpen(false); setNotice(""); await refresh(); }, onError: (error) => { const uncertain = typeof error === "object" && error && "kind" in error && ["timeout", "connection"].includes(String((error as { kind?: string }).kind)); setNotice(`${errorMessage(error, t)}${uncertain ? ` ${t("runtime.uncertain")}` : ""}`); } });
   const stop = useMutation({ mutationFn: (mode: "graceful" | "force") => stopRuntime(connection, subject.id, mode), onSuccess: async () => { setStopMode(null); setNotice(t("runtime.accepted")); await refresh(); }, onError: (error) => setNotice(errorMessage(error, t)) });
   const occupancy = runtime ? "using" : "idle";
-  const currentState = runtime?.state === "queued" ? "queuing" : "using";
+  const currentState = runtime?.state ?? "idle";
   const queuedAt = runtime?.queued_at ?? runtime?.created_at;
 
   return <div className="panel-content runtime-panel">
@@ -51,8 +55,9 @@ export function RuntimePanel({ serverId, connection, subject, runtime }: { serve
       </dl>
       <div className="pending-instructions"><h4>{t("runtime.pendingInstructions")}</h4>{runtime.instructions.length ? <ol>{runtime.instructions.map((item) => <li key={item.sequence}><div>{item.content}</div><time title={item.created_at}>{formatTime(item.created_at, i18n.language)}</time></li>)}</ol> : <p>{t("runtime.noPendingInstructions")}</p>}</div>
     </section>}
-    <Dialog open={instructionOpen} title={t("runtime.sendInstruction")} description={runtime ? t("runtime.appendHint") : t("runtime.startHint")} onClose={() => setInstructionOpen(false)} footer={<><button className="button secondary" onClick={() => setInstructionOpen(false)}>{t("common.cancel")}</button><button className="button primary" disabled={send.isPending || !instruction.trim() || bytes > 1_048_576} onClick={() => send.mutate()}><SendHorizontal />{t("runtime.send")}</button></>}>
-      <label className="dialog-field"><span>{t("runtime.instruction")}</span><textarea autoFocus value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder={t("runtime.instructionHint")} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && instruction.trim() && bytes <= 1_048_576) send.mutate(); }} /></label>
+    <Dialog open={instructionOpen} title={t("runtime.sendInstruction")} description={runtime ? t("runtime.appendHint") : t("runtime.startHint")} onClose={() => setInstructionOpen(false)} footer={<><button className="button secondary" onClick={() => setInstructionOpen(false)}>{t("common.cancel")}</button><button className="button primary" disabled={send.isPending || !instruction.trim() || bytes > 1_048_576 || !active && parsedConfig.invalid} onClick={() => send.mutate()}><SendHorizontal />{t("runtime.send")}</button></>}>
+      <label className="dialog-field"><span>{t("runtime.instruction")}</span><textarea autoFocus value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder={t("runtime.instructionHint")} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && instruction.trim() && bytes <= 1_048_576 && !send.isPending && (active || !parsedConfig.invalid)) send.mutate(); }} /></label>
+      {!active && <><label className="check-row"><input type="checkbox" checked={resumeSession} onChange={(e) => setResumeSession(e.target.checked)} />{t("runtime.resumeSession")}</label><RuntimeConfigEditor value={configText} onChange={setConfigText} /></>}
       <div className={`instruction-size ${bytes > 1_048_576 ? "danger-text" : ""}`}>{formatBytes(bytes)} / 1 MiB</div>
     </Dialog>
     <Dialog open={stopMode !== null} title={stopMode === "force" ? t("runtime.forceTitle") : t("runtime.gracefulTitle")} onClose={() => setStopMode(null)} footer={<><button className="button secondary" onClick={() => setStopMode(null)}>{t("common.cancel")}</button><button className={`button ${stopMode === "force" ? "danger" : "primary"}`} disabled={stop.isPending || stopMode === null} onClick={() => { if (stopMode) stop.mutate(stopMode); }}>{stopMode === "force" ? t("runtime.force") : t("runtime.graceful")}</button></>}>

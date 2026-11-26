@@ -1,0 +1,10 @@
+{
+  "name": "tsec",
+  "version": "0.1.0",
+  "description": "核验题目靶场已就绪后，向 TSecBench 平台提交 flag，返回正确性、得分和作答进度。",
+  "requirements": [
+    "设置 BENCHMARK_BASE_URL 和 BENCHMARK_TOKEN 环境变量，使用平台下发的服务基础地址和当前跑分任务 Token。",
+    "运行环境能够访问 TSecBench API；题目及靶场的启动、关闭由调用方或评测调度器管理。"
+  ],
+  "release_files": []
+}

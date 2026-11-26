@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	rootlayout "github.com/Ghr07h/norns/nornsd/internal/root"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
 	storesqlite "github.com/Ghr07h/norns/nornsd/internal/store/sqlite"
-	"github.com/Ghr07h/norns/nornsd/internal/version"
 	"github.com/google/uuid"
 )
 
@@ -82,7 +82,7 @@ func TestRawProjectionIsAtomicAndReplayIsIdempotent(t *testing.T) {
 	if got := uint64(payload["tool_call_seq"].(float64)); got != events[1].Seq {
 		t.Fatalf("tool result links to %d, want %d", got, events[1].Seq)
 	}
-	readable, err := os.ReadFile(filepath.Join(root, ".nornsd", "log", "readable.jsonl"))
+	readable, err := os.ReadFile(filepath.Join(rootlayout.SubjectDataPath(root), "logs", "readable.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestSessionResumedProjectionReplays(t *testing.T) {
 	if err := logger.RecordSessionResumed(ctx, raw, resumeSessionID, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	rawData, err := os.ReadFile(filepath.Join(root, ".nornsd", "log", "raw.jsonl"))
+	rawData, err := os.ReadFile(filepath.Join(rootlayout.SubjectDataPath(root), "logs", "raw.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestReplayProjectsMarkedSessionResumedAfterInterruptedWrite(t *testing.T) {
 			ResumeSessionID: resumeSessionID,
 		},
 	}
-	if err = appendJSONLine(filepath.Join(root, ".nornsd", "log", "raw.jsonl"), record); err != nil {
+	if err = appendJSONLine(filepath.Join(rootlayout.SubjectDataPath(root), "logs", "raw.jsonl"), record); err != nil {
 		t.Fatal(err)
 	}
 
@@ -174,7 +174,7 @@ func TestReplayPreservesLegacySessionResumedProjection(t *testing.T) {
 	if err := logger.RecordSessionResumed(ctx, raw, resumeSessionID, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	rawPath := filepath.Join(root, ".nornsd", "log", "raw.jsonl")
+	rawPath := filepath.Join(rootlayout.SubjectDataPath(root), "logs", "raw.jsonl")
 	rawData, err := os.ReadFile(rawPath)
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +323,7 @@ func TestReplayRefreshesExistingProjectionMetadata(t *testing.T) {
 	if len(events) != 1 || json.Unmarshal(events[0].Payload, &payload) != nil || payload.Agent["name"] != "Explorer-For-Math" {
 		t.Fatalf("projection was not refreshed: %#v", events)
 	}
-	readable, err := os.ReadFile(filepath.Join(root, ".nornsd", "log", "readable.jsonl"))
+	readable, err := os.ReadFile(filepath.Join(rootlayout.SubjectDataPath(root), "logs", "readable.jsonl"))
 	if err != nil || !bytes.Contains(readable, []byte(`"name":"Explorer-For-Math"`)) {
 		t.Fatalf("readable projection was not refreshed: %v %s", err, readable)
 	}
@@ -337,7 +337,7 @@ func TestZeroEventRawAdvancesCheckpointAndReplayTruncatesPartialTail(t *testing.
 	if _, err := logger.Record(ctx, "stdin", "agent_message", json.RawMessage(`{"type":"control_request"}`), time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	rawPath := filepath.Join(root, ".nornsd", "log", "raw.jsonl")
+	rawPath := filepath.Join(rootlayout.SubjectDataPath(root), "logs", "raw.jsonl")
 	info, err := os.Stat(rawPath)
 	if err != nil {
 		t.Fatal(err)
@@ -382,8 +382,8 @@ func projectionStore(t *testing.T) (*storesqlite.Store, string, string) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	subjectID, runtimeID := uuid.NewString(), uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: subjectID, DirectoryName: now.Format("20060102T150405Z") + "_" + subjectID, Profile: profile, SessionID: subjectID}
+
+	subject := domain.Subject{ID: subjectID, DirectoryName: subjectID + "_" + now.Format("20060102T150405Z")}
 	instruction := "test"
 	if err = store.CreateSubject(ctx, subject, &instruction, runtimeID, now); err != nil {
 		t.Fatal(err)

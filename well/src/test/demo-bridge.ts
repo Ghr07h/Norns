@@ -1,5 +1,6 @@
 import type { WellBridge } from "../api/bridge";
 import { REGISTRY_KEY } from "../storage/registry-schema";
+import { stringify as stringifyYaml } from "yaml";
 import versions from "../../../versions.json";
 
 export const DEMO_SERVER_ID = "11111111-1111-4111-8111-111111111111";
@@ -34,7 +35,6 @@ const service = {
   server_id: REMOTE_ID,
   version: versions.nornsd.version,
   api_schema: versions.nornsd.api_schema,
-  runtime_profile: { agent: "cc", agent_version: "2.0.31", capabilities: ["norns"] },
   protocol_versions: { norns: versions.nornsd.support_protocol, agent_config: versions.nornsd.agent_config_schema },
   capacity: { concurrency: 4, using: 1, queuing: 1 },
   capabilities: ["runtime_queue", "norns_views"],
@@ -42,6 +42,13 @@ const service = {
 
 function input(args?: Record<string, unknown>): Record<string, unknown> {
   return (args?.input ?? {}) as Record<string, unknown>;
+}
+
+function demoView(command: string, request: Record<string, unknown>) {
+  const kind = command === "get_norns_status" ? "status" : "trace";
+  const format = String(request.format ?? "md");
+  const data = { task: { id: "task_1", purpose: "Validate release packaging" }, graph: { cognitions: [{ id: "cog_1", title: "Platform requirements", origin: "task", origin_ref: "task_1" }], explorations: [{ id: "exp_1", title: "Inspect packaging", sources: ["cog_1"], state: "running" }] }, global_hints: [] };
+  return { data: format === "json" ? JSON.stringify(data, null, 2) : format === "yaml" ? stringifyYaml(data) : `# ${kind === "status" ? "Status" : "Trace"} View\n\n## Task\n\n> task_1\n\n**Purpose**\n\n> Validate release packaging\n\n## Graph\n\n### Cognitions\n\n~~~text\ncog_1: Platform requirements\n~~~\n\n### Explorations\n\n~~~text\nexp_1: (running) Inspect packaging <- ['cog_1']\n~~~\n\n## ${kind === "status" ? "Status" : "Trace"}\n\n### exp_1 - Inspect packaging\n\n- State: running\n- Sources: cog_1\n\n**Content**\n\n> Validate each platform independently.\n`, filename: `${kind}-20261014T073500.000000000Z-a1b2c3d4.${format}` };
 }
 
 const bridge: WellBridge = {
@@ -55,8 +62,7 @@ const bridge: WellBridge = {
         id: subjectId,
         name: subjects.find((item) => item.id === subjectId)?.name ?? "Demo subject",
         state: subjectId === SUBJECT_A ? "using" : subjectId === SUBJECT_B ? "queuing" : "idle",
-        runtime_profile: service.runtime_profile,
-        workspace: { materialized: true, directory_name: `20261014T073000Z_${subjectId}`, path: `/srv/nornsd/subjects/20261014T073000Z_${subjectId}` },
+        workspace: { materialized: true, directory_name: `${subjectId}_20261014T073000Z`, path: `/srv/nornsd/${subjectId}_20261014T073000Z` },
         last_event_seq: 6,
         created_at: "2026-10-14T07:29:55.000Z",
         updated_at: "2026-10-14T07:34:18.000Z",
@@ -73,9 +79,11 @@ const bridge: WellBridge = {
       ], cursor: "demo-events-6", next_cursor: null, has_more: false }
       : command === "get_event_updates" ? { has_updates: false }
       : command === "list_runtimes_page" ? { runtimes: [{ id: RUNTIME_A, state: "waiting", current: true, created_at: runtime.created_at, started_at: runtime.started_at, ended_at: null }, { id: "88888888-8888-4888-8888-888888888888", state: "cancelled", current: false, created_at: "2026-10-13T08:00:00.000Z", started_at: "2026-10-13T08:00:02.000Z", ended_at: "2026-10-13T08:12:00.000Z" }], next_cursor: null, total_count: 2 }
-      : command === "get_runtime" ? { id: String(request.runtime_id), subject_id: subjectId, state: String(request.runtime_id) === RUNTIME_A ? "waiting" : "cancelled", agent: "cc", session_id: String(request.runtime_id), queued_at: "2026-10-13T08:00:00.000Z", started_at: "2026-10-13T08:00:02.000Z", ended_at: String(request.runtime_id) === RUNTIME_A ? null : "2026-10-13T08:12:00.000Z", end_reason: String(request.runtime_id) === RUNTIME_A ? null : "user_graceful_stop", settings_slot: 1, config_hash: "sha256:6f334fa310df", process: String(request.runtime_id) === RUNTIME_A ? null : { exit_code: 0, signal: null }, usage: { input_tokens: 12543, output_tokens: 2190 }, resources: runtime.resources, error: null, artifacts: { raw_log_path: `/srv/nornsd/subjects/${subjectId}/.nornsd/log/raw.jsonl`, readable_log_path: `/srv/nornsd/subjects/${subjectId}/.nornsd/log/readable.jsonl`, memory_samples_path: `/srv/nornsd/subjects/${subjectId}/.nornsd/runtimes/${String(request.runtime_id)}/memory-samples.jsonl`, transcript_path: String(request.runtime_id) === RUNTIME_A ? null : `/srv/nornsd/subjects/${subjectId}/.nornsd/runtimes/${String(request.runtime_id)}/${String(request.runtime_id)}.jsonl`, transcript_status: String(request.runtime_id) === RUNTIME_A ? "pending" : "available" } }
-      : command === "get_norns_status" ? { data: { task: { id: "release-check", state: "open" }, explorations: [{ id: "packaging", status: "ready" }] }, filename: "status-20261014T073500.000000000Z-a1b2c3d4.json" }
-      : command === "get_norns_trace" ? { data: { exploration_id: String(request.exploration_id), nodes: [{ id: "root", state: "visited" }, { id: "platform", state: "active" }] }, filename: "trace-20261014T073500.000000000Z-b2c3d4e5.json" }
+      : command === "get_runtime" ? { id: String(request.runtime_id), subject_id: subjectId, state: String(request.runtime_id) === RUNTIME_A ? "waiting" : "cancelled", agent: "cc", runtime_profile: { agent: "cc", agent_version: "2.1.199", capabilities: ["norns"] }, session_id: String(request.runtime_id), queued_at: "2026-10-13T08:00:00.000Z", started_at: "2026-10-13T08:00:02.000Z", ended_at: String(request.runtime_id) === RUNTIME_A ? null : "2026-10-13T08:12:00.000Z", end_reason: String(request.runtime_id) === RUNTIME_A ? null : "user_graceful_stop", settings_slot: 1, config_hash: "sha256:6f334fa310df", process: String(request.runtime_id) === RUNTIME_A ? null : { exit_code: 0, signal: null }, usage: { result_count: 3, error_result_count: 0, totals: { input_tokens: 12543, output_tokens: 2190 }, total_cost_usd: 0.12 }, resources: runtime.resources, error: null, artifacts: { raw_log_path: `/srv/nornsd/.nornsd/subjects/${subjectId}/logs/raw.jsonl`, readable_log_path: `/srv/nornsd/.nornsd/subjects/${subjectId}/logs/readable.jsonl`, memory_samples_path: `/srv/nornsd/.nornsd/subjects/${subjectId}/runtimes/${String(request.runtime_id)}/memory/memory-samples.jsonl`, transcript_path: String(request.runtime_id) === RUNTIME_A ? null : `/srv/nornsd/.nornsd/subjects/${subjectId}/runtimes/${String(request.runtime_id)}/transcripts/${String(request.runtime_id)}.jsonl`, transcript_status: String(request.runtime_id) === RUNTIME_A ? "pending" : "available" } }
+      : command === "get_norns_status" || command === "get_norns_trace" ? demoView(command, request)
+      : command === "get_norns_entity" ? { id: String(request.id), title: "Platform packaging", content: "Validate each platform independently.", ...(request.kind === "cognition" ? { origin: "exp", origin_ref: "exp_1", meta: { type: "finding" } } : { sources: ["cog_1"], hints: [], state: "running", explorer_id: "explorer-1" }) }
+      : command === "download_archive" ? "/tmp/well-demo-archive.tar.gz"
+      : command === "cancel_archive" ? null
       : command === "get_norns_visual" ? { data: "<!doctype html><html><body style='margin:0;font:15px/1.65 system-ui;background:#f3f5f8;color:#222a38'><main style='padding:28px'><h2>Norns task graph</h2><p>release-check / packaging</p><canvas id='c' width='720' height='320'></canvas><script>const c=document.querySelector('#c'),x=c.getContext('2d');x.strokeStyle='#7298d5';x.lineWidth=3;x.beginPath();x.moveTo(80,160);x.lineTo(360,80);x.lineTo(640,160);x.stroke();for(const [a,b] of [[80,160],[360,80],[640,160]]){x.fillStyle='#24344f';x.beginPath();x.arc(a,b,18,0,Math.PI*2);x.fill()}</script></main></body></html>", filename: "visual-20261014T073500.000000000Z-c3d4e5f6.html" }
       : command === "create_subject" ? { subject_id: SUBJECT_A }
       : command === "submit_instruction" || command === "stop_runtime" ? { accepted: true }

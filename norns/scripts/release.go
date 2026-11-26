@@ -13,22 +13,33 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/Ghr07h/norns/norns/internal/extension/metadata"
+	"github.com/Ghr07h/norns/norns/internal/extension/releasefiles"
 )
 
 const product = "norns"
 
-const usage = `Usage: go run ./scripts/release.go [--all-platforms] [--output directory]
+const usage = `Usage: go run ./scripts/release.go [--all-platforms | --target os/arch] [--with-ext name]... [--output directory]
 
 Builds norns for the current platform, or all six Go targets with --all-platforms.
+Extensions are excluded by default; repeat --with-ext to select them.
+Repeat --target to build selected targets (darwin, linux, windows; amd64, arm64).
 Reads ../versions.json and writes to ../release by default.
 `
 
+var extensionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
 type options struct {
 	allPlatforms bool
+	targets      []target
 	help         bool
 	output       string
+	extensions   []string
+	publishFrom  string
 }
 
 type versions struct {
@@ -71,6 +82,12 @@ func run() error {
 		fmt.Print(usage)
 		return nil
 	}
+	if selected.publishFrom != "" {
+		if selected.output == "" || selected.allPlatforms || len(selected.targets) != 0 || len(selected.extensions) != 0 {
+			return fmt.Errorf("--publish-from requires --output and cannot be combined with build options")
+		}
+		return publishStaged(selected.publishFrom, selected.output)
+	}
 	root, err := findRoot()
 	if err != nil {
 		return err
@@ -105,15 +122,47 @@ func parseOptions(arguments []string) (options, error) {
 			selected.help = true
 		case "--all-platforms":
 			selected.allPlatforms = true
+		case "--target":
+			index++
+			if index >= len(arguments) {
+				return options{}, fmt.Errorf("--target requires os/arch")
+			}
+			parts := strings.Split(arguments[index], "/")
+			if len(parts) != 2 || (parts[0] != "darwin" && parts[0] != "linux" && parts[0] != "windows") || (parts[1] != "amd64" && parts[1] != "arm64") {
+				return options{}, fmt.Errorf("unsupported --target %q", arguments[index])
+			}
+			platform := target{parts[0], parts[1]}
+			duplicate := false
+			for _, existing := range selected.targets {
+				duplicate = duplicate || existing == platform
+			}
+			if !duplicate {
+				selected.targets = append(selected.targets, platform)
+			}
+		case "--with-ext":
+			index++
+			if index >= len(arguments) || !extensionNamePattern.MatchString(arguments[index]) {
+				return options{}, fmt.Errorf("--with-ext requires an extension name (lowercase letters, digits and hyphens, starting with a letter)")
+			}
+			selected.extensions = append(selected.extensions, arguments[index])
 		case "--output":
 			index++
 			if index >= len(arguments) || arguments[index] == "" || strings.HasPrefix(arguments[index], "--") {
 				return options{}, fmt.Errorf("--output requires a directory")
 			}
 			selected.output = arguments[index]
+		case "--publish-from":
+			index++
+			if index >= len(arguments) || arguments[index] == "" || strings.HasPrefix(arguments[index], "--") {
+				return options{}, fmt.Errorf("--publish-from requires a staging directory")
+			}
+			selected.publishFrom = arguments[index]
 		default:
 			return options{}, fmt.Errorf("unknown argument %q\n%s", arguments[index], usage)
 		}
+	}
+	if selected.allPlatforms && len(selected.targets) != 0 {
+		return options{}, fmt.Errorf("--target cannot be combined with --all-platforms")
 	}
 	return selected, nil
 }
@@ -161,11 +210,70 @@ func generateVersions(root string, manifest versions) error {
 	return os.WriteFile(filename, source, 0o644)
 }
 
+func buildPackages(root string, extensions []string) ([]string, error) {
+	packages := []string{"./cmd/norns"}
+	seen := make(map[string]bool)
+	for _, name := range extensions {
+		if !extensionNamePattern.MatchString(name) {
+			return nil, fmt.Errorf("invalid extension name %q", name)
+		}
+		if seen[name] {
+			continue
+		}
+		pkg := "./internal/custom_extensions/" + name + "/cmd/norns-" + name
+		entry := filepath.Join(root, product, pkg, "main.go")
+		info, err := os.Stat(entry)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("unknown extension %q: expected %s", name, entry)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("extension %q entry must be a regular Go file: %s", name, entry)
+		}
+		packages = append(packages, pkg)
+		seen[name] = true
+	}
+	return packages, nil
+}
+
 func build(root string, selected options, command runCommand) error {
 	manifest, err := readVersions(root)
 	if err != nil {
 		return err
 	}
+	packages, err := buildPackages(root, selected.extensions)
+	if err != nil {
+		return err
+	}
+	catalog := make([]metadata.Metadata, 0, len(packages)-1)
+	for _, pkg := range packages[1:] {
+		name := strings.TrimPrefix(filepath.Base(pkg), "norns-")
+		filename := filepath.Join(root, product, "internal/custom_extensions", name, "metadata.json")
+		data, err := metadata.ReadFile(filename, metadata.MaxSourceBytes)
+		if err != nil {
+			return fmt.Errorf("extension %q: cannot read metadata.json", name)
+		}
+		item, err := metadata.ParseSource(data, name)
+		if err != nil {
+			return fmt.Errorf("extension %q: invalid metadata.json", name)
+		}
+		catalog = append(catalog, item)
+	}
+	sort.Slice(catalog, func(i, j int) bool { return catalog[i].Name < catalog[j].Name })
+	files, err := releasefiles.Plan(filepath.Join(root, product, "internal/custom_extensions"), catalog)
+	if err != nil {
+		return err
+	}
+	catalogJSON, err := json.MarshalIndent(catalog, "", "  ")
+	if err != nil {
+		return err
+	}
+	if _, err := metadata.ParseCatalog(catalogJSON); err != nil {
+		return fmt.Errorf("combined extension metadata exceeds supported limits")
+	}
+	catalogJSON = append(catalogJSON, '\n')
 	release := selected.output
 	if release == "" {
 		release = filepath.Join(root, "release")
@@ -177,7 +285,10 @@ func build(root string, selected options, command runCommand) error {
 	if err := ensureDirectory(release); err != nil {
 		return err
 	}
-	platforms := []target{{runtime.GOOS, runtime.GOARCH}}
+	platforms := selected.targets
+	if len(platforms) == 0 {
+		platforms = []target{{runtime.GOOS, runtime.GOARCH}}
+	}
 	if selected.allPlatforms {
 		platforms = []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"}, {"windows", "arm64"}}
 	}
@@ -186,7 +297,7 @@ func build(root string, selected options, command runCommand) error {
 			return err
 		}
 	}
-	staging, err := os.MkdirTemp(root, ".release.tmp.")
+	staging, err := os.MkdirTemp(release, ".release.tmp.")
 	if err != nil {
 		return err
 	}
@@ -209,19 +320,10 @@ func build(root string, selected options, command runCommand) error {
 	if err := generateVersions(root, manifest); err != nil {
 		return err
 	}
-	commands := []string{product}
-	entries, err := os.ReadDir(filepath.Join(root, product, "cmd"))
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), "norns-") {
-			commands = append(commands, entry.Name())
-		}
-	}
 	linkerFlags := fmt.Sprintf("-s -w -X 'github.com/Ghr07h/norns/%s/internal/version.Commit=%s' -X 'github.com/Ghr07h/norns/%s/internal/version.BuildTime=%s'", product, commit, product, buildTime)
 	for _, platform := range platforms {
-		for _, executable := range commands {
+		for _, pkg := range packages {
+			executable := filepath.Base(pkg)
 			filename := executable
 			if platform.os == "windows" {
 				filename += ".exe"
@@ -231,9 +333,15 @@ func build(root string, selected options, command runCommand) error {
 				return err
 			}
 			environment := []string{"CGO_ENABLED=0", "GOOS=" + platform.os, "GOARCH=" + platform.arch}
-			if err := command(filepath.Join(root, product), environment, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", output, "./cmd/"+executable); err != nil {
+			if err := command(filepath.Join(root, product), environment, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", output, pkg); err != nil {
 				return err
 			}
+		}
+		if err := os.WriteFile(filepath.Join(staging, platform.directory(), metadata.Filename), catalogJSON, 0o644); err != nil {
+			return err
+		}
+		if err := releasefiles.Stage(files, filepath.Join(staging, platform.directory())); err != nil {
+			return err
 		}
 	}
 	for _, platform := range platforms {
@@ -275,25 +383,35 @@ func ensureDirectory(directory string) error {
 }
 
 func publish(source, destination string) error {
+	return releasefiles.Publish(source, destination)
+}
+
+// publishStaged is used by the root coordinator after every product has built.
+func publishStaged(source, destination string) error {
+	source, err := filepath.Abs(source)
+	if err != nil {
+		return err
+	}
+	destination, err = filepath.Abs(destination)
+	if err != nil {
+		return err
+	}
+	if source == destination {
+		return fmt.Errorf("staging and release directories must differ")
+	}
 	entries, err := os.ReadDir(source)
 	if err != nil {
 		return err
 	}
-	current, err := os.ReadDir(destination)
-	if err != nil {
-		return err
-	}
-	for _, entry := range current {
-		name := entry.Name()
-		owned := name == product || name == product+".exe" || strings.HasPrefix(name, "norns-")
-		if owned {
-			if err := os.RemoveAll(filepath.Join(destination, name)); err != nil {
-				return err
-			}
-		}
-	}
 	for _, entry := range entries {
-		if err := os.Rename(filepath.Join(source, entry.Name()), filepath.Join(destination, entry.Name())); err != nil {
+		if !entry.IsDir() {
+			continue
+		}
+		targetDir := filepath.Join(destination, entry.Name())
+		if err := ensureDirectory(targetDir); err != nil {
+			return err
+		}
+		if err := publish(filepath.Join(source, entry.Name()), targetDir); err != nil {
 			return err
 		}
 	}
@@ -305,6 +423,9 @@ func writeChecksums(release, staging string) error {
 	err := filepath.WalkDir(release, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if path != release && entry.IsDir() && strings.HasPrefix(entry.Name(), ".release.tmp.") {
+			return filepath.SkipDir
 		}
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || entry.Name() == "SHA256SUMS" || entry.Name() == ".gitkeep" {
 			return nil

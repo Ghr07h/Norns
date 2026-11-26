@@ -27,7 +27,7 @@ func TestWorkspacePreflightRejectsMissingMarkersBeforeLocking(t *testing.T) {
 			if err := os.Mkdir(service.Paths.Lock, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := service.StatusView(context.Background(), nil, true); errorCode(err) != "WORKSPACE_NOT_INITIALIZED" {
+			if _, _, err := service.StatusView(context.Background(), nil, ViewJSON); errorCode(err) != "WORKSPACE_NOT_INITIALIZED" {
 				t.Fatalf("query accessed the unusable lock instead of checking markers: %v", err)
 			}
 			if _, err := service.Reset(context.Background()); errorCode(err) != "WORKSPACE_NOT_INITIALIZED" {
@@ -60,7 +60,7 @@ func TestWorkspaceOperationsCleanLocksOnSuccessAndFailure(t *testing.T) {
 				call func() error
 				code string
 			}{
-				{func() error { _, _, err := service.StatusView(ctx, nil, true); return err }, ""},
+				{func() error { _, _, err := service.StatusView(ctx, nil, ViewJSON); return err }, ""},
 				{func() error { _, err := service.Reset(ctx); return err }, resetCode},
 				{func() error {
 					_, err := service.OpenTask(ctx, OpenTaskRequest{Purpose: "Missing info", Concurrency: 1})
@@ -119,7 +119,7 @@ func TestWorkspaceCorruptDatabaseStillRequiresValidation(t *testing.T) {
 	if err := os.WriteFile(service.Paths.Database, []byte("not a SQLite database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := service.StatusView(context.Background(), nil, true); err == nil || errorCode(err) == "WORKSPACE_NOT_INITIALIZED" {
+	if _, _, err := service.StatusView(context.Background(), nil, ViewJSON); err == nil || errorCode(err) == "WORKSPACE_NOT_INITIALIZED" {
 		t.Fatalf("existing markers bypassed database validation: %v", err)
 	}
 	if _, err := os.Stat(service.Paths.Lock); !os.IsNotExist(err) {
@@ -139,7 +139,7 @@ func TestWorkspaceQueryRecoversResetWithoutCurrentDirectory(t *testing.T) {
 	if err := service.writeResetJournal(journal); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := service.StatusView(ctx, nil, true); err != nil {
+	if _, _, err := service.StatusView(ctx, nil, ViewJSON); err != nil {
 		t.Fatalf("preflight blocked reset recovery: %v", err)
 	}
 	for _, path := range []string{service.Paths.Lock, service.Paths.ResetLog} {

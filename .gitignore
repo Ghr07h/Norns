@@ -30,6 +30,7 @@ Thumbs.db
 **/.ruff_cache/
 **/.venv/
 **/venv/
+**/.external_env/
 
 ## Build and Test Output
 **/dist/
@@ -58,27 +59,55 @@ coverage.out
 
 # Norns
 
-## bin
-/bin/*
-!/bin/.gitkeep
-
 ## release
 /release/*
 !/release/.gitkeep
 /.release.tmp.*/
 
+## local command extensions (only the bundled extensions are shared)
+/norns/internal/custom_extensions/*
+!/norns/internal/custom_extensions/.gitkeep
+!/norns/internal/custom_extensions/websearch/
+!/norns/internal/custom_extensions/deepseeksearch/
+!/norns/internal/custom_extensions/tsec/
+
 ## runtime
 agent.yaml
+nornsd.yaml
+nornsd[0-9]*.yaml
+!nornsd*.example.yaml
+nornsd.yaml.tmp
+nornsd[0-9]*.yaml.tmp
+.norns.lock
+.norns-reset.json
+.norns-reset.json.tmp
+.norns.new.*/
+.norns.old.*/
 **/.norns/
 **/.nornsd/
 **/.nornsd_root/
+.nornsd-token
+.nornsd-token.tmp
+.nornsd-password
+.nornsd-archive-*/
+# Subject workspaces live outside .nornsd/: <uuid>_<UTC timestamp>.
+????????-????-????-????-????????????_????????T??????.?????????Z/
+# Explorer scratch output, named after its Exploration ID.
+exp_[0-9]*/
+
+## benchmark runtime
+.benchmark-subjects-*.json
+.benchmark-subjects-*.json.tmp
 benchmark*-result.json
+benchmark*-result.json.tmp
+benchmark*-result.json.previous-*
 
 ## domain
 /domain.zip
 
 ## nornsd
 /nornsd/internal/assets/generated/
+/nornsd/internal/assets/generated.stage/
 
 ## container
 /container/**/*.zip
@@ -88,3 +117,7 @@ benchmark*-result.json
 /well/vite.config.js
 /well/vite.config.d.ts
 /well/src-tauri/gen/schemas/
+
+## bin (keep last so template exceptions above cannot include build output)
+/bin/*
+!/bin/.gitkeep

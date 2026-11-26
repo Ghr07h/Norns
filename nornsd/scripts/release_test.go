@@ -41,7 +41,7 @@ func fixture(testingContext *testing.T) string {
 	writeFixture(testingContext, filepath.Join(root, "versions.json"), string(manifest))
 	writeFixture(testingContext, filepath.Join(root, product, "go.mod"), "module example.test/"+product+"\n")
 	writeFixture(testingContext, filepath.Join(root, product, "internal/version/versions_generated.go"), "package version\n")
-	writeFixture(testingContext, filepath.Join(root, product, "configs/nornsd/agent.example.yaml"), "VERSION: 1\nLLM_MODEL: example\n")
+	writeFixture(testingContext, filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml"), "AGENT_LLM_MODEL: example\n")
 	writeFixture(testingContext, filepath.Join(root, product, "cmd", product, "main.go"), "package main\n")
 	if product == "norns" {
 		writeFixture(testingContext, filepath.Join(root, product, "cmd/norns-websearch/main.go"), "package main\n")
@@ -83,8 +83,8 @@ func TestLocalBuild(testingContext *testing.T) {
 	var calls []invocation
 	runner := fakeRunner(testingContext, &calls)
 	if err := build(root, options{}, func(directory string, environment []string, name string, arguments ...string) error {
-		contents, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/agent.example.yaml"))
-		if err != nil || string(contents) != "VERSION: 45\nLLM_MODEL: example\n" {
+		contents, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml"))
+		if err != nil || string(contents) != "AGENT_LLM_MODEL: example\n" {
 			testingContext.Fatalf("Agent example was not synchronized before Go commands: %q %v", contents, err)
 		}
 		return runner(directory, environment, name, arguments...)
@@ -99,8 +99,8 @@ func TestLocalBuild(testingContext *testing.T) {
 	if err != nil || len(checksums) == 0 {
 		testingContext.Fatalf("missing checksums: %v", err)
 	}
-	example := "VERSION: 45\nLLM_MODEL: example\n"
-	filename := filepath.Join(root, "release", target{runtime.GOOS, runtime.GOARCH}.directory(), "agent.example.yaml")
+	example := "AGENT_LLM_MODEL: example\n"
+	filename := filepath.Join(root, "release", target{runtime.GOOS, runtime.GOARCH}.directory(), "nornsd.example.yaml")
 	if contents, err := os.ReadFile(filename); err != nil || string(contents) != example {
 		testingContext.Fatalf("published Agent example was not synchronized: %q %v", contents, err)
 	}
@@ -124,8 +124,8 @@ func TestGenerateAgentExample(testingContext *testing.T) {
 		testingContext.Fatal(err)
 	}
 	manifest.Nornsd.AgentConfigSchema = 45
-	filename := filepath.Join(root, product, "configs/nornsd/agent.example.yaml")
-	source := "# schema\r\nVERSION: 1\r\nLLM_MODEL: example\r\n"
+	filename := filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml")
+	source := "# config\r\nAGENT_LLM_MODEL: example\r\n"
 	writeFixture(testingContext, filename, source)
 	userConfig := filepath.Join(root, "bin/agent.yaml")
 	writeFixture(testingContext, userConfig, "VERSION: 1\nLLM_KEY: private\n")
@@ -133,7 +133,7 @@ func TestGenerateAgentExample(testingContext *testing.T) {
 		testingContext.Fatal(err)
 	}
 	contents, err := os.ReadFile(filename)
-	if err != nil || string(contents) != strings.Replace(source, "VERSION: 1", "VERSION: 45", 1) {
+	if err != nil || string(contents) != source {
 		testingContext.Fatalf("example = %q: %v", contents, err)
 	}
 	oldTime := time.Unix(1_000_000, 0)
@@ -154,13 +154,13 @@ func TestGenerateAgentExample(testingContext *testing.T) {
 }
 
 func TestGenerateAgentExampleRejectsMissingOrDuplicateVersion(testingContext *testing.T) {
-	for _, source := range []string{"LLM_MODEL: example\n", "VERSION: 1\nVERSION: 2\n"} {
+	for _, source := range []string{"VERSION: 1\n", "VERSION: 1\nVERSION: 2\n"} {
 		root := fixture(testingContext)
 		manifest, err := readVersions(root)
 		if err != nil {
 			testingContext.Fatal(err)
 		}
-		filename := filepath.Join(root, product, "configs/nornsd/agent.example.yaml")
+		filename := filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml")
 		writeFixture(testingContext, filename, source)
 		if err := generateAgentExample(root, manifest); err == nil {
 			testingContext.Fatalf("accepted malformed example: %q", source)
@@ -217,11 +217,11 @@ func TestAllGoPlatforms(testingContext *testing.T) {
 		testingContext.Fatalf("commands = %d, want %d", len(calls), wantCalls)
 	}
 	for _, platform := range []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"}, {"windows", "arm64"}} {
-		expected, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/agent.example.yaml"))
+		expected, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml"))
 		if err != nil {
 			testingContext.Fatal(err)
 		}
-		if contents, err := os.ReadFile(filepath.Join(root, "release", platform.directory(), "agent.example.yaml")); err != nil || !slices.Equal(contents, expected) {
+		if contents, err := os.ReadFile(filepath.Join(root, "release", platform.directory(), "nornsd.example.yaml")); err != nil || !slices.Equal(contents, expected) {
 			testingContext.Fatalf("missing or mismatched %s Agent example: %q %v", platform.directory(), contents, err)
 		}
 		for _, executable := range executables {
@@ -374,7 +374,7 @@ func TestCustomOutputPreservesOtherArtifacts(testingContext *testing.T) {
 	for _, filename := range preserved {
 		writeFixture(testingContext, filename, "preserved")
 	}
-	writeFixture(testingContext, filepath.Join(output, "agent.example.yaml"), "old example")
+	writeFixture(testingContext, filepath.Join(output, "nornsd.example.yaml"), "old example")
 	stale := filepath.Join(output, "norns-obsolete")
 	if product == "norns" {
 		writeFixture(testingContext, stale, "stale")
@@ -389,11 +389,11 @@ func TestCustomOutputPreservesOtherArtifacts(testingContext *testing.T) {
 			testingContext.Fatalf("unselected artifact changed: %s %v", filename, err)
 		}
 	}
-	expected, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/agent.example.yaml"))
+	expected, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml"))
 	if err != nil {
 		testingContext.Fatal(err)
 	}
-	if contents, err := os.ReadFile(filepath.Join(output, "agent.example.yaml")); err != nil || !slices.Equal(contents, expected) {
+	if contents, err := os.ReadFile(filepath.Join(output, "nornsd.example.yaml")); err != nil || !slices.Equal(contents, expected) {
 		testingContext.Fatalf("old Agent example was not replaced: %q %v", contents, err)
 	}
 	if product == "norns" {
@@ -414,7 +414,7 @@ func TestFailedBuildDoesNotReplaceRelease(testingContext *testing.T) {
 	root := fixture(testingContext)
 	filename := filepath.Join(root, "release", target{runtime.GOOS, runtime.GOARCH}.directory(), product)
 	writeFixture(testingContext, filename, "preserved")
-	example := filepath.Join(filepath.Dir(filename), "agent.example.yaml")
+	example := filepath.Join(filepath.Dir(filename), "nornsd.example.yaml")
 	writeFixture(testingContext, example, "old example")
 	failure := errors.New("build failed")
 	if err := build(root, options{}, func(string, []string, string, ...string) error { return failure }); !errors.Is(err, failure) {
@@ -427,7 +427,7 @@ func TestFailedBuildDoesNotReplaceRelease(testingContext *testing.T) {
 	if contents, err := os.ReadFile(example); err != nil || string(contents) != "old example" {
 		testingContext.Fatalf("Agent example replaced on failure: %q %v", contents, err)
 	}
-	staging, err := filepath.Glob(filepath.Join(root, ".release.tmp.*"))
+	staging, err := filepath.Glob(filepath.Join(root, "release", ".release.tmp.*"))
 	if err != nil || len(staging) != 0 {
 		testingContext.Fatalf("staging leaked: %v %v", staging, err)
 	}
@@ -454,6 +454,87 @@ func TestRejectSymlinkRelease(testingContext *testing.T) {
 			return nil
 		}); err == nil {
 			testingContext.Fatal("accepted symlink release directory")
+		}
+	}
+}
+
+func TestStagingInsideOutputExcludedFromChecksums(t *testing.T) {
+	root := fixture(t)
+	output := filepath.Join(t.TempDir(), "custom release")
+	stale := filepath.Join(output, ".release.tmp.stale", "partial")
+	writeFixture(t, stale, "unfinished build")
+	var calls []invocation
+	run := fakeRunner(t, &calls)
+	err := build(root, options{output: output}, func(directory string, environment []string, name string, arguments ...string) error {
+		stages, err := filepath.Glob(filepath.Join(output, ".release.tmp.*"))
+		if err != nil || len(stages) != 2 {
+			t.Fatalf("expected current and stale staging in output: %v %v", stages, err)
+		}
+		roots, err := filepath.Glob(filepath.Join(root, ".release.tmp.*"))
+		if err != nil || len(roots) != 0 {
+			t.Fatalf("staging created at repository root: %v %v", roots, err)
+		}
+		return run(directory, environment, name, arguments...)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stages, err := filepath.Glob(filepath.Join(output, ".release.tmp.*"))
+	if err != nil || len(stages) != 1 || stages[0] != filepath.Dir(stale) {
+		t.Fatalf("current staging not cleaned: %v %v", stages, err)
+	}
+	contents, err := os.ReadFile(filepath.Join(output, "SHA256SUMS"))
+	if err != nil || len(contents) == 0 || strings.Contains(string(contents), ".release.tmp.") {
+		t.Fatalf("invalid checksums: %s %v", contents, err)
+	}
+	if contents, err := os.ReadFile(stale); err != nil || string(contents) != "unfinished build" {
+		t.Fatalf("unrelated stale staging changed: %s %v", contents, err)
+	}
+}
+
+func TestSelectedTargets(t *testing.T) {
+	root := fixture(t)
+	selected, err := parseOptions([]string{"--target", "darwin/arm64", "--target", "windows/amd64", "--target", "linux/amd64", "--target", "darwin/arm64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected.targets) != 3 {
+		t.Fatalf("targets = %v", selected.targets)
+	}
+	var calls []invocation
+	if err := build(root, selected, fakeRunner(t, &calls)); err != nil {
+		t.Fatal(err)
+	}
+	for _, platform := range []string{"darwin-arm64", "windows-x64", "linux-x64"} {
+		executable := product
+		if strings.HasPrefix(platform, "windows-") {
+			executable += ".exe"
+		}
+		if _, err := os.Stat(filepath.Join(root, "release", platform, executable)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, platform := range []string{"darwin-x64", "windows-arm64", "linux-arm64"} {
+		if _, err := os.Stat(filepath.Join(root, "release", platform)); !os.IsNotExist(err) {
+			t.Fatalf("unexpected target %s: %v", platform, err)
+		}
+	}
+	builds := 0
+	for _, call := range calls {
+		if call.arguments[0] != "build" {
+			continue
+		}
+		builds++
+		if !slices.Contains(call.arguments, "-trimpath") || !strings.Contains(strings.Join(call.arguments, " "), "-s -w") {
+			t.Fatalf("missing release privacy flags: %v", call.arguments)
+		}
+	}
+	if builds != 3 {
+		t.Fatalf("build count = %d", builds)
+	}
+	for _, arguments := range [][]string{{"--target"}, {"--target", "linux/386"}, {"--target", "freebsd/amd64"}, {"--target", "../arm64"}, {"--target", "linux/amd64", "--all-platforms"}} {
+		if _, err := parseOptions(arguments); err == nil {
+			t.Fatalf("accepted %v", arguments)
 		}
 	}
 }

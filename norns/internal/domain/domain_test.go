@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestRandomEntityIDsAreUUIDv4WithExpectedPrefixes(t *testing.T) {
+func TestRandomTaskIDsAreUUIDv4(t *testing.T) {
 	generator := RandomIDs{}
 	values := []struct {
 		entity string
@@ -14,8 +14,6 @@ func TestRandomEntityIDsAreUUIDv4WithExpectedPrefixes(t *testing.T) {
 		make   func() (string, error)
 	}{
 		{"task", "task", generator.TaskID},
-		{"cognition", "cog", generator.CognitionID},
-		{"exploration", "exp", generator.ExplorationID},
 	}
 	seen := map[string]bool{}
 	for _, value := range values {
@@ -73,5 +71,30 @@ func TestNonEmptyTrimsAndRejectsBlankText(t *testing.T) {
 	}
 	if _, err := NonEmpty(" \n\t", "value"); err == nil {
 		t.Fatal("blank text was accepted")
+	}
+}
+
+func TestSequentialEntityIDValidationAndOrdering(t *testing.T) {
+	for _, entity := range []string{"cognition", "exploration"} {
+		prefix := "cog_"
+		if entity == "exploration" {
+			prefix = "exp_"
+		}
+		for _, suffix := range []string{"1", "9", "10", "9223372036854775807"} {
+			if err := ValidateID(prefix+suffix, entity); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, suffix := range []string{"0", "01", "0001", "-1", "+1", "1.0", "1e2", " 1", "1\n", "9223372036854775808", "550e8400-e29b-41d4-a716-446655440000"} {
+			if err := ValidateID(prefix+suffix, entity); err == nil {
+				t.Fatalf("invalid ID accepted: %s%s", prefix, suffix)
+			}
+		}
+		if !IDLess(prefix+"2", prefix+"10") || !IDLess(prefix+"9223372036854775806", prefix+"9223372036854775807") || IDLess(prefix+"10", prefix+"2") {
+			t.Fatal("numeric ID ordering failed")
+		}
+	}
+	if ValidateID("cog_1", "exploration") == nil || ValidateID("exp_1", "cognition") == nil || ValidateID("task_1", "task") == nil {
+		t.Fatal("wrong entity type accepted")
 	}
 }

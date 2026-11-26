@@ -18,6 +18,7 @@ const (
 	MaxEventLimit       = 5000
 
 	RequestTimeout         = 5 * time.Second
+	ArchiveRequestTimeout  = 10 * time.Minute
 	ControlTimeout         = 5 * time.Second
 	GracefulStopTimeout    = 30 * time.Second
 	NornsCloseGrace        = time.Minute

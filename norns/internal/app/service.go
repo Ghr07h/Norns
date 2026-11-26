@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -225,7 +226,7 @@ func (s *Service) insertTask(ctx context.Context, q storesqlite.Queryer, purpose
 	reused := false
 	var cognitionID string
 	if info == nil {
-		if err := q.QueryRowContext(ctx, `SELECT init_cognition_ref FROM tasks WHERE status='closed' ORDER BY closed_at DESC, id ASC LIMIT 1`).Scan(&initID); err != nil {
+		if err := q.QueryRowContext(ctx, `SELECT init_cognition_ref FROM tasks WHERE status='closed' ORDER BY substr(closed_at,1,19) DESC,rtrim(substr(closed_at,20),'Z') DESC,id ASC LIMIT 1`).Scan(&initID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, domain.NewError("NO_TASK", "no closed Task can provide Subject information")
 			}
@@ -233,9 +234,9 @@ func (s *Service) insertTask(ctx context.Context, q storesqlite.Queryer, purpose
 		}
 		reused = true
 	} else {
-		cognitionID, err = s.IDs.CognitionID()
+		cognitionID, err = storesqlite.NextCognitionID(ctx, q)
 		if err != nil {
-			return nil, domain.Wrap("INTERNAL_ERROR", "cannot generate Cognition ID", err)
+			return nil, err
 		}
 		initID = cognitionID
 	}
@@ -243,15 +244,7 @@ func (s *Service) insertTask(ctx context.Context, q storesqlite.Queryer, purpose
 		return nil, entityInsertErr(err, "tasks")
 	}
 	if info != nil {
-		var previous any
-		var previousID string
-		err := q.QueryRowContext(ctx, `SELECT id FROM cognitions WHERE origin='task' ORDER BY created_at DESC, id ASC LIMIT 1`).Scan(&previousID)
-		if err == nil {
-			previous = previousID
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return nil, dbErr(err)
-		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO cognitions(id,title,content,task_id,origin,origin_cognition_id,task_purpose_relevant,created_at) VALUES(?,?,?,?,'task',?,0,?)`, cognitionID, "Subject information", *info, taskID, previous, now); err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO cognitions(id,title,content,task_id,origin,origin_task_id,task_purpose_relevant,created_at) VALUES(?,?,?,?,'task',?,0,?)`, cognitionID, "Subject information", *info, taskID, taskID, now); err != nil {
 			return nil, entityInsertErr(err, "cognitions")
 		}
 	}
@@ -328,7 +321,7 @@ func (s *Service) ReopenTask(ctx context.Context, taskID *string) (Result, error
 					return dbErr(err)
 				}
 			} else {
-				err := q.QueryRowContext(ctx, `SELECT id,status FROM tasks ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC, id ASC LIMIT 1`).Scan(&id, &status)
+				err := q.QueryRowContext(ctx, `SELECT id,status FROM tasks ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, substr(created_at,1,19) DESC,rtrim(substr(created_at,20),'Z') DESC,id ASC LIMIT 1`).Scan(&id, &status)
 				if errors.Is(err, sql.ErrNoRows) {
 					return domain.NewError("NO_TASK", "Workspace has no Task")
 				}
@@ -370,6 +363,7 @@ type AddCognitionRequest struct {
 	Title, Content, Origin string
 	ExplorationID          *string
 	Relevant               bool
+	Meta                   *string
 }
 
 func (s *Service) AddCognition(ctx context.Context, req AddCognitionRequest) (Result, error) {
@@ -395,6 +389,15 @@ func (s *Service) AddCognition(ctx context.Context, req AddCognitionRequest) (Re
 	if req.Origin == "user" && req.ExplorationID == nil && req.Relevant {
 		return Result{}, domain.NewError("INVALID_ARGUMENT", "global Cognition cannot be task-purpose-relevant")
 	}
+	metaJSON := "{}"
+	if req.Meta != nil {
+		metaJSON = *req.Meta
+	}
+	meta, err := domain.DecodeCognitionMeta(metaJSON)
+	if err != nil {
+		return Result{}, err
+	}
+	encodedMeta, _ := json.Marshal(meta)
 	var result Result
 	err = s.shared(ctx, func(ctx context.Context) error {
 		return s.Store.WriteQ(ctx, func(q storesqlite.Queryer) error {
@@ -402,18 +405,18 @@ func (s *Service) AddCognition(ctx context.Context, req AddCognitionRequest) (Re
 			if err != nil {
 				return err
 			}
-			id, e := s.IDs.CognitionID()
+			id, e := storesqlite.NextCognitionID(ctx, q)
 			if e != nil {
-				return domain.Wrap("INTERNAL_ERROR", "cannot generate Cognition ID", e)
+				return e
 			}
 			now := domain.TimeText(s.Clock.Now())
 			var originRef string
 			var taskID any
-			var originCog, originExp any
+			var originTask, originExp any
 			targetStatus := ""
 			if req.ExplorationID == nil {
-				originRef = task.InitCognitionRef
-				originCog = originRef
+				originRef = task.ID
+				originTask = originRef
 				taskID = nil
 			} else {
 				originRef = *req.ExplorationID
@@ -429,14 +432,23 @@ func (s *Service) AddCognition(ctx context.Context, req AddCognitionRequest) (Re
 					return domain.NewError("INVALID_STATE", "Explorer Cognition requires a todo/running Exploration in the open Task")
 				}
 			}
-			if _, e := q.ExecContext(ctx, `INSERT INTO cognitions(id,title,content,task_id,origin,origin_cognition_id,origin_exploration_id,task_purpose_relevant,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, id, title, content, taskID, req.Origin, originCog, originExp, req.Relevant, now); e != nil {
+			if _, e := q.ExecContext(ctx, `INSERT INTO cognitions(id,title,content,task_id,origin,origin_task_id,origin_exploration_id,task_purpose_relevant,created_at,meta) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, title, content, taskID, req.Origin, originTask, originExp, req.Relevant, now, string(encodedMeta)); e != nil {
 				return entityInsertErr(e, "cognitions")
 			}
+			if req.Origin == "user" && req.ExplorationID != nil {
+				if _, e := q.ExecContext(ctx, `UPDATE explorations SET hints=json_insert(hints,'$[#]',?) WHERE id=?`, id, *req.ExplorationID); e != nil {
+					return dbErr(e)
+				}
+			}
+
 			warnings, e := warnings(ctx, q)
 			if e != nil {
 				return e
 			}
 			data := map[string]any{"id": id, "origin": req.Origin, "origin_ref": originRef, "task_id": taskID, "created_at": now}
+			if len(meta) != 0 {
+				data["meta"] = meta
+			}
 			if targetStatus != "" {
 				data["exploration_status"] = targetStatus
 			}
@@ -478,24 +490,19 @@ func (s *Service) AddExploration(ctx context.Context, req AddExplorationRequest)
 			if e := requireCognitions(ctx, q, sources); e != nil {
 				return e
 			}
-			id, x := s.IDs.ExplorationID()
+			id, x := storesqlite.NextExplorationID(ctx, q)
 			if x != nil {
-				return domain.Wrap("INTERNAL_ERROR", "cannot generate Exploration ID", x)
+				return x
 			}
 			now := domain.TimeText(s.Clock.Now())
-			if _, x := q.ExecContext(ctx, `INSERT INTO explorations(id,title,content,task_id,status,created_at) VALUES(?,?,?,?,'todo',?)`, id, title, content, task.ID, now); x != nil {
+			if _, x := q.ExecContext(ctx, `INSERT INTO explorations(id,title,content,task_id,sources,status,created_at) VALUES(?,?,?,?,?,'todo',?)`, id, title, content, task.ID, encodeIDs(sources), now); x != nil {
 				return entityInsertErr(x, "explorations")
-			}
-			for i, c := range sources {
-				if _, x := q.ExecContext(ctx, `INSERT INTO exploration_sources(exploration_id,cognition_id,ordinal) VALUES(?,?,?)`, id, c, i); x != nil {
-					return dbErr(x)
-				}
 			}
 			w, x := warnings(ctx, q)
 			if x != nil {
 				return x
 			}
-			result = Result{Data: map[string]any{"id": id, "title": title, "content": content, "source_cognitions": sources, "created_at": now}, Warnings: w, Message: "Exploration added"}
+			result = Result{Data: map[string]any{"id": id, "title": title, "content": content, "sources": sources, "hints": []string{}, "created_at": now}, Warnings: w, Message: "Exploration added"}
 			return nil
 		})
 	})
@@ -513,8 +520,8 @@ func (s *Service) RetryExploration(ctx context.Context, source string) (Result, 
 			if e != nil {
 				return e
 			}
-			var title, content, status string
-			if x := q.QueryRowContext(ctx, `SELECT title,content,status FROM explorations WHERE id=?`, source).Scan(&title, &content, &status); errors.Is(x, sql.ErrNoRows) {
+			var title, content, status, sourceJSON string
+			if x := q.QueryRowContext(ctx, `SELECT title,content,status,sources FROM explorations WHERE id=?`, source).Scan(&title, &content, &status, &sourceJSON); errors.Is(x, sql.ErrNoRows) {
 				return domain.NewError("EXPLORATION_NOT_FOUND", "Exploration not found")
 			} else if x != nil {
 				return dbErr(x)
@@ -522,39 +529,34 @@ func (s *Service) RetryExploration(ctx context.Context, source string) (Result, 
 			if status != "finished" {
 				return domain.NewError("INVALID_STATE", "retry source must be finished")
 			}
-			sources, e := sourceIDs(ctx, q, source)
+			sources, e := storesqlite.DecodeCognitionIDs(sourceJSON)
 			if e != nil {
 				return e
 			}
-			id, x := s.IDs.ExplorationID()
+			id, x := storesqlite.NextExplorationID(ctx, q)
 			if x != nil {
-				return domain.Wrap("INTERNAL_ERROR", "cannot generate Exploration ID", x)
+				return x
 			}
 			now := domain.TimeText(s.Clock.Now())
-			if _, x := q.ExecContext(ctx, `INSERT INTO explorations(id,title,content,task_id,retry_of,status,created_at) VALUES(?,?,?,?,?,'todo',?)`, id, title, content, task.ID, source, now); x != nil {
+			if _, x := q.ExecContext(ctx, `INSERT INTO explorations(id,title,content,task_id,retry_of,sources,status,created_at) VALUES(?,?,?,?,?,?,'todo',?)`, id, title, content, task.ID, source, sourceJSON, now); x != nil {
 				return entityInsertErr(x, "explorations")
-			}
-			for i, c := range sources {
-				if _, x := q.ExecContext(ctx, `INSERT INTO exploration_sources VALUES(?,?,?)`, id, c, i); x != nil {
-					return dbErr(x)
-				}
 			}
 			w, x := warnings(ctx, q)
 			if x != nil {
 				return x
 			}
-			result = Result{Data: map[string]any{"id": id, "retry_of": source, "title": title, "content": content, "source_cognitions": sources, "created_at": now}, Warnings: w, Message: "Exploration retry created"}
+			result = Result{Data: map[string]any{"id": id, "retry_of": source, "title": title, "content": content, "sources": sources, "hints": []string{}, "created_at": now}, Warnings: w, Message: "Exploration retry created"}
 			return nil
 		})
 	})
 	return result, e
 }
 
-func (s *Service) AssignExploration(ctx context.Context, id, executor, outputRef string) (Result, error) {
+func (s *Service) AssignExploration(ctx context.Context, id, explorer, outputRef string) (Result, error) {
 	if e := domain.ValidateID(id, "exploration"); e != nil {
 		return Result{}, e
 	}
-	executor, e := domain.NonEmpty(executor, "explorer")
+	explorer, e := domain.NonEmpty(explorer, "explorer")
 	if e != nil {
 		return Result{}, e
 	}
@@ -571,7 +573,7 @@ func (s *Service) AssignExploration(ctx context.Context, id, executor, outputRef
 				return e
 			}
 			now := domain.TimeText(s.Clock.Now())
-			r, x := q.ExecContext(ctx, `UPDATE explorations SET status='running',executor_id=?,output_ref=?,assigned_at=? WHERE id=? AND task_id=? AND status='todo'`, executor, outputRef, now, id, task.ID)
+			r, x := q.ExecContext(ctx, `UPDATE explorations SET status='running',explorer_id=?,output_ref=?,assigned_at=? WHERE id=? AND task_id=? AND status='todo'`, explorer, outputRef, now, id, task.ID)
 			if x != nil {
 				return dbErr(x)
 			}
@@ -583,7 +585,7 @@ func (s *Service) AssignExploration(ctx context.Context, id, executor, outputRef
 			if x != nil {
 				return x
 			}
-			result = Result{Data: map[string]any{"id": id, "status": "running", "executor_id": executor, "output_ref": outputRef, "assigned_at": now}, Warnings: w, Message: "Exploration assigned"}
+			result = Result{Data: map[string]any{"id": id, "status": "running", "explorer_id": explorer, "output_ref": outputRef, "assigned_at": now}, Warnings: w, Message: "Exploration assigned"}
 			return nil
 		})
 	})
@@ -674,29 +676,32 @@ func (s *Service) ListExplorations(ctx context.Context, status string) (Explorat
 			out.TaskID = task.ID
 			out.MaxConcurrency = task.MaxConcurrency
 			out.Explorations = []map[string]any{}
-			rows, e := tx.QueryContext(ctx, `SELECT id,title,content,retry_of,executor_id,output_ref,assigned_at,created_at FROM explorations WHERE task_id=? AND status=? ORDER BY created_at ASC,id ASC`, task.ID, status)
+			rows, e := tx.QueryContext(ctx, `SELECT id,title,content,retry_of,explorer_id,assigned_at,created_at,sources,hints FROM explorations WHERE task_id=? AND status=? ORDER BY substr(created_at,1,19) ASC,rtrim(substr(created_at,20),'Z') ASC,CAST(substr(id,5) AS INTEGER) ASC`, task.ID, status)
 			if e != nil {
 				return dbErr(e)
 			}
 			defer rows.Close()
 			now := s.Clock.Now()
 			for rows.Next() {
-				var id, title, content, created string
-				var retry, executor, outputRef, assigned sql.NullString
-				if e := rows.Scan(&id, &title, &content, &retry, &executor, &outputRef, &assigned, &created); e != nil {
+				var id, title, content, created, sourceJSON, hintJSON string
+				var retry, explorer, assigned sql.NullString
+				if e := rows.Scan(&id, &title, &content, &retry, &explorer, &assigned, &created, &sourceJSON, &hintJSON); e != nil {
 					return dbErr(e)
 				}
-				sources, e := sourceIDs(ctx, tx, id)
+				sources, e := storesqlite.DecodeCognitionIDs(sourceJSON)
 				if e != nil {
 					return e
 				}
-				item := map[string]any{"id": id, "title": title, "content": content, "source_cognitions": sources, "created_at": created}
+				hints, e := storesqlite.DecodeCognitionIDs(hintJSON)
+				if e != nil {
+					return e
+				}
+				item := map[string]any{"id": id, "title": title, "content": content, "sources": sources, "hints": hints, "created_at": created}
 				if retry.Valid {
 					item["retry_of"] = retry.String
 				}
 				if status == "running" {
-					item["executor_id"] = executor.String
-					item["output_ref"] = outputRef.String
+					item["explorer_id"] = explorer.String
 					item["assigned_at"] = assigned.String
 					t, _ := time.Parse(time.RFC3339Nano, assigned.String)
 					d := int64(now.Sub(t).Seconds())
@@ -748,23 +753,9 @@ func requireCognitions(ctx context.Context, q storesqlite.Queryer, ids []string)
 	}
 	return nil
 }
-func sourceIDs(ctx context.Context, q interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}, id string) ([]string, error) {
-	rows, e := q.QueryContext(ctx, `SELECT cognition_id FROM exploration_sources WHERE exploration_id=? ORDER BY ordinal`, id)
-	if e != nil {
-		return nil, dbErr(e)
-	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var v string
-		if e := rows.Scan(&v); e != nil {
-			return nil, dbErr(e)
-		}
-		out = append(out, v)
-	}
-	return out, rows.Err()
+func encodeIDs(ids []string) string {
+	encoded, _ := json.Marshal(ids) // Callers provide a validated, non-nil string slice.
+	return string(encoded)
 }
 func warnings(ctx context.Context, q storesqlite.Queryer) ([]output.Warning, error) {
 	task, e := openTask(ctx, q)
@@ -828,7 +819,7 @@ func StableSortByCreation[T interface {
 }](items []T) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].GetCreatedAt() == items[j].GetCreatedAt() {
-			return items[i].GetID() < items[j].GetID()
+			return domain.IDLess(items[i].GetID(), items[j].GetID())
 		}
 		return items[i].GetCreatedAt() < items[j].GetCreatedAt()
 	})

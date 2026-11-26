@@ -1,0 +1,1499 @@
+[
+  {
+    "name": "foreground",
+    "source": "ECS real Claude Code 2.1.199, 2026-11-20, two identity-worker instances; foreground also resumes via SendMessage",
+    "frames": [
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_10f2ab15-ba7e-9047-9586-128ad36599d1",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll launch both identity-worker agents in parallel, each running its assigned Bash command exactly once."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16895,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_10f2ab15-ba7e-9047-9586-128ad36599d1",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-1",
+              "name": "Agent",
+              "input": {
+                "description": "Run marker A sleep command",
+                "prompt": "First, state your assigned marker by saying exactly: IDENTITY_A. Then run the Bash tool exactly once with the command: sleep 2; printf IDENTITY_A. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+                "subagent_type": "identity-worker",
+                "run_in_background": false
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16895,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "description": "Run marker A sleep command",
+        "subagent_type": "identity-worker",
+        "task_type": "local_agent",
+        "prompt": "First, state your assigned marker by saying exactly: IDENTITY_A. Then run the Bash tool exactly once with the command: sleep 2; printf IDENTITY_A. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "First, state your assigned marker by saying exactly: IDENTITY_A. Then run the Bash tool exactly once with the command: sleep 2; printf IDENTITY_A. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files."
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:42.923Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_dea96a0d-4480-9979-aefc-1b817e82e354",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_A"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1228,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_10f2ab15-ba7e-9047-9586-128ad36599d1",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-2",
+              "name": "Agent",
+              "input": {
+                "description": "Run marker B sleep command",
+                "prompt": "First, state your assigned marker by saying exactly: IDENTITY_B. Then run the Bash tool exactly once with the command: sleep 3; printf IDENTITY_B. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+                "subagent_type": "identity-worker",
+                "run_in_background": false
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16895,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "description": "Run marker B sleep command",
+        "subagent_type": "identity-worker",
+        "task_type": "local_agent",
+        "prompt": "First, state your assigned marker by saying exactly: IDENTITY_B. Then run the Bash tool exactly once with the command: sleep 3; printf IDENTITY_B. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "First, state your assigned marker by saying exactly: IDENTITY_B. Then run the Bash tool exactly once with the command: sleep 3; printf IDENTITY_B. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files."
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:43.554Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "system",
+        "subtype": "task_progress",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "description": "Running Sleep 2 seconds then print marker",
+        "subagent_type": "identity-worker",
+        "usage": {
+          "total_tokens": 1228,
+          "tool_uses": 1,
+          "duration_ms": 822
+        },
+        "last_tool_name": "Bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_dea96a0d-4480-9979-aefc-1b817e82e354",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-3",
+              "name": "Bash",
+              "input": {
+                "command": "sleep 2; printf IDENTITY_A",
+                "description": "Sleep 2 seconds then print marker"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1228,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_d9ceeaca-e627-9a00-81a8-6c9c6180d930",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_B"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1228,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "system",
+        "subtype": "task_progress",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "description": "Running Sleep 3 seconds then print marker",
+        "subagent_type": "identity-worker",
+        "usage": {
+          "total_tokens": 1228,
+          "tool_uses": 1,
+          "duration_ms": 925
+        },
+        "last_tool_name": "Bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_d9ceeaca-e627-9a00-81a8-6c9c6180d930",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-4",
+              "name": "Bash",
+              "input": {
+                "command": "sleep 3; printf IDENTITY_B",
+                "description": "Sleep 3 seconds then print marker"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1228,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-3",
+              "type": "tool_result",
+              "content": "IDENTITY_A",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:45.793Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_0dc559d3-3291-9a6c-b241-9ee47f7db492",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Bash command `sleep 2; printf IDENTITY_A` completed. Its output was:\n\nIDENTITY_A"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1231,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "system",
+        "subtype": "task_updated",
+        "task_id": "agent-1",
+        "patch": {
+          "status": "completed",
+          "end_time": 1795152886846
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "status": "completed",
+        "output_file": "/tmp/fixture-output",
+        "summary": "The Bash command `sleep 2; printf IDENTITY_A` completed. Its output was:\n\nIDENTITY_A",
+        "usage": {
+          "total_tokens": 1231,
+          "tool_uses": 1,
+          "duration_ms": 3923
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-1",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The Bash command `sleep 2; printf IDENTITY_A` completed. Its output was:\n\nIDENTITY_A"
+                },
+                {
+                  "type": "text",
+                  "text": "agentId: agent-1 (use SendMessage with to: 'agent-1', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 1346\ntool_uses: 1\nduration_ms: 3923</usage>"
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:46.847Z",
+        "tool_use_result": {
+          "status": "completed",
+          "prompt": "First, state your assigned marker by saying exactly: IDENTITY_A. Then run the Bash tool exactly once with the command: sleep 2; printf IDENTITY_A. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+          "agentId": "agent-1",
+          "agentType": "identity-worker",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Bash command `sleep 2; printf IDENTITY_A` completed. Its output was:\n\nIDENTITY_A"
+            }
+          ],
+          "resolvedModel": "glm-5.3",
+          "totalDurationMs": 3923,
+          "totalTokens": 1346,
+          "totalToolUseCount": 1,
+          "usage": {
+            "input_tokens": 43,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 1280,
+            "output_tokens": 23,
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "",
+            "iterations": [],
+            "speed": "standard"
+          },
+          "toolStats": {
+            "readCount": 0,
+            "searchCount": 0,
+            "bashCount": 1,
+            "editFileCount": 0,
+            "linesAdded": 0,
+            "linesRemoved": 0,
+            "otherToolCount": 0
+          }
+        }
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "bash-task-1",
+        "tool_use_id": "call-4",
+        "description": "Sleep 3 seconds then print marker",
+        "task_type": "local_bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "bash-task-1",
+        "tool_use_id": "call-4",
+        "status": "completed",
+        "output_file": "",
+        "summary": "Sleep 3 seconds then print marker",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-4",
+              "type": "tool_result",
+              "content": "IDENTITY_B",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:47.498Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_4e2ffc70-0350-98a2-9eb3-a6445a29160d",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The command completed. Report output.",
+              "signature": ""
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1231,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_4e2ffc70-0350-98a2-9eb3-a6445a29160d",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Bash command completed. Its output was:\n\nIDENTITY_B\n\nTask finished."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1231,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker B sleep command"
+      },
+      {
+        "type": "system",
+        "subtype": "task_updated",
+        "task_id": "agent-2",
+        "patch": {
+          "status": "completed",
+          "end_time": 1795152889792
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "status": "completed",
+        "output_file": "/tmp/fixture-output",
+        "summary": "The Bash command completed. Its output was:\n\nIDENTITY_B\n\nTask finished.",
+        "usage": {
+          "total_tokens": 1231,
+          "tool_uses": 1,
+          "duration_ms": 6238
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-2",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The Bash command completed. Its output was:\n\nIDENTITY_B\n\nTask finished."
+                },
+                {
+                  "type": "text",
+                  "text": "agentId: agent-2 (use SendMessage with to: 'agent-2', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 1347\ntool_uses: 1\nduration_ms: 6238</usage>"
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:34:49.793Z",
+        "tool_use_result": {
+          "status": "completed",
+          "prompt": "First, state your assigned marker by saying exactly: IDENTITY_B. Then run the Bash tool exactly once with the command: sleep 3; printf IDENTITY_B. After the command completes, report its output and finish. Do not run any other tools, read files, or modify files.",
+          "agentId": "agent-2",
+          "agentType": "identity-worker",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Bash command completed. Its output was:\n\nIDENTITY_B\n\nTask finished."
+            }
+          ],
+          "resolvedModel": "glm-5.3",
+          "totalDurationMs": 6238,
+          "totalTokens": 1347,
+          "totalToolUseCount": 1,
+          "usage": {
+            "input_tokens": 43,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 1280,
+            "output_tokens": 24,
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "",
+            "iterations": [],
+            "speed": "standard"
+          },
+          "toolStats": {
+            "readCount": 0,
+            "searchCount": 0,
+            "bashCount": 1,
+            "editFileCount": 0,
+            "linesAdded": 0,
+            "linesRemoved": 0,
+            "otherToolCount": 0
+          }
+        }
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_21131c7b-4520-9e73-b8c5-3e6926ed6ebb",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "Both identity-worker agents completed successfully:\n\n**Worker A** (`agent-1`):\n- Said its marker: IDENTITY_A\n- Ran Bash exactly once: `sleep 2; printf IDENTITY_A` → output `IDENTITY_A`\n- Duration: ~3.9s, 1 tool use\n\n**Worker B** (`agent-2`):\n- Said its marker: IDENTITY_B\n- Ran Bash exactly once: `sleep 3; printf IDENTITY_B` → output `IDENTITY_B`\n- Duration: ~6.2s, 1 tool use\n\nEach worker announced its assigned marker, executed its single Bash command (the 3-second worker finishing later as expected), and finished. Both ran in the foreground as requested, and I ran no Bash commands, file reads, or file modifications myself."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16922,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_dab429a8-5b68-9820-89bf-e1b83f9ec6d4",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The Agent tool doesn't have a resume parameter — it says use SendMessage with agent ID to continue. The user says \"Use the Agent tool resume parameter... if available. If resume is unavailable report that.\" SendMessage is the way to resume. But instructions say don't spawn replacement. SendMessage is available. Let me use SendMessage to agent-1.\n\nThe user asked to use the Agent tool resume parameter \"if available\" — it's not available; SendMessage is the resume mechanism. I could report that and use SendMessage as the actual resume path.",
+              "signature": ""
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17154,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_dab429a8-5b68-9820-89bf-e1b83f9ec6d4",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Agent tool has no `resume` parameter — the harness supports resuming via SendMessage instead. I'll use that to continue the original worker rather than spawn a replacement."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17154,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_dab429a8-5b68-9820-89bf-e1b83f9ec6d4",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-5",
+              "name": "SendMessage",
+              "input": {
+                "to": "agent-1",
+                "summary": "Ask worker to reply IDENTITY_RESUMED",
+                "message": "Reply exactly IDENTITY_RESUMED. Do not use Bash or any other tools — just reply with that single text.",
+                "type": "message",
+                "recipient": "agent-1",
+                "content": "Reply exactly IDENTITY_RESUMED. Do not use Bash or any other tools — just reply with that single text."
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17154,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "agent-1",
+        "tool_use_id": "call-5",
+        "description": "Run marker A sleep command",
+        "subagent_type": "identity-worker",
+        "task_type": "local_agent",
+        "prompt": "Reply exactly IDENTITY_RESUMED. Do not use Bash or any other tools — just reply with that single text.",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-5",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"success\":true,\"message\":\"Agent \\\"agent-1\\\" had no active task; resumed from transcript in the background with your message. You'll be notified when it finishes. Output: /tmp/fixture-output\",\"resumedAgentId\":\"agent-1\",\"pin\":{\"id\":\"agent-1\",\"name\":\"agent-1\",\"ref\":\"06ac98\"}}"
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:35:04.141Z",
+        "tool_use_result": {
+          "success": true,
+          "message": "Agent \"agent-1\" had no active task; resumed from transcript in the background with your message. You'll be notified when it finishes. Output: /tmp/fixture-output",
+          "resumedAgentId": "agent-1",
+          "pin": {
+            "id": "agent-1",
+            "name": "agent-1",
+            "ref": "06ac98"
+          }
+        }
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_5db71867-de98-96e2-9ba9-947a0f65c295",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_RESUMED"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1304,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Run marker A sleep command"
+      },
+      {
+        "type": "system",
+        "subtype": "task_updated",
+        "task_id": "agent-1",
+        "patch": {
+          "status": "completed",
+          "end_time": 1795152905310
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "agent-1",
+        "tool_use_id": "call-5",
+        "status": "completed",
+        "output_file": "/tmp/fixture-output",
+        "summary": "IDENTITY_RESUMED",
+        "usage": {
+          "total_tokens": 1304,
+          "tool_uses": 0,
+          "duration_ms": 1170
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_8a802e58-be9b-9fbd-8d2d-62b4e3afe650",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "I resumed the original worker (ID `agent-1`) with the instruction to reply exactly `IDENTITY_RESUMED` without using any tools. It's now running in the background from its previous transcript — I'll relay its reply when it finishes.\n\nNote on the resume mechanism: the Agent tool itself has no `resume` parameter, so I used SendMessage with that exact agent ID, which is the supported way to continue a prior agent's context. No replacement worker was spawned."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17198,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_7f7f9b8d-dbe4-907f-8091-cf558dc85b8a",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "The resumed worker finished. Its reply was exactly:\n\n**IDENTITY_RESUMED**\n\nIt used zero tools (`tool_uses: 0`), as requested. The original identity-worker with ID `agent-1` was successfully resumed — not replaced — and completed the round trip cleanly."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17499,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      }
+    ]
+  },
+  {
+    "name": "background",
+    "source": "ECS real Claude Code 2.1.199, 2026-11-20, two identity-worker instances; foreground also resumes via SendMessage",
+    "frames": [
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_40dc3076-847e-9dc5-9bab-06d0f65df856",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "Launch two identity-worker agents in background, both in one message, then reply SPAWNED.",
+              "signature": ""
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16892,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_40dc3076-847e-9dc5-9bab-06d0f65df856",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-1",
+              "name": "Agent",
+              "input": {
+                "description": "Background identity worker A",
+                "prompt": "First, say the marker IDENTITY_BG_A. Then run Bash exactly once with the command: sleep 4; printf IDENTITY_BG_A. Return the marker IDENTITY_BG_A as your final result. Do not do anything else.",
+                "run_in_background": true,
+                "subagent_type": "identity-worker"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16892,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "description": "Background identity worker A",
+        "subagent_type": "identity-worker",
+        "task_type": "local_agent",
+        "prompt": "First, say the marker IDENTITY_BG_A. Then run Bash exactly once with the command: sleep 4; printf IDENTITY_BG_A. Return the marker IDENTITY_BG_A as your final result. Do not do anything else.",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-1",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)\nagentId: agent-1 (internal ID - do not mention to user. Use SendMessage with to: 'agent-1', summary: '<5-10 word recap>' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work — avoid working with the same files or topics it is using.\noutput_file: /tmp/fixture-output\nDo NOT Read or tail this file via the shell tool — it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification."
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:35:09.761Z",
+        "tool_use_result": {
+          "isAsync": true,
+          "status": "async_launched",
+          "agentId": "agent-1",
+          "description": "Background identity worker A",
+          "resolvedModel": "glm-5.3",
+          "prompt": "First, say the marker IDENTITY_BG_A. Then run Bash exactly once with the command: sleep 4; printf IDENTITY_BG_A. Return the marker IDENTITY_BG_A as your final result. Do not do anything else.",
+          "outputFile": "/tmp/fixture-output",
+          "canReadOutputFile": true
+        }
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_40dc3076-847e-9dc5-9bab-06d0f65df856",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-2",
+              "name": "Agent",
+              "input": {
+                "description": "Background identity worker B",
+                "prompt": "First, say the marker IDENTITY_BG_B. Then run Bash exactly once with the command: sleep 5; printf IDENTITY_BG_B. Return the marker IDENTITY_BG_B as your final result. Do not do anything else.",
+                "run_in_background": true,
+                "subagent_type": "identity-worker"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16892,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "description": "Background identity worker B",
+        "subagent_type": "identity-worker",
+        "task_type": "local_agent",
+        "prompt": "First, say the marker IDENTITY_BG_B. Then run Bash exactly once with the command: sleep 5; printf IDENTITY_BG_B. Return the marker IDENTITY_BG_B as your final result. Do not do anything else.",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-2",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)\nagentId: agent-2 (internal ID - do not mention to user. Use SendMessage with to: 'agent-2', summary: '<5-10 word recap>' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes.\nDo not duplicate this agent's work — avoid working with the same files or topics it is using.\noutput_file: /tmp/fixture-output\nDo NOT Read or tail this file via the shell tool — it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification."
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:35:10.217Z",
+        "tool_use_result": {
+          "isAsync": true,
+          "status": "async_launched",
+          "agentId": "agent-2",
+          "description": "Background identity worker B",
+          "resolvedModel": "glm-5.3",
+          "prompt": "First, say the marker IDENTITY_BG_B. Then run Bash exactly once with the command: sleep 5; printf IDENTITY_BG_B. Return the marker IDENTITY_BG_B as your final result. Do not do anything else.",
+          "outputFile": "/tmp/fixture-output",
+          "canReadOutputFile": true
+        }
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_3484f9c4-5af5-92d6-bd77-35902b614f43",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_BG_A"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1210,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker A"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_3484f9c4-5af5-92d6-bd77-35902b614f43",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-3",
+              "name": "Bash",
+              "input": {
+                "command": "sleep 4; printf IDENTITY_BG_A",
+                "description": "Sleep 4 seconds then print IDENTITY_BG_A"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1210,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker A"
+      },
+      {
+        "type": "system",
+        "subtype": "task_progress",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "description": "Running Sleep 4 seconds then print IDENTITY_BG_A",
+        "subagent_type": "identity-worker",
+        "usage": {
+          "total_tokens": 1210,
+          "tool_uses": 1,
+          "duration_ms": 1033
+        },
+        "last_tool_name": "Bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_b6fffd58-bab1-9c3e-baf5-92d39830b5c4",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "SPAWNED"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 16892,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_ca5de2c8-9991-9660-8086-5025471efba3",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_BG_B"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1210,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker B"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_ca5de2c8-9991-9660-8086-5025471efba3",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-4",
+              "name": "Bash",
+              "input": {
+                "command": "sleep 5; printf IDENTITY_BG_B",
+                "description": "Sleep 5 seconds then print marker"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1210,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker B"
+      },
+      {
+        "type": "system",
+        "subtype": "task_progress",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "description": "Running Sleep 5 seconds then print marker",
+        "subagent_type": "identity-worker",
+        "usage": {
+          "total_tokens": 1210,
+          "tool_uses": 1,
+          "duration_ms": 1922
+        },
+        "last_tool_name": "Bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "bash-task-1",
+        "tool_use_id": "call-3",
+        "description": "Sleep 4 seconds then print IDENTITY_BG_A",
+        "task_type": "local_bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_started",
+        "task_id": "bash-task-2",
+        "tool_use_id": "call-4",
+        "description": "Sleep 5 seconds then print marker",
+        "task_type": "local_bash",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "bash-task-1",
+        "tool_use_id": "call-3",
+        "status": "completed",
+        "output_file": "",
+        "summary": "Sleep 4 seconds then print IDENTITY_BG_A",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-3",
+              "type": "tool_result",
+              "content": "IDENTITY_BG_A",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:35:14.841Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker A"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_bbc4f6b2-5633-93c2-a4a1-23dc1c4d1450",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_BG_A"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1214,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-1",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker A"
+      },
+      {
+        "type": "system",
+        "subtype": "task_updated",
+        "task_id": "agent-1",
+        "patch": {
+          "status": "completed",
+          "end_time": 1795152915672
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "agent-1",
+        "tool_use_id": "call-1",
+        "status": "completed",
+        "output_file": "/tmp/fixture-output",
+        "summary": "IDENTITY_BG_A",
+        "usage": {
+          "total_tokens": 1214,
+          "tool_uses": 1,
+          "duration_ms": 5913
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "bash-task-2",
+        "tool_use_id": "call-4",
+        "status": "completed",
+        "output_file": "",
+        "summary": "Sleep 5 seconds then print marker",
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "call-4",
+              "type": "tool_result",
+              "content": "IDENTITY_BG_B",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "timestamp": "2026-11-20T05:35:17.156Z",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker B"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_b0115a64-b637-95db-9666-abcf7c0bc747",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "IDENTITY_BG_B"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 1214,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": "call-2",
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid",
+        "subagent_type": "identity-worker",
+        "task_description": "Background identity worker B"
+      },
+      {
+        "type": "system",
+        "subtype": "task_updated",
+        "task_id": "agent-2",
+        "patch": {
+          "status": "completed",
+          "end_time": 1795152918055
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": "agent-2",
+        "tool_use_id": "call-2",
+        "status": "completed",
+        "output_file": "/tmp/fixture-output",
+        "summary": "IDENTITY_BG_B",
+        "usage": {
+          "total_tokens": 1214,
+          "tool_uses": 1,
+          "duration_ms": 7839
+        },
+        "uuid": "fixture-uuid",
+        "session_id": "fixture-session"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_6b20d798-3618-9927-aaf1-5ca243df8dfc",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "Worker A completed and returned its marker: `IDENTITY_BG_A`. Worker B is still running (its command sleeps 5s, so it should finish shortly)."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17077,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      },
+      {
+        "type": "assistant",
+        "message": {
+          "id": "msg_f2755fc6-193c-9789-9237-e5f3bbb972cb",
+          "type": "message",
+          "role": "assistant",
+          "model": "glm-5.3",
+          "content": [
+            {
+              "type": "text",
+              "text": "Worker B completed and returned its marker: `IDENTITY_BG_B`.\n\nBoth background identity-worker instances have finished:\n\n- Worker A: `IDENTITY_BG_A` (1 Bash call, ~5.9s)\n- Worker B: `IDENTITY_BG_B` (1 Bash call, ~7.8s)"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 17296,
+            "output_tokens": 0
+          },
+          "context_management": null
+        },
+        "parent_tool_use_id": null,
+        "session_id": "fixture-session",
+        "uuid": "fixture-uuid"
+      }
+    ]
+  }
+]

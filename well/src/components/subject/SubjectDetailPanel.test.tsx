@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeAll, expect, it, vi } from "vitest";
 import type { ServiceInfo } from "../../api/dto";
 import i18n from "../../i18n";
@@ -16,7 +16,6 @@ it("loads the current runtime only when the runtime panel is opened", async () =
       id: "subject",
       name: "Subject",
       state: "using",
-      runtime_profile: { agent: "cc", agent_version: "2.1.199", capabilities: [] },
       workspace: { materialized: true, directory_name: "subject" },
       last_event_seq: 0,
       created_at: "2026-10-16T00:00:00Z",
@@ -28,7 +27,6 @@ it("loads the current runtime only when the runtime panel is opened", async () =
     service: "nornsd",
     version: "dev",
     api_schema: supportedApiSchema,
-    runtime_profile: { agent: "cc", agent_version: "2.1.199", capabilities: [] },
     protocol_versions: { norns: null, agent_config: 1 },
     capacity: { concurrency: 1, using: 1, queuing: 0 },
     capabilities: [],
@@ -38,8 +36,13 @@ it("loads the current runtime only when the runtime panel is opened", async () =
   render(<QueryClientProvider client={client}><SubjectDetailPanel serverId="server" subjectId="subject" subjectActive={false} connection={{ base_url: "http://server", password: "secret" }} service={service} initialPanel="overview" onPanelChange={vi.fn()} /></QueryClientProvider>);
 
   const runtimeTab = await screen.findByRole("button", { name: i18n.t("subject.runtime") });
+  expect(within(screen.getByRole("navigation", { name: "Subject panels" })).getAllByRole("button").map((tab) => tab.textContent)).toEqual(["Subject overview", "Runtime", "Agent messages", "Event records", "Norns information"]);
   expect(commands).toContain("get_subject");
   expect(commands).not.toContain("get_current_runtime");
+  const nornsTab = screen.getByRole("button", { name: "Norns information" });
+  expect(nornsTab).toBeEnabled();
+  fireEvent.click(nornsTab);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
   fireEvent.click(runtimeTab);
   await waitFor(() => expect(commands).toContain("get_current_runtime"));
 });

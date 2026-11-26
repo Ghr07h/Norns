@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,16 +45,12 @@ func ParseTime(value string) (time.Time, error) { return time.Parse(time.RFC3339
 
 type IDGenerator interface {
 	TaskID() (string, error)
-	CognitionID() (string, error)
-	ExplorationID() (string, error)
 	Token() (string, error)
 }
 
 type RandomIDs struct{}
 
-func (RandomIDs) TaskID() (string, error)        { return entityID("task") }
-func (RandomIDs) CognitionID() (string, error)   { return entityID("cog") }
-func (RandomIDs) ExplorationID() (string, error) { return entityID("exp") }
+func (RandomIDs) TaskID() (string, error) { return entityID("task") }
 func (RandomIDs) Token() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
@@ -73,20 +70,39 @@ func entityID(prefix string) (string, error) {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
 
-var idPattern = regexp.MustCompile(`^(task|cog|exp)_([0-9a-f]{8})-([0-9a-f]{4})-4([0-9a-f]{3})-([89ab][0-9a-f]{3})-([0-9a-f]{12})$`)
-
-var entityIDPrefixes = map[string]string{
-	"task":        "task",
-	"cognition":   "cog",
-	"exploration": "exp",
-}
+var taskIDPattern = regexp.MustCompile(`^task_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+var sequentialIDPattern = regexp.MustCompile(`^(cog|exp)_[1-9][0-9]*$`)
 
 func ValidateID(value, entity string) error {
-	m := idPattern.FindStringSubmatch(value)
-	if m == nil || m[1] != entityIDPrefixes[entity] {
+	valid := entity == "task" && taskIDPattern.MatchString(value)
+	if entity == "cognition" || entity == "exploration" {
+		prefix := "cog_"
+		if entity == "exploration" {
+			prefix = "exp_"
+		}
+		if strings.HasPrefix(value, prefix) && sequentialIDPattern.MatchString(value) {
+			_, err := strconv.ParseInt(strings.TrimPrefix(value, prefix), 10, 64)
+			valid = err == nil
+		}
+	}
+	if !valid {
 		return Errorf("INVALID_ARGUMENT", "invalid %s ID: %s", entity, value)
 	}
 	return nil
+}
+
+// IDLess compares numeric Cog/Exp suffixes without converting them to floating point.
+// Task IDs and mixed entity types retain their lexical order.
+func IDLess(first, second string) bool {
+	for _, prefix := range []string{"cog_", "exp_"} {
+		if strings.HasPrefix(first, prefix) && strings.HasPrefix(second, prefix) {
+			if len(first) != len(second) {
+				return len(first) < len(second)
+			}
+			break
+		}
+	}
+	return first < second
 }
 
 func NonEmpty(value, name string) (string, error) {
@@ -113,16 +129,17 @@ type Task struct {
 }
 
 type Cognition struct {
-	ID                  string  `json:"id" yaml:"id"`
-	Title               string  `json:"title" yaml:"title"`
-	Content             string  `json:"content" yaml:"content"`
-	TaskID              *string `json:"task_id,omitempty" yaml:"task_id,omitempty"`
-	Origin              string  `json:"origin" yaml:"origin"`
-	OriginRef           *string `json:"origin_ref,omitempty" yaml:"origin_ref,omitempty"`
-	OriginCognitionID   *string `json:"-" yaml:"-"`
-	OriginExplorationID *string `json:"-" yaml:"-"`
-	TaskPurposeRelevant bool    `json:"task_purpose_relevant" yaml:"task_purpose_relevant"`
-	CreatedAt           string  `json:"created_at" yaml:"created_at"`
+	ID                  string            `json:"id" yaml:"id"`
+	Title               string            `json:"title" yaml:"title"`
+	Content             string            `json:"content" yaml:"content"`
+	Meta                map[string]string `json:"meta,omitempty" yaml:"meta,omitempty"`
+	TaskID              *string           `json:"task_id,omitempty" yaml:"task_id,omitempty"`
+	Origin              string            `json:"origin" yaml:"origin"`
+	OriginRef           *string           `json:"origin_ref,omitempty" yaml:"origin_ref,omitempty"`
+	OriginTaskID        *string           `json:"-" yaml:"-"`
+	OriginExplorationID *string           `json:"-" yaml:"-"`
+	TaskPurposeRelevant bool              `json:"task_purpose_relevant" yaml:"task_purpose_relevant"`
+	CreatedAt           string            `json:"created_at" yaml:"created_at"`
 }
 
 type Exploration struct {
@@ -130,10 +147,11 @@ type Exploration struct {
 	Title         string   `json:"title" yaml:"title"`
 	Content       string   `json:"content" yaml:"content"`
 	TaskID        string   `json:"task_id" yaml:"task_id"`
-	Sources       []string `json:"source_cognitions" yaml:"source_cognitions"`
+	Sources       []string `json:"sources" yaml:"sources"`
+	Hints         []string `json:"hints" yaml:"hints"`
 	RetryOf       *string  `json:"retry_of,omitempty" yaml:"retry_of,omitempty"`
 	Status        string   `json:"status" yaml:"status"`
-	ExecutorID    *string  `json:"executor_id,omitempty" yaml:"executor_id,omitempty"`
+	ExplorerID    *string  `json:"explorer_id,omitempty" yaml:"explorer_id,omitempty"`
 	OutputRef     *string  `json:"output_ref,omitempty" yaml:"output_ref,omitempty"`
 	AssignedAt    *string  `json:"assigned_at,omitempty" yaml:"assigned_at,omitempty"`
 	Outcome       *string  `json:"outcome,omitempty" yaml:"outcome,omitempty"`

@@ -84,14 +84,14 @@ func TestEveryExplorationOutcomePersistsAndCanRetry(t *testing.T) {
 			retryID := resultID(t, retry)
 			var retryOf, retryTitle, retryContent, retryStatus string
 			var executor, outputRef, assignedAt, retryOutcome, retryReason, retryFinishedAt sql.NullString
-			if err := db.QueryRow(`SELECT retry_of,title,content,status,executor_id,output_ref,assigned_at,outcome,outcome_reason,finished_at FROM explorations WHERE id=?`, retryID).Scan(&retryOf, &retryTitle, &retryContent, &retryStatus, &executor, &outputRef, &assignedAt, &retryOutcome, &retryReason, &retryFinishedAt); err != nil {
+			if err := db.QueryRow(`SELECT retry_of,title,content,status,explorer_id,output_ref,assigned_at,outcome,outcome_reason,finished_at FROM explorations WHERE id=?`, retryID).Scan(&retryOf, &retryTitle, &retryContent, &retryStatus, &executor, &outputRef, &assignedAt, &retryOutcome, &retryReason, &retryFinishedAt); err != nil {
 				t.Fatal(err)
 			}
 			if retryID == explorationID || retryOf != explorationID || retryTitle != "View publication" || retryContent != "View publication content" || retryStatus != "todo" || executor.Valid || outputRef.Valid || assignedAt.Valid || retryOutcome.Valid || retryReason.Valid || retryFinishedAt.Valid {
 				t.Fatalf("invalid retry for outcome %s: id=%s retry_of=%s title=%s content=%s status=%s", outcome, retryID, retryOf, retryTitle, retryContent, retryStatus)
 			}
 			var copiedSource, preservedOrigin, preservedOutcome, preservedOutput string
-			if err := db.QueryRow(`SELECT cognition_id FROM exploration_sources WHERE exploration_id=? ORDER BY ordinal`, retryID).Scan(&copiedSource); err != nil {
+			if err := db.QueryRow(`SELECT json_extract(sources,'$[0]') FROM explorations WHERE id=?`, retryID).Scan(&copiedSource); err != nil {
 				t.Fatal(err)
 			}
 			if err := db.QueryRow(`SELECT origin_exploration_id FROM cognitions WHERE id=?`, findingID).Scan(&preservedOrigin); err != nil {

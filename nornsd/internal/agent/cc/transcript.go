@@ -67,9 +67,9 @@ func ProjectKey(path string) (string, error) {
 }
 
 func ArchiveTranscript(subjectPath, sessionID, runtimeID string) (TranscriptResult, error) {
-	runtimeRel := filepath.ToSlash(filepath.Join(".nornsd", "runtimes", runtimeID))
+	runtimeRel := filepath.ToSlash(filepath.Join(".nornsd", "subjects", filepath.Base(root.SubjectDataPath(subjectPath)), "runtimes", runtimeID, "transcripts"))
 	result := TranscriptResult{SessionID: sessionID, RuntimeDirectory: runtimeRel, Copied: []string{}, Missing: []string{}}
-	runtimeRoot := filepath.Join(subjectPath, ".nornsd", "runtimes", runtimeID)
+	runtimeRoot := filepath.Join(root.RuntimeDataPath(subjectPath, runtimeID), "transcripts")
 	manifestPath := filepath.Join(runtimeRoot, "transcript.manifest.json")
 	if b, err := os.ReadFile(manifestPath); err == nil {
 		var manifest transcriptManifest
@@ -104,7 +104,7 @@ func ArchiveTranscript(subjectPath, sessionID, runtimeID string) (TranscriptResu
 		name, path string
 		dir        bool
 	}{{sessionID + ".jsonl", filepath.Join(project, sessionID+".jsonl"), false}, {sessionID, filepath.Join(project, sessionID), true}}
-	stage := filepath.Join(subjectPath, ".nornsd", "staging", "transcript-"+runtimeID+"-"+uuid.NewString())
+	stage := filepath.Join(root.SubjectDataPath(subjectPath), "staging", "transcript-"+runtimeID+"-"+uuid.NewString())
 	defer os.RemoveAll(stage)
 	if err = os.MkdirAll(stage, 0700); err != nil {
 		return result, err

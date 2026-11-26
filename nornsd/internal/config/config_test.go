@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/Ghr07h/norns/nornsd/internal/root"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,19 +13,19 @@ import (
 )
 
 func TestAgentExampleIsValid(t *testing.T) {
-	cfg, err := Load("../../configs/nornsd/agent.example.yaml")
+	cfg, err := Load("../../configs/nornsd/nornsd.example.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Version != version.AgentConfigVersion || cfg.LLMURL == "" || cfg.LLMKey == "" || cfg.LLMModel == "" || !cfg.NornsEnable || cfg.NornsServerHost != "0.0.0.0" || cfg.NornsServerPort != 28081 || cfg.NornsServerToken == "" || cfg.NornsExplorationTimeoutSeconds != 1200 {
+	if cfg.LLMURL == "" || cfg.LLMKey == "" || cfg.LLMModel == "" || !cfg.NornsEnable || cfg.NornsServerHost != "0.0.0.0" || cfg.NornsServerPort != 28081 || cfg.NornsServerToken == "" || cfg.NornsExplorationTimeoutSeconds != 1200 {
 		t.Fatalf("agent example is incomplete: %#v", cfg)
 	}
 }
 
 func TestRejectUnsupportedAgentConfigSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion+1)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "unsupported agent config version") {
+	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion+1)+"\nAGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\n")
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "field VERSION not found") {
 		t.Fatalf("unsupported config schema was not rejected: %v", err)
 	}
 }
@@ -73,8 +74,8 @@ func TestPartialMergePreservesExplicitEmptyAndFalse(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "base.yaml")
 	override := filepath.Join(dir, "override.yaml")
-	mustWrite(t, base, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: https://example.test\nLLM_KEY: secret\nLLM_MODEL: model\nLLM_FAST_MODEL: fast\nNORNS_ENABLE: true\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: base-token\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 7\nNORNS_EXPLORATION_TIMEOUT: 1800\nNORNS_ALLOW_HUMAN_INTERVENTION: true\nAGENT_EXEC: [claude]\n")
-	mustWrite(t, override, "LLM_FAST_MODEL: \"\"\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 0.0.0.0\nNORNS_SERVER_PORT: 29000\nNORNS_SERVER_TOKEN: override-token\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 2\nNORNS_EXPLORATION_TIMEOUT: 900\nNORNS_ALLOW_HUMAN_INTERVENTION: false\n")
+	mustWrite(t, base, "AGENT_LLM_URL: https://example.test\nAGENT_LLM_KEY: secret\nAGENT_LLM_MODEL: model\nAGENT_LLM_FAST_MODEL: fast\nAGENT_NORNS_ENABLE: true\nSERVICE_HOST: 127.0.0.1\nSERVICE_PORT: 28081\nSERVICE_TOKEN: base-token\nAGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS: 7\nAGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS: 1800\nAGENT_NORNS_ALLOW_HUMAN_INTERVENTION: true\nAGENT_EXEC: [/bin/sh]\n")
+	mustWrite(t, override, "AGENT_LLM_FAST_MODEL: \"\"\nAGENT_NORNS_ENABLE: false\nSERVICE_HOST: 0.0.0.0\nSERVICE_PORT: 29000\nSERVICE_TOKEN: override-token\nAGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS: 2\nAGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS: 900\nAGENT_NORNS_ALLOW_HUMAN_INTERVENTION: false\n")
 	a, err := LoadPartial(base)
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +97,7 @@ func TestPartialMergePreservesExplicitEmptyAndFalse(t *testing.T) {
 	if merged.NornsEnable || merged.NornsServerHost != "0.0.0.0" || merged.NornsServerPort != 29000 || merged.NornsServerToken != "override-token" {
 		t.Fatalf("unexpected Norns server config: %#v", merged)
 	}
-	for _, key := range []string{"NORNS_ENABLE", "NORNS_SERVER_HOST", "NORNS_SERVER_PORT", "NORNS_SERVER_TOKEN"} {
+	for _, key := range []string{"AGENT_NORNS_ENABLE", "SERVICE_HOST", "SERVICE_PORT", "SERVICE_TOKEN"} {
 		if !merged.Has(key) {
 			t.Fatalf("merged config does not mark %s present", key)
 		}
@@ -105,14 +106,14 @@ func TestPartialMergePreservesExplicitEmptyAndFalse(t *testing.T) {
 
 func TestLoadRejectsInvalidNornsServerConfiguration(t *testing.T) {
 	for name, field := range map[string]string{
-		"empty host":       "NORNS_SERVER_HOST: \"\"",
-		"invalid port":     "NORNS_SERVER_PORT: 65536",
-		"empty token":      "NORNS_SERVER_TOKEN: \"\"",
-		"token whitespace": "NORNS_SERVER_TOKEN: \"two words\"",
+		"empty host":       "SERVICE_HOST: \"\"",
+		"invalid port":     "SERVICE_PORT: 65536",
+		"empty token":      "SERVICE_TOKEN: \"\"",
+		"token whitespace": "SERVICE_TOKEN: \"two words\"",
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "agent.yaml")
-			mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n"+field+"\n")
+			mustWrite(t, path, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\n"+field+"\n")
 			if _, err := Load(path); err == nil {
 				t.Fatalf("expected %s to fail", field)
 			}
@@ -120,43 +121,24 @@ func TestLoadRejectsInvalidNornsServerConfiguration(t *testing.T) {
 	}
 }
 
-func TestPersistedConfigPreservesNewFieldPresence(t *testing.T) {
-	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "old.yaml")
-	mustWrite(t, oldPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
-	oldConfig, err := Load(oldPath)
+func TestPersistedConfigIncludesFullServiceAndAgentConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nornsd.yaml")
+	mustWrite(t, path, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_NORNS_ENABLE: false\nSERVICE_HOST: 127.0.0.1\nSERVICE_PORT: 28081\nSERVICE_TOKEN: token\n")
+	c, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := marshalPersisted(&oldConfig)
+	b, err := marshalPersisted(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(encoded)
-	for _, key := range []string{"NORNS_ENABLE", "NORNS_SERVER_HOST", "NORNS_SERVER_PORT", "NORNS_SERVER_TOKEN"} {
-		if strings.Contains(text, key+":") {
-			t.Fatalf("persisted old config unexpectedly contains %s:\n%s", key, text)
+	for _, want := range []string{"AGENT_NORNS_ENABLE: false", "SERVICE_HOST:", "SERVICE_PORT:", "SERVICE_TOKEN:", "AGENT_LLM_KEY:"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("missing %s: %s", want, b)
 		}
 	}
-
-	newPath := filepath.Join(dir, "new.yaml")
-	mustWrite(t, newPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_ENABLE: false\nNORNS_SERVER_HOST: 127.0.0.1\nNORNS_SERVER_PORT: 28081\nNORNS_SERVER_TOKEN: token\n")
-	newConfig, err := Load(newPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded, err = marshalPersisted(&newConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text = string(encoded)
-	if !strings.Contains(text, "NORNS_ENABLE: false") {
-		t.Fatalf("persisted new config does not retain explicit NORNS_ENABLE: false:\n%s", text)
-	}
-	for _, want := range []string{"NORNS_SERVER_HOST", "NORNS_SERVER_PORT", "NORNS_SERVER_TOKEN"} {
-		if strings.Contains(text, want+":") {
-			t.Fatalf("persisted Runtime config must not contain server field %s:\n%s", want, text)
-		}
+	if strings.Contains(string(b), "VERSION:") {
+		t.Fatalf("removed VERSION: %s", b)
 	}
 }
 
@@ -170,7 +152,7 @@ func TestLoadAndMergeCustomPluginDirs(t *testing.T) {
 		}
 	}
 	basePath := filepath.Join(dir, "base.yaml")
-	mustWrite(t, basePath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - first-plugin\n  - second-plugin\n")
+	mustWrite(t, basePath, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_CUSTOM_PLUGIN_DIRS:\n  - "+first+"\n  - "+second+"\n")
 	base, err := Load(basePath)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +162,7 @@ func TestLoadAndMergeCustomPluginDirs(t *testing.T) {
 	}
 
 	overridePath := filepath.Join(dir, "override.yaml")
-	mustWrite(t, overridePath, "CUSTOM_PLUGIN_DIRS: []\n")
+	mustWrite(t, overridePath, "AGENT_CUSTOM_PLUGIN_DIRS: []\n")
 	override, err := LoadPartial(overridePath)
 	if err != nil {
 		t.Fatal(err)
@@ -190,31 +172,31 @@ func TestLoadAndMergeCustomPluginDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(merged.CustomPluginDirs) != 0 {
-		t.Fatalf("explicit empty CUSTOM_PLUGIN_DIRS did not clear the inherited list: %#v", merged.CustomPluginDirs)
+		t.Fatalf("explicit empty AGENT_CUSTOM_PLUGIN_DIRS did not clear the inherited list: %#v", merged.CustomPluginDirs)
 	}
 }
 
 func TestLoadRejectsInvalidCustomPluginDir(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS:\n  - missing\n")
+	mustWrite(t, path, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_CUSTOM_PLUGIN_DIRS:\n  - missing\n")
 	if _, err := Load(path); err == nil {
-		t.Fatal("expected missing CUSTOM_PLUGIN_DIRS entry to fail")
+		t.Fatal("expected missing AGENT_CUSTOM_PLUGIN_DIRS entry to fail")
 	}
 }
 
 func TestLoadRequiresCustomPluginDirsList(t *testing.T) {
 	for _, value := range []string{"null", `"plugin"`} {
 		path := filepath.Join(t.TempDir(), "agent.yaml")
-		mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nCUSTOM_PLUGIN_DIRS: "+value+"\n")
+		mustWrite(t, path, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_CUSTOM_PLUGIN_DIRS: "+value+"\n")
 		if _, err := Load(path); err == nil {
-			t.Fatalf("expected CUSTOM_PLUGIN_DIRS value %s to fail", value)
+			t.Fatalf("expected AGENT_CUSTOM_PLUGIN_DIRS value %s to fail", value)
 		}
 	}
 }
 
 func TestNornsConcurrencyExplicitZeroRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.yaml")
-	mustWrite(t, path, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_MAX_CONCURRENT_EXPLORATIONS: 0\n")
+	mustWrite(t, path, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS: 0\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected explicit zero to fail")
 	}
@@ -223,7 +205,7 @@ func TestNornsConcurrencyExplicitZeroRejected(t *testing.T) {
 func TestNornsExplorationTimeoutDefaultsAndRejectsExplicitZero(t *testing.T) {
 	dir := t.TempDir()
 	defaultPath := filepath.Join(dir, "default.yaml")
-	mustWrite(t, defaultPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\n")
+	mustWrite(t, defaultPath, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\n")
 	cfg, err := Load(defaultPath)
 	if err != nil {
 		t.Fatal(err)
@@ -233,9 +215,9 @@ func TestNornsExplorationTimeoutDefaultsAndRejectsExplicitZero(t *testing.T) {
 	}
 
 	zeroPath := filepath.Join(dir, "zero.yaml")
-	mustWrite(t, zeroPath, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_EXPLORATION_TIMEOUT: 0\n")
+	mustWrite(t, zeroPath, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS: 0\n")
 	if _, err = Load(zeroPath); err == nil {
-		t.Fatal("expected explicit zero NORNS_EXPLORATION_TIMEOUT to fail")
+		t.Fatal("expected explicit zero AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS to fail")
 	}
 }
 
@@ -255,7 +237,7 @@ func TestLoadDomainConfiguration(t *testing.T) {
   "domain_explorer_extra_info_file": "info/explorer.md"
 }`)
 	setting := filepath.Join(dir, "agent.yaml")
-	mustWrite(t, setting, "VERSION: "+strconv.Itoa(version.AgentConfigVersion)+"\nLLM_URL: x\nLLM_KEY: y\nLLM_MODEL: z\nNORNS_CUSTOM_DOMAIN_DIR: domain\n")
+	mustWrite(t, setting, "AGENT_LLM_URL: x\nAGENT_LLM_KEY: y\nAGENT_LLM_MODEL: z\nAGENT_NORNS_ENABLE: true\nAGENT_NORNS_EXTENDS_AGENTS_DIR: "+domainDir+"\n")
 
 	cfg, err := Load(setting)
 	if err != nil {
@@ -270,8 +252,8 @@ func TestLoadDomainConfiguration(t *testing.T) {
 	if cfg.Domain.ExplorerDescription != "Explore code review evidence" || cfg.Domain.ExplorerExtraInfo != "explorer knowledge\n" {
 		t.Fatalf("unexpected explorer domain data: %#v", cfg.Domain)
 	}
-	if cfg.NornsCustomDomainDir != domainDir {
-		t.Fatalf("domain path = %q, want %q", cfg.NornsCustomDomainDir, domainDir)
+	if cfg.NornsExtendsAgentsDir != domainDir {
+		t.Fatalf("domain path = %q, want %q", cfg.NornsExtendsAgentsDir, domainDir)
 	}
 }
 
@@ -344,7 +326,7 @@ func TestPublishCustomBuildsRuntimePluginWithoutWritingSubjectClaudeDirectory(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pluginPath != filepath.Join(subject, ".nornsd", "runtimes", "runtime-1", "artifacts", "custom-plugin") || hash == "" {
+	if pluginPath != filepath.Join(root.RuntimeDataPath(subject, "runtime-1"), "plugins", "custom-plugin") || hash == "" {
 		t.Fatalf("unexpected publication: path=%q hash=%q", pluginPath, hash)
 	}
 	for _, path := range []string{

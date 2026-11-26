@@ -9,7 +9,7 @@
 !nornsd/
 !nornsd/configs/
 !nornsd/configs/nornsd/
-!nornsd/configs/nornsd/agent.example.yaml
+!nornsd/configs/nornsd/nornsd.example.yaml
 
 !domain/
 !domain/redteam/

@@ -13,9 +13,6 @@ CREATE TABLE subjects (
     directory_name TEXT NOT NULL UNIQUE,
     workspace_state TEXT NOT NULL CHECK (workspace_state IN ('planned','materializing','materialized','unavailable')),
     workspace_error TEXT,
-    profile_json TEXT NOT NULL CHECK (json_valid(profile_json)),
-    session_id TEXT NOT NULL,
-    session_initialized INTEGER NOT NULL DEFAULT 0 CHECK (session_initialized IN (0,1)),
     current_runtime_id TEXT,
     last_event_seq INTEGER NOT NULL DEFAULT 0 CHECK (last_event_seq >= 0),
     last_raw_seq INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_seq >= 0),
@@ -32,10 +29,13 @@ CREATE TABLE runtimes (
     subject_id TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued','running','waiting','ended','error','cancelled')),
     queue_sequence INTEGER,
+    profile_json TEXT CHECK (profile_json IS NULL OR json_valid(profile_json)),
+    config_override_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(config_override_json) AND json_type(config_override_json)='object'),
+    effective_config_json TEXT CHECK (effective_config_json IS NULL OR json_valid(effective_config_json)),
     settings_slot INTEGER CHECK (settings_slot IS NULL OR settings_slot > 0),
     config_hash TEXT,
     session_mode TEXT NOT NULL CHECK (session_mode IN ('new','resume')),
-    inflight_turns INTEGER NOT NULL DEFAULT 0 CHECK (inflight_turns >= 0),
+    inflight_inputs INTEGER NOT NULL DEFAULT 0 CHECK (inflight_inputs >= 0),
     closing INTEGER NOT NULL DEFAULT 0 CHECK (closing IN (0,1)),
     close_deadline TEXT,
     queued_at TEXT,
@@ -79,10 +79,23 @@ CREATE TABLE runtime_instructions (
     byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
     created_at TEXT NOT NULL,
     dispatch_group INTEGER,
+    input_uuid TEXT,
     dispatch_committed_at TEXT,
     write_confirmed_at TEXT,
+    accepted_at TEXT,
+    settled_by TEXT,
     delivery_error_json TEXT CHECK (delivery_error_json IS NULL OR json_valid(delivery_error_json)),
     PRIMARY KEY (runtime_id, sequence),
+    FOREIGN KEY (runtime_id) REFERENCES runtimes(id)
+);
+
+CREATE TABLE runtime_results (
+    runtime_id TEXT NOT NULL,
+    result_key TEXT NOT NULL,
+    raw_seq INTEGER NOT NULL,
+    payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (runtime_id, result_key),
     FOREIGN KEY (runtime_id) REFERENCES runtimes(id)
 );
 
@@ -114,5 +127,6 @@ CREATE INDEX subjects_state_created ON subjects(state, created_at DESC, id ASC);
 CREATE INDEX runtimes_subject_created ON runtimes(subject_id, created_at DESC, id ASC);
 CREATE INDEX runtime_queue_order ON runtime_queue(sequence ASC);
 CREATE INDEX runtime_instructions_pending ON runtime_instructions(runtime_id, dispatch_committed_at, sequence ASC);
+CREATE INDEX runtime_instructions_input ON runtime_instructions(runtime_id, input_uuid);
 CREATE INDEX events_subject_seq ON events(subject_id, seq ASC);
 CREATE INDEX events_origin ON events(subject_id, origin_raw_seq, origin_index);

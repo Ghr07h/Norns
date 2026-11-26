@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"github.com/Ghr07h/norns/nornsd/internal/root"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,7 +21,10 @@ type memorySampleWriter struct {
 }
 
 func openMemorySampleWriter(subjectPath, runtimeID string) (*memorySampleWriter, error) {
-	path := filepath.Join(subjectPath, ".nornsd", "runtimes", runtimeID, memorySamplesFilename)
+	path := filepath.Join(root.RuntimeDataPath(subjectPath, runtimeID), "memory", memorySamplesFilename)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err

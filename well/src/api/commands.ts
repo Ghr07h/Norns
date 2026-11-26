@@ -23,10 +23,13 @@ export const listSubjectsPage = (connection: ConnectionInput, cursor: string | n
   invokeCommand<SubjectPage>("list_subjects_page", { input: { connection, cursor } });
 export const getSubject = (connection: ConnectionInput, subjectId: string) =>
   invokeCommand<SubjectDetail>("get_subject", { input: { connection, subject_id: subjectId } });
-export const createSubject = (connection: ConnectionInput, name: string | null, instruction: string | null) =>
-  invokeCommand<{ subject_id: string }>("create_subject", { input: { connection, name, instruction } });
-export const submitInstruction = (connection: ConnectionInput, subjectId: string, instruction: string) =>
-  invokeCommand<AcceptedResult>("submit_instruction", { input: { connection, subject_id: subjectId, instruction } });
+export type ViewFormat = "md" | "yaml" | "json";
+export type RuntimeConfig = Record<string, unknown>;
+
+export const createSubject = (connection: ConnectionInput, name: string | null, instruction: string | null, config?: RuntimeConfig) =>
+  invokeCommand<{ subject_id: string }>("create_subject", { input: { connection, name, instruction, config } });
+export const submitInstruction = (connection: ConnectionInput, subjectId: string, instruction: string, config?: RuntimeConfig, resumeSession = false) =>
+  invokeCommand<AcceptedResult>("submit_instruction", { input: { connection, subject_id: subjectId, instruction, config, resume_session: resumeSession } });
 export const getCurrentRuntime = (connection: ConnectionInput, subjectId: string) =>
   invokeCommand<{ runtime: Runtime | null }>("get_current_runtime", { input: { connection, subject_id: subjectId } });
 export const stopRuntime = (connection: ConnectionInput, subjectId: string, mode: "graceful" | "force") =>
@@ -44,9 +47,15 @@ export const listRuntimesPage = (connection: ConnectionInput, subjectId: string,
   invokeCommand<RuntimePage>("list_runtimes_page", { input: { connection, subject_id: subjectId, cursor } });
 export const getRuntime = (connection: ConnectionInput, subjectId: string, runtimeId: string) =>
   invokeCommand<RuntimeDetail>("get_runtime", { input: { connection, subject_id: subjectId, runtime_id: runtimeId } });
-export const getNornsStatus = (connection: ConnectionInput, subjectId: string, taskId: string | null) =>
-  invokeCommand<NornsViewResult<unknown>>("get_norns_status", { input: { connection, subject_id: subjectId, task_id: taskId } });
-export const getNornsTrace = (connection: ConnectionInput, subjectId: string, explorationId: string) =>
-  invokeCommand<NornsViewResult<unknown>>("get_norns_trace", { input: { connection, subject_id: subjectId, exploration_id: explorationId } });
+export const getNornsStatus = (connection: ConnectionInput, subjectId: string, taskId: string | null, format: ViewFormat = "md") =>
+  invokeCommand<NornsViewResult<unknown>>("get_norns_status", { input: { connection, subject_id: subjectId, task_id: taskId, format } });
+export const getNornsTrace = (connection: ConnectionInput, subjectId: string, explorationId: string, format: ViewFormat = "md") =>
+  invokeCommand<NornsViewResult<unknown>>("get_norns_trace", { input: { connection, subject_id: subjectId, exploration_id: explorationId, format } });
 export const getNornsVisual = (connection: ConnectionInput, subjectId: string, lang: "zh" | "en") =>
   invokeCommand<NornsViewResult<string>>("get_norns_visual", { input: { connection, subject_id: subjectId, lang } });
+
+export const getNornsEntity = (connection: ConnectionInput, subjectId: string, kind: "cognition" | "exploration", id: string) =>
+  invokeCommand<unknown>("get_norns_entity", { input: { connection, subject_id: subjectId, kind, id } });
+export const downloadArchive = (connection: ConnectionInput, requestId: string, scope: "subject" | "rundata", subjectId?: string, runtimeId?: string) =>
+  invokeCommand<string | null>("download_archive", { input: { connection, request_id: requestId, scope, subject_id: subjectId, runtime_id: runtimeId } });
+export const cancelArchive = (requestId: string) => invokeCommand<void>("cancel_archive", { requestId });

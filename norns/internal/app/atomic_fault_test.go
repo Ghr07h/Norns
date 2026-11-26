@@ -13,9 +13,8 @@ import (
 )
 
 type failingIDs struct {
-	base          *testIDs
-	failTask      bool
-	failCognition bool
+	base     *testIDs
+	failTask bool
 }
 
 func (g *failingIDs) TaskID() (string, error) {
@@ -25,28 +24,18 @@ func (g *failingIDs) TaskID() (string, error) {
 	return g.base.TaskID()
 }
 
-func (g *failingIDs) CognitionID() (string, error) {
-	if g.failCognition {
-		return "", errors.New("injected Cognition ID failure")
-	}
-	return g.base.CognitionID()
-}
-
-func (g *failingIDs) ExplorationID() (string, error) { return g.base.ExplorationID() }
-func (g *failingIDs) Token() (string, error)         { return g.base.Token() }
+func (g *failingIDs) Token() (string, error) { return g.base.Token() }
 
 func TestFirstTaskInitializationFailurePublishesNoWorkspace(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		failTask      bool
-		failCognition bool
+		name     string
+		failTask bool
 	}{
-		{"task-id", true, false},
-		{"cognition-id", false, true},
+		{"task-id", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service, _ := newTestService(t)
-			ids := &failingIDs{base: &testIDs{}, failTask: test.failTask, failCognition: test.failCognition}
+			ids := &failingIDs{base: &testIDs{}, failTask: test.failTask}
 			service.IDs = ids
 			service.Store = storesqlite.New(service.Paths, ids, service.Clock)
 			info := "Subject"

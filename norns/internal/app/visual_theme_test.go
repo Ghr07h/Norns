@@ -65,7 +65,7 @@ for(const [theme,node,color,metal] of cases){
  byId.set(theme,node);
  assert.equal(knowledgeNodeTheme(node),theme);assert.equal(knowledgeThemes[theme].color,color);
  assert.equal(knowledgeThemes[theme].metal,metal);
- for(const kind of ['source','output','extends','retry'])edges.push({from:'root',to:theme,kind});
+ for(const kind of ['source','output','retry'])edges.push({from:'root',to:theme,kind});
 }
 assert.equal(knowledgeEdgeTheme({to:'missing'}),'regular');
 assert.equal(knowledgeNodeTheme({kind:'exploration',status:'unknown'}),'regular');
@@ -80,7 +80,7 @@ for(const [theme,,color,metal] of cases){
   assert.ok(new Set(gradient.children.map(stop=>stop.attributes['stop-color'])).size>=5);
  }
 }
-assert.equal(edgeElements.length,24);
+assert.equal(edgeElements.length,edges.length);
 for(const {edge,path} of edgeElements){
  const color=cases.find(([theme])=>theme===edge.to)[2];
  assert.equal(path.attributes.style,'--edge-color:'+color);
@@ -91,7 +91,7 @@ for(const {edge,path} of edgeElements){
 graphView='plane';drawEdges(edges,new Map());
 for(const {path} of edgeElements){assert.equal(path.attributes.style,undefined);assert.equal(path.attributes['marker-end'],'url(#arrow-relation)')}
 assert.ok(!svg.children[0].children.some(child=>child.attributes.id.startsWith('knowledge-arrow-')));
-console.log('Six destination themes, four relation kinds, metallic gradients and unchanged planar edges passed');
+console.log('Six destination themes, three relation kinds, metallic gradients and unchanged planar edges passed');
 ` + "`" + `);
 check(assert);
 `

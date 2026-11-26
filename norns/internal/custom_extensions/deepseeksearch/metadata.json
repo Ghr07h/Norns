@@ -1,0 +1,16 @@
+{
+  "name": "deepseeksearch",
+  "version": "0.1.0",
+  "description": "通过 DeepSeek 官方 API 搜索网页，或抓取网页并返回 Markdown 正文。",
+  "requirements": [
+    "持有有效的 DeepSeek 官方 API Key，并确保账户余额充足。",
+    "设置 NORNS_EXTENSION_DEEPSEEKSEARCH_CONFIG 环境变量，指向可读取的 YAML 或 JSON 配置文件。配置文件模板见插件源码目录的 <Norns>/norns/internal/custom_extensions/deepseeksearch/config.example.yaml,在配置文件的 api_key 字段填写 API Key；base_url 和 timeout_seconds 可选。 发布产物中附带同目录的 norns.exts.deepseeksearch.config.example.yaml 模板。",
+    "运行环境能够访问配置的 DeepSeek API 服务，默认地址为 https://api.deepseek.com。"
+  ],
+  "release_files": [
+    {
+      "origin_file": "config.example.yaml",
+      "target_file": ""
+    }
+  ]
+}

@@ -19,14 +19,16 @@ import (
 
 const product = "nornsd"
 
-const usage = `Usage: go run ./scripts/release.go [--all-platforms] [--output directory]
+const usage = `Usage: go run ./scripts/release.go [--all-platforms | --target os/arch] [--output directory]
 
 Builds nornsd for the current platform, or all six Go targets with --all-platforms.
+Repeat --target to build selected targets (darwin, linux, windows; amd64, arm64).
 Reads ../versions.json and writes to ../release by default.
 `
 
 type options struct {
 	allPlatforms bool
+	targets      []target
 	help         bool
 	output       string
 }
@@ -108,6 +110,23 @@ func parseOptions(arguments []string) (options, error) {
 			selected.help = true
 		case "--all-platforms":
 			selected.allPlatforms = true
+		case "--target":
+			index++
+			if index >= len(arguments) {
+				return options{}, fmt.Errorf("--target requires os/arch")
+			}
+			parts := strings.Split(arguments[index], "/")
+			if len(parts) != 2 || (parts[0] != "darwin" && parts[0] != "linux" && parts[0] != "windows") || (parts[1] != "amd64" && parts[1] != "arm64") {
+				return options{}, fmt.Errorf("unsupported --target %q", arguments[index])
+			}
+			platform := target{parts[0], parts[1]}
+			duplicate := false
+			for _, existing := range selected.targets {
+				duplicate = duplicate || existing == platform
+			}
+			if !duplicate {
+				selected.targets = append(selected.targets, platform)
+			}
 		case "--output":
 			index++
 			if index >= len(arguments) || arguments[index] == "" || strings.HasPrefix(arguments[index], "--") {
@@ -117,6 +136,9 @@ func parseOptions(arguments []string) (options, error) {
 		default:
 			return options{}, fmt.Errorf("unknown argument %q\n%s", arguments[index], usage)
 		}
+	}
+	if selected.allPlatforms && len(selected.targets) != 0 {
+		return options{}, fmt.Errorf("--target cannot be combined with --all-platforms")
 	}
 	return selected, nil
 }
@@ -171,20 +193,15 @@ func generateVersions(root string, manifest versions) error {
 }
 
 func generateAgentExample(root string, manifest versions) error {
-	filename := filepath.Join(root, product, "configs/nornsd/agent.example.yaml")
+	filename := filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml")
 	source, err := os.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	pattern := regexp.MustCompile(`(?m)^VERSION:[^\r\n]*`)
-	if len(pattern.FindAllIndex(source, -1)) != 1 {
-		return fmt.Errorf("%s must contain exactly one top-level VERSION field", filename)
+	if regexp.MustCompile(`(?m)^VERSION:`).Match(source) {
+		return fmt.Errorf("%s must not contain VERSION", filename)
 	}
-	generated := pattern.ReplaceAll(source, []byte(fmt.Sprintf("VERSION: %d", manifest.Nornsd.AgentConfigSchema)))
-	if bytes.Equal(source, generated) {
-		return nil
-	}
-	return os.WriteFile(filename, generated, 0o644)
+	return nil
 }
 
 func build(root string, selected options, command runCommand) error {
@@ -203,7 +220,10 @@ func build(root string, selected options, command runCommand) error {
 	if err := ensureDirectory(release); err != nil {
 		return err
 	}
-	platforms := []target{{runtime.GOOS, runtime.GOARCH}}
+	platforms := selected.targets
+	if len(platforms) == 0 {
+		platforms = []target{{runtime.GOOS, runtime.GOARCH}}
+	}
 	if selected.allPlatforms {
 		platforms = []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"}, {"windows", "arm64"}}
 	}
@@ -212,7 +232,7 @@ func build(root string, selected options, command runCommand) error {
 			return err
 		}
 	}
-	staging, err := os.MkdirTemp(root, ".release.tmp.")
+	staging, err := os.MkdirTemp(release, ".release.tmp.")
 	if err != nil {
 		return err
 	}
@@ -238,7 +258,7 @@ func build(root string, selected options, command runCommand) error {
 	if err := generateAgentExample(root, manifest); err != nil {
 		return err
 	}
-	agentExample, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/agent.example.yaml"))
+	agentExample, err := os.ReadFile(filepath.Join(root, product, "configs/nornsd/nornsd.example.yaml"))
 	if err != nil {
 		return err
 	}
@@ -262,7 +282,7 @@ func build(root string, selected options, command runCommand) error {
 				return err
 			}
 		}
-		if err := os.WriteFile(filepath.Join(staging, platform.directory(), "agent.example.yaml"), agentExample, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(staging, platform.directory(), "nornsd.example.yaml"), agentExample, 0o644); err != nil {
 			return err
 		}
 	}
@@ -315,7 +335,7 @@ func publish(source, destination string) error {
 	}
 	for _, entry := range current {
 		name := entry.Name()
-		owned := name == product || name == product+".exe" || name == "agent.example.yaml"
+		owned := name == product || name == product+".exe" || name == "nornsd.example.yaml"
 		if owned {
 			if err := os.RemoveAll(filepath.Join(destination, name)); err != nil {
 				return err
@@ -335,6 +355,9 @@ func writeChecksums(release, staging string) error {
 	err := filepath.WalkDir(release, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if path != release && entry.IsDir() && strings.HasPrefix(entry.Name(), ".release.tmp.") {
+			return filepath.SkipDir
 		}
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || entry.Name() == "SHA256SUMS" || entry.Name() == ".gitkeep" {
 			return nil

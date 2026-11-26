@@ -6,7 +6,11 @@ import { getEventUpdates, listEvents } from "../../api/commands";
 import { cacheEvents, clearSubjectCache, readCachedEventsAfter, readCachedEventsBefore, readEventCacheState, readLatestCachedEvents } from "../../storage/event-db";
 import { useAppFocused } from "../../polling/focus";
 import { IconButton } from "../common/IconButton";
-import { EventRow, payloadRecord } from "./EventRow";
+import { EventRow, eventAgentInfo, eventTypeLabel, payloadRecord } from "./EventRow";
+import { agentInstanceID, buildAgentIndex } from "./agent-identity";
+import { AgentOnlySwitch } from "./AgentOnlySwitch";
+
+import { EMPTY_EVENT_FILTERS, hasEventFilters, isAgentMessageEvent, matchesEventFilters, namedAgentRole, type EventFilters } from "./event-filters";
 
 export { eventAgentLabel } from "./EventRow";
 
@@ -25,11 +29,13 @@ export function buildToolEventLinks(events: PublicEvent[]) {
 const EVENT_WINDOW_SIZE = 200;
 
 export function EventsPanel({ serverId, subjectId, connection, runtimeActive }: { serverId: string; subjectId: string; connection: ConnectionInput; runtimeActive: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const focused = useAppFocused();
   const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [filter, setFilter] = useState("");
+  const [filters, setFilters] = useState<EventFilters>(EMPTY_EVENT_FILTERS);
+  const [agentOnly, setAgentOnly] = useState(false);
   const [error, setError] = useState("");
+  const [syncBusy, setSyncBusy] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [newCount, setNewCount] = useState(0);
@@ -67,6 +73,7 @@ export function EventsPanel({ serverId, subjectId, connection, runtimeActive }: 
     const active = generation.current;
     if (syncing.current === active) return;
     syncing.current = active;
+    setSyncBusy(true);
     try {
       if (!syncCursor.current) {
         const page = await listEvents(connection, subjectId);
@@ -112,12 +119,16 @@ export function EventsPanel({ serverId, subjectId, connection, runtimeActive }: 
       }
     } finally {
       if (syncing.current === active) syncing.current = 0;
+      if (active === generation.current) setSyncBusy(false);
     }
   }, [connection.base_url, connection.password, serverId, showLatestWindow, subjectId]);
 
   useEffect(() => {
     generation.current += 1;
     const active = generation.current;
+    setSyncBusy(true);
+    setFilters(EMPTY_EVENT_FILTERS);
+    setAgentOnly(false);
     setEvents([]); setError(""); setNewCount(0); setHasOlder(false); setLatestSeq(null); followingLatest.current = true; atLatest.current = true;
     void Promise.all([readEventCacheState(serverId, subjectId), readLatestCachedEvents(serverId, subjectId, EVENT_WINDOW_SIZE)]).then(async ([state, cached]) => {
       if (active !== generation.current) return;
@@ -186,14 +197,22 @@ export function EventsPanel({ serverId, subjectId, connection, runtimeActive }: 
   };
 
   const showLatest = async () => { await showLatestWindow(generation.current); };
-  const shown = useMemo(() => events.filter((event) => !filter || `${event.type} ${event.source} ${event.runtime_id ?? ""} ${JSON.stringify(event.payload)}`.toLowerCase().includes(filter.toLowerCase())), [events, filter]);
+  const agentIndex = useMemo(() => buildAgentIndex(events), [events]);
+  const shown = useMemo(() => events.filter((event) => (!agentOnly || isAgentMessageEvent(event)) && matchesEventFilters(event, filters, agentIndex)), [events, filters, agentIndex, agentOnly]);
+  const filtered = agentOnly || hasEventFilters(filters);
+  const updateFilter = (key: keyof EventFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const runtimeIds = [...new Set(events.flatMap((event) => event.runtime_id ? [event.runtime_id] : []))].sort();
+  const eventTypes = [...new Set([...events.map((event) => event.type), ...(filters.eventType ? [filters.eventType] : [])])].sort();
+  const agentRoles = new Map(events.flatMap((event) => { const agent = eventAgentInfo(event, agentIndex); return agent ? [[namedAgentRole(agent), agent] as const] : []; }));
+  const agentIds = [...new Set(events.flatMap((event) => { const agent = eventAgentInfo(event, agentIndex); const id = agent && agentInstanceID(agent); return id ? [id] : []; }))].sort();
+  const roleKindLabel = (role: string) => t(role === "main" ? "events.mainAgent" : role === "sub" ? "events.subAgent" : "events.unknownAgent");
   const toolLinks = useMemo(() => buildToolEventLinks(events), [events]);
   const rangeStart = events[0]?.seq ?? "0";
   const rangeEnd = events.at(-1)?.seq ?? "0";
   const hasNewer = latestSeq !== null && rangeEnd !== "0" && BigInt(rangeEnd) < BigInt(latestSeq);
   useEffect(() => {
     if (!jumpTarget) return;
-    if (filter) { setFilter(""); return; }
+    if (hasEventFilters(filters)) { setFilters(EMPTY_EVENT_FILTERS); return; }
     const frame = requestAnimationFrame(() => {
       const target = listRef.current?.querySelector<HTMLElement>(`#event-seq-${jumpTarget}`);
       if (!target) return;
@@ -204,7 +223,27 @@ export function EventsPanel({ serverId, subjectId, connection, runtimeActive }: 
       highlightTimer.current = setTimeout(() => setHighlighted(null), 1600);
     });
     return () => cancelAnimationFrame(frame);
-  }, [filter, jumpTarget, shown.length]);
+  }, [filters, filtered, jumpTarget, shown.length]);
   useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
-  return <div className="events-panel"><div className="panel-toolbar events-toolbar"><label className="search-field"><Search /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={t("common.search")} /></label>{newCount > 0 && <button className="button secondary" onClick={() => void showLatest()}>{t("events.newEvents")} ({newCount})</button>}<div className="event-pagination"><span className="event-page-range" aria-live="polite">{t("events.range", { start: rangeStart, end: rangeEnd, total: latestSeq ?? "0" })}</span><IconButton label={t("events.previousPage")} disabled={!hasOlder || loadingOlder || loadingNewer} onClick={() => void loadOlder()}><ChevronLeft /></IconButton><IconButton label={t("events.nextPage")} disabled={!hasNewer || loadingOlder || loadingNewer} onClick={() => void loadNewer()}><ChevronRight /></IconButton></div></div>{error && <p className="notice warning">{error}</p>}<div ref={listRef} className="event-list" onScroll={(event) => { const element = event.currentTarget; followingLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}>{shown.length ? shown.map((event) => { const payload = payloadRecord(event); const toolID = typeof payload?.tool_call_id === "string" ? payload.tool_call_id : ""; return <EventRow key={event.seq} event={event} linkedCall={toolLinks.calls.get(toolID)} linkedResult={toolLinks.results.get(toolID)} highlighted={highlighted === event.seq} onJump={setJumpTarget} />; }) : <div className="empty-inline">{t("events.empty")}</div>}</div></div>;
+  return <div className="events-panel">
+    <div className="event-controls">
+      <div className="panel-toolbar events-toolbar">
+        <label className="search-field"><Search /><input aria-label={t("events.searchContent")} value={filters.text} onChange={(event) => updateFilter("text", event.target.value)} placeholder={t("events.searchContent")} /></label>
+        <AgentOnlySwitch checked={agentOnly} onChange={setAgentOnly} />
+        {newCount > 0 && <button className="button secondary" onClick={() => void showLatest()}>{t("events.newEvents")} ({newCount})</button>}
+        <div className="event-pagination"><span className="event-page-range" aria-live="polite">{t("events.range", { start: rangeStart, end: rangeEnd, total: latestSeq ?? "0" })}</span><IconButton label={t("events.previousPage")} disabled={!hasOlder || syncBusy || loadingOlder || loadingNewer} onClick={() => void loadOlder()}><ChevronLeft /></IconButton><IconButton label={t("events.nextPage")} disabled={!hasNewer || syncBusy || loadingOlder || loadingNewer} onClick={() => void loadNewer()}><ChevronRight /></IconButton></div>
+      </div>
+      <div className="event-filters">
+        <label><span>{t("events.filterRuntimeId")}</span><input list="event-runtime-ids" value={filters.runtimeId} onChange={(event) => updateFilter("runtimeId", event.target.value)} placeholder={t("events.idContains")} /><datalist id="event-runtime-ids">{runtimeIds.map((id) => <option key={id} value={id} />)}</datalist></label>
+        <label><span>{t("events.type")}</span><select value={filters.eventType} onChange={(event) => updateFilter("eventType", event.target.value)}><option value="">{t("common.all")}</option>{eventTypes.map((type) => <option key={type} value={type}>{eventTypeLabel(type, i18n.language)} · {type}</option>)}</select></label>
+        <label><span>{t("events.filterAgentRole")}</span><select value={filters.agentRole} onChange={(event) => updateFilter("agentRole", event.target.value)}><option value="">{t("common.all")}</option>{["main", "sub", "unknown"].map((role) => <option key={role} value={`kind:${role}`}>{roleKindLabel(role)}</option>)}{[...agentRoles].sort(([a], [b]) => a.localeCompare(b)).map(([key, agent]) => <option key={key} value={key}>{agent.name} · {roleKindLabel(agent.role)}</option>)}{filters.agentRole.startsWith("name:") && !agentRoles.has(filters.agentRole) && <option value={filters.agentRole}>{JSON.parse(filters.agentRole.slice(5))[1]}</option>}</select></label>
+        <label><span>{t("events.filterAgentId")}</span><input list="event-agent-ids" value={filters.agentId} onChange={(event) => updateFilter("agentId", event.target.value)} placeholder={t("events.idContains")} /><datalist id="event-agent-ids">{agentIds.map((id) => <option key={id} value={id} />)}</datalist></label>
+      </div>
+      <div className="event-filter-summary"><span role="status">{t("events.filterCount", { shown: shown.length, count: events.length })}</span>{filtered && <button className="button secondary" onClick={() => { setFilters(EMPTY_EVENT_FILTERS); setAgentOnly(false); }}>{t("events.clearFilters")}</button>}</div>
+    </div>
+    {error && <p className="notice warning">{error}</p>}
+    <div ref={listRef} className="event-list" onScroll={(event) => { const element = event.currentTarget; followingLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}>
+      {shown.length ? shown.map((event) => { const payload = payloadRecord(event); const toolID = typeof payload?.tool_call_id === "string" ? payload.tool_call_id : ""; return <EventRow key={event.seq} event={event} agentIndex={agentIndex} linkedCall={toolLinks.calls.get(toolID)} linkedResult={toolLinks.results.get(toolID)} highlighted={highlighted === event.seq} onJump={setJumpTarget} />; }) : <div className="empty-inline">{events.length ? t("events.noMatches") : t("events.empty")}</div>}
+    </div>
+  </div>;
 }

@@ -12,7 +12,7 @@ import sys
 
 NODE_VERSION = "v" + os.environ.get("NORNS_IMAGE_NODE_VERSION", "24.22.1")
 CLAUDE_CODE_VERSION = os.environ.get("NORNS_IMAGE_CLAUDE_CODE_VERSION", "2.1.199")
-TEMPLATE_PATH = Path("/norns/config/agent.example.yaml")
+TEMPLATE_PATH = Path("/norns/config/nornsd.example.yaml")
 WORKSPACE_PATH = Path("/workspace")
 
 
@@ -61,8 +61,10 @@ def check_template() -> None:
         "nornsd version --json must report a positive integer agent_config_version",
     )
     require(
-        isinstance(config, dict) and type(config.get("VERSION")) is int and config["VERSION"] == schema,
-        f"template VERSION must match nornsd agent_config_version ({schema}): {TEMPLATE_PATH}",
+        isinstance(config, dict) and bool(config) and "VERSION" not in config
+        and all(isinstance(key, str) and key.startswith(("AGENT_", "SERVICE_")) for key in config)
+        and all(key in config for key in ("SERVICE_NORNSD_ROOT_DIR", "SERVICE_CONCURRENCY", "AGENT_TYPE", "AGENT_LLM_MODEL")),
+        f"template must use current SERVICE_* / AGENT_* fields without VERSION: {TEMPLATE_PATH}",
     )
 
 

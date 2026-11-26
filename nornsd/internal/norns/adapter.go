@@ -12,11 +12,43 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
 
 type Adapter struct{ Executable string }
+
+type ViewFormat string
+
+const (
+	YAML     ViewFormat = "yaml"
+	JSON     ViewFormat = "json"
+	Markdown ViewFormat = "md"
+)
+
+func ParseViewFormat(value string) (ViewFormat, error) {
+	switch ViewFormat(value) {
+	case "", YAML:
+		return YAML, nil
+	case JSON, Markdown:
+		return ViewFormat(value), nil
+	default:
+		return "", domain.NewError("INVALID_REQUEST", "format must be yaml, json or md", http.StatusBadRequest)
+	}
+}
+
+func (f ViewFormat) ContentType() string {
+	switch f {
+	case JSON:
+		return "application/json; charset=utf-8"
+	case Markdown:
+		return "text/markdown; charset=utf-8"
+	default:
+		return "application/yaml; charset=utf-8"
+	}
+}
 
 type commandError struct {
 	ExitCode int
@@ -88,6 +120,9 @@ func (a Adapter) run(ctx context.Context, dir string, args ...string) ([]byte, [
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
+		if ctx.Err() != nil {
+			return stdout.Bytes(), stderr.Bytes(), ctx.Err()
+		}
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
 			failure := &commandError{exit.ExitCode(), append([]byte(nil), stderr.Bytes()...)}
@@ -98,38 +133,46 @@ func (a Adapter) run(ctx context.Context, dir string, args ...string) ([]byte, [
 	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
-func (a Adapter) Status(ctx context.Context, subjectPath string, taskID *string) (json.RawMessage, string, error) {
-	args := []string{"view", "status", "--json"}
+func (a Adapter) Status(ctx context.Context, subjectPath string, taskID *string, format ViewFormat) ([]byte, string, error) {
+	args := []string{"view", "status"}
 	if taskID != nil {
 		args = append(args, "--task-id", *taskID)
 	}
-	return a.generatedStructuredView(ctx, subjectPath, "status", args)
+	return a.generatedView(ctx, subjectPath, "status", args, format)
 }
-func (a Adapter) Trace(ctx context.Context, subjectPath, explorationID string) (json.RawMessage, string, error) {
-	args := []string{"view", "trace", "--exploration", explorationID, "--json"}
-	return a.generatedStructuredView(ctx, subjectPath, "trace", args)
+func (a Adapter) Trace(ctx context.Context, subjectPath, explorationID string, format ViewFormat) ([]byte, string, error) {
+	args := []string{"view", "trace", "--exploration", explorationID}
+	return a.generatedView(ctx, subjectPath, "trace", args, format)
 }
 
-func (a Adapter) generatedStructuredView(ctx context.Context, subjectPath, kind string, args []string) (json.RawMessage, string, error) {
-	referenceArgs := append(append([]string(nil), args...), "--output-reference")
-	out, stderr, err := a.run(ctx, subjectPath, referenceArgs...)
-	if err != nil && bytes.Contains(stderr, []byte("unknown flag: --output-reference")) {
-		out, _, err = a.run(ctx, subjectPath, args...)
-	}
+func (a Adapter) generatedView(ctx context.Context, subjectPath, kind string, args []string, format ViewFormat) ([]byte, string, error) {
+	format, err := ParseViewFormat(string(format))
 	if err != nil {
 		return nil, "", err
 	}
-	return structuredView(subjectPath, out, kind)
+	switch format {
+	case JSON:
+		args = append(args, "--json")
+	case Markdown:
+		args = append(args, "--md")
+	}
+	args = append(args, "--output-reference")
+	out, _, err := a.run(ctx, subjectPath, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	return readPublishedView(subjectPath, out, kind, format)
 }
 
 type publishedView struct {
 	OK   *bool `json:"ok"`
 	Data struct {
-		Path string `json:"path"`
+		Path   string `json:"path"`
+		Format string `json:"format"`
 	} `json:"data"`
 }
 
-func structuredView(subjectPath string, out []byte, kind string) (json.RawMessage, string, error) {
+func readPublishedView(subjectPath string, out []byte, kind string, format ViewFormat) ([]byte, string, error) {
 	trimmed := bytes.TrimSpace(out)
 	if !json.Valid(trimmed) {
 		return nil, "", fmt.Errorf("norns %s returned invalid JSON", kind)
@@ -138,10 +181,7 @@ func structuredView(subjectPath string, out []byte, kind string) (json.RawMessag
 	if err := json.Unmarshal(trimmed, &envelope); err != nil {
 		return nil, "", fmt.Errorf("norns %s returned invalid JSON: %w", kind, err)
 	}
-	if envelope.OK == nil {
-		return append(json.RawMessage(nil), trimmed...), "", nil
-	}
-	if !*envelope.OK || envelope.Data.Path == "" {
+	if envelope.OK == nil || !*envelope.OK || envelope.Data.Path == "" || envelope.Data.Format != string(format) {
 		return nil, "", fmt.Errorf("invalid norns %s response", kind)
 	}
 	path, err := resolveViewPath(subjectPath, envelope.Data.Path)
@@ -152,10 +192,39 @@ func structuredView(subjectPath string, out []byte, kind string) (json.RawMessag
 	if err != nil {
 		return nil, "", err
 	}
-	if !json.Valid(b) {
+	if format == JSON && !json.Valid(b) {
 		return nil, "", fmt.Errorf("norns %s file contains invalid JSON", kind)
 	}
-	return append(json.RawMessage(nil), bytes.TrimSpace(b)...), filepath.Base(path), nil
+	if format == YAML {
+		var value map[string]any
+		if err := yaml.Unmarshal(b, &value); err != nil || value == nil {
+			return nil, "", fmt.Errorf("norns %s file contains invalid YAML", kind)
+		}
+	}
+	return b, filepath.Base(path), nil
+}
+
+func (a Adapter) Cognition(ctx context.Context, subjectPath, id string) (json.RawMessage, error) {
+	return a.entity(ctx, subjectPath, "cognition", "--cognition", id)
+}
+
+func (a Adapter) Exploration(ctx context.Context, subjectPath, id string) (json.RawMessage, error) {
+	return a.entity(ctx, subjectPath, "exploration", "--exploration", id)
+}
+
+func (a Adapter) entity(ctx context.Context, subjectPath, kind, flag, id string) (json.RawMessage, error) {
+	out, _, err := a.run(ctx, subjectPath, kind, "get", flag, id)
+	if err != nil {
+		return nil, err
+	}
+	var envelope struct {
+		OK   bool            `json:"ok"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(out, &envelope); err != nil || !envelope.OK || len(envelope.Data) == 0 || bytes.TrimSpace(envelope.Data)[0] != '{' {
+		return nil, fmt.Errorf("invalid norns %s response", kind)
+	}
+	return envelope.Data, nil
 }
 
 func visualArgs(lang string) ([]string, error) {
@@ -208,6 +277,24 @@ func resolveViewPath(subjectPath, publishedPath string) (string, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("norns view path is not a regular file")
 	}
+	realSubject, err := filepath.EvalSymlinks(subjectPath)
+	if err != nil {
+		return "", err
+	}
+	realViewRoot, err := filepath.EvalSymlinks(viewRoot)
+	if err != nil {
+		return "", err
+	}
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	for _, bounds := range [][2]string{{realSubject, realViewRoot}, {realViewRoot, realPath}} {
+		rel, err := filepath.Rel(bounds[0], bounds[1])
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("norns view path escapes workspace through a symbolic link")
+		}
+	}
 	return path, nil
 }
 
@@ -228,7 +315,7 @@ func (a Adapter) Cleanup(ctx context.Context, subjectPath, outcome, reason strin
 }
 
 func (a Adapter) HasOpenTask(ctx context.Context, subjectPath string) (bool, error) {
-	status, _, err := a.Status(ctx, subjectPath, nil)
+	status, _, err := a.Status(ctx, subjectPath, nil, JSON)
 	if err != nil {
 		return false, err
 	}

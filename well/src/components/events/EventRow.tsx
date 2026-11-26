@@ -1,12 +1,11 @@
 import { ChevronDown, ChevronRight, LocateFixed } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import remarkGfm from "remark-gfm";
 import type { PublicEvent } from "../../api/dto";
 import { endReasonKey, formatTime, shortId } from "../../lib/format";
 
-type AgentInfo = { role: string; name: string };
+import { EventBody, EventDetails, EventFact, EventMessage, EventState } from "./EventDetails";
+import { agentInstanceID, resolveAgent, taskEventAgent, type AgentInfo, type AgentIndex } from "./agent-identity";
 
 const SOURCE_LABELS: Record<string, [string, string]> = {
   runtime: ["运行时", "Runtime"],
@@ -18,9 +17,22 @@ const SOURCE_LABELS: Record<string, [string, string]> = {
 };
 
 const EVENT_LABELS: Record<string, [string, string]> = {
+  "instruction.replayed": ["输入回显", "Input replayed"],
+  "instruction.accepted": ["输入已接受", "Input accepted"],
+  "instruction.settled": ["输入已结算", "Input settled"],
+  "agent.api_retry": ["API 重试", "API retry"],
+  "agent.status": ["智能体状态", "Agent status"],
+  "agent.interrupted": ["本次处理中断", "Processing interrupted"],
+  "agent.user_message": ["会话消息", "Session message"],
+  "agent.task_started": ["任务启动", "Task started"],
+  "agent.task_progress": ["任务进度", "Task progress"],
+  "agent.task_updated": ["任务更新", "Task updated"],
+  "agent.task_notification": ["任务通知", "Task notification"],
+
   "subject.created": ["创建实体", "Subject created"],
   "runtime.started": ["启动运行时", "Runtime started"],
   "runtime.cancelled": ["取消运行时", "Runtime cancelled"],
+  "runtime.error": ["运行时错误", "Runtime error"],
   "runtime.finished": ["结束运行时", "Runtime ended"],
   "runtime.recovery_notice": ["恢复运行时", "Runtime recovery"],
   "runtime.session_resumed": ["恢复会话", "Session resumed"],
@@ -30,7 +42,7 @@ const EVENT_LABELS: Record<string, [string, string]> = {
   "agent.text": ["输出消息", "Message"],
   "agent.tool_call": ["调用工具", "Tool call"],
   "agent.tool_result": ["返回工具结果", "Tool result"],
-  "agent.result": ["完成智能体执行", "Agent completed"],
+  "agent.result": ["本次处理结果", "Processing result"],
   "norns.lifecycle": ["更新 Norns 生命周期", "Norns lifecycle updated"],
   diagnostic: ["记录诊断信息", "Diagnostic recorded"],
 };
@@ -45,23 +57,34 @@ export function payloadRecord(event: PublicEvent): Record<string, unknown> | nul
     : null;
 }
 
-function agentInfo(event: PublicEvent): AgentInfo | null {
+export function eventAgentInfo(event: PublicEvent, index?: AgentIndex): AgentInfo | null {
   if (!event.type.startsWith("agent.")) return null;
-  const value = payloadRecord(event)?.agent;
-  const agent = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-  return {
-    role: typeof agent?.role === "string" && agent.role ? agent.role : "main",
-    name: typeof agent?.name === "string" && agent.name ? agent.name : "Coordinator",
-  };
+  const payload = payloadRecord(event);
+  const agent = resolveAgent(event, payload?.agent, index);
+  if (!agent || agent.role === "unknown" || (agent.role === "sub" && !agentInstanceID(agent))) {
+    const owner = taskEventAgent(event, index);
+    if (owner) return owner;
+  }
+  if (agent) return agent;
+  // Older task projections had no agent; they must not appear as Main Agent.
+  if (event.type.startsWith("agent.task_")) return { role: "unknown", name: "Background task" };
+  if (event.type === "agent.user_message" || event.type === "agent.interrupted") return { role: "unknown", name: "Agent" };
+  return { role: "main", name: "Main Agent" };
 }
 
-export function eventAgentLabel(event: PublicEvent, language: string): string | null {
-  const agent = agentInfo(event);
-  if (!agent) return null;
-  const role = isChinese(language)
-    ? agent.role === "sub" ? "子智能体" : "主智能体"
-    : agent.role === "sub" ? "Sub-agent" : "Main agent";
-  return `${role} · ${agent.name}`;
+function agentLabel(agent: AgentInfo, language: string): string {
+  const zh = isChinese(language);
+  const role = agent.role === "sub" ? zh ? "子智能体" : "Sub-agent"
+    : agent.role === "main" ? zh ? "主智能体" : "Main agent"
+    : zh ? "归属未知" : "Unknown origin";
+  const instance = agentInstanceID(agent);
+  const suffix = instance ? ` · ${instance}` : agent.role === "sub" ? zh ? " · 实例未知" : " · Instance unknown" : "";
+  return `${role} · ${agent.name}${suffix}`;
+}
+
+export function eventAgentLabel(event: PublicEvent, language: string, index?: AgentIndex): string | null {
+  const agent = eventAgentInfo(event, index);
+  return agent ? agentLabel(agent, language) : null;
 }
 
 export function eventSourceLabel(source: string, language: string): string {
@@ -102,14 +125,6 @@ function resultContent(value: unknown): string | null {
   return parts.length ? parts.join("\n") : null;
 }
 
-function EventMessage({ children }: { children: ReactNode }) {
-  return <div className="event-message">{children}</div>;
-}
-
-function EventFact({ label, children }: { label: string; children: ReactNode }) {
-  return <div className="event-fact"><span>{label}</span><div>{children}</div></div>;
-}
-
 function ToolCallContent({ payload, linkedResult, onJump }: { payload: Record<string, unknown> | null; linkedResult?: PublicEvent; onJump: (seq: string) => void }) {
   const { t } = useTranslation();
   const name = stringValue(payload?.name) ?? t("events.unknownTool");
@@ -126,19 +141,20 @@ function ToolCallContent({ payload, linkedResult, onJump }: { payload: Record<st
   </div>;
 }
 
-function ToolResultContent({ event, payload, linkedCall, onJump }: { event: PublicEvent; payload: Record<string, unknown> | null; linkedCall?: PublicEvent; onJump: (seq: string) => void }) {
+function ToolResultContent({ event, payload, linkedCall, onJump, agentIndex }: { event: PublicEvent; payload: Record<string, unknown> | null; linkedCall?: PublicEvent; agentIndex?: AgentIndex; onJump: (seq: string) => void }) {
   const { t } = useTranslation();
-  const agent = agentInfo(event) ?? { role: "main", name: "Coordinator" };
+  const agent = eventAgentInfo(event, agentIndex) ?? { role: "main", name: "Main Agent" };
   const failed = payload?.is_error === true;
   const content = resultContent(payload?.content);
   return <div className="event-tool-result">
     <div className="event-result-meta">
-      <EventFact label={t("events.caller")}><strong>{agent.role} · {agent.name}</strong></EventFact>
+      <EventFact label={t("events.caller")}><strong>{agent.role} · {agent.name}{agentInstanceID(agent) ? ` · ${agentInstanceID(agent)}` : agent.role === "sub" ? ` · ${t("events.instanceUnknown")}` : ""}</strong></EventFact>
       <EventFact label={t("events.executionStatus")}><span className={`event-result-status ${failed ? "failed" : "succeeded"}`}>{failed ? t("events.failed") : t("events.succeeded")}</span></EventFact>
+      {typeof payload?.subagent_status === "string" && <EventFact label={t("events.details.subagentState")}><EventState value={payload.subagent_status} /></EventFact>}
     </div>
     <div className="event-result-content">
       <span>{t("events.content")}</span>
-      {content ? <pre>{content}</pre> : <p>{t("events.structuredContent")}</p>}
+      {content ? <EventBody value={content} plain /> : <p>{t("events.structuredContent")}</p>}
     </div>
     {linkedCall && <button type="button" className="event-link" onClick={() => onJump(linkedCall.seq)}><LocateFixed />{t("events.viewCall")} #{linkedCall.seq}</button>}
   </div>;
@@ -166,7 +182,7 @@ function StandardEventContent({ event, payload }: { event: PublicEvent; payload:
       return <EventMessage><p>{t("events.messages.runtimeWaiting")}</p></EventMessage>;
     case "runtime.cancelled": {
       const reason = stringValue(payload?.reason);
-      return <EventMessage><p>{payload?.queued === true ? t("events.messages.runtimeCancelledQueued") : t("events.messages.runtimeCancelled")}</p>{reason && <EventFact label={t("events.reason")}>{reason}</EventFact>}</EventMessage>;
+      return <EventMessage><p>{payload?.queued === true ? t("events.messages.runtimeCancelledQueued") : t("events.messages.runtimeCancelled")}</p>{reason && <EventFact label={t("events.reason")}>{t(`runtime.endReasons.${endReasonKey(reason)}`, { defaultValue: reason })}</EventFact>}</EventMessage>;
     }
     case "runtime.finished": {
       const state = stringValue(payload?.state);
@@ -189,31 +205,22 @@ function StandardEventContent({ event, payload }: { event: PublicEvent; payload:
       const deadline = stringValue(payload?.deadline);
       return <EventMessage><p>{t("events.messages.nornsLifecycle")}</p><div className="event-facts">{phase && <EventFact label={t("events.phase")}>{phase}</EventFact>}{deadline && <EventFact label={t("events.deadline")}>{deadline}</EventFact>}</div></EventMessage>;
     }
-    case "agent.result": {
-      const failed = payload?.is_error === true;
-      const subtype = stringValue(payload?.subtype);
-      return <EventMessage><p>{failed ? t("events.messages.agentFailed") : t("events.messages.agentCompleted")}</p>{subtype && <EventFact label={t("events.resultType")}>{subtype}</EventFact>}</EventMessage>;
-    }
-    case "diagnostic": {
-      const code = stringValue(payload?.code);
-      return <EventMessage><p>{t("events.messages.diagnostic")}</p>{code && <EventFact label={t("events.diagnosticCode")}><code>{code}</code></EventFact>}</EventMessage>;
-    }
     default:
-      return <EventMessage><p>{t("events.messages.recorded")}</p></EventMessage>;
+      return <EventDetails type={event.type} payload={payload} />;
   }
 }
 
-export function EventRow({ event, linkedCall, linkedResult, highlighted, onJump }: { event: PublicEvent; linkedCall?: PublicEvent; linkedResult?: PublicEvent; highlighted: boolean; onJump: (seq: string) => void }) {
+export function EventRow({ event, linkedCall, linkedResult, highlighted, onJump, agentIndex }: { event: PublicEvent; agentIndex?: AgentIndex; linkedCall?: PublicEvent; linkedResult?: PublicEvent; highlighted: boolean; onJump: (seq: string) => void }) {
   const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const payload = payloadRecord(event);
-  const agentLabel = eventAgentLabel(event, i18n.language);
-  const text = stringValue(payload?.text);
+  const label = eventAgentLabel(event, i18n.language, agentIndex);
+  const spawned = resolveAgent(event, payload?.spawned_agent ?? payload?.target_agent, agentIndex);
   return <article id={`event-seq-${event.seq}`} className={`event-row event-${event.type.replaceAll(".", "-")} ${highlighted ? "event-highlighted" : ""}`}>
     <header className="event-header">
       <div className="event-heading">
         <span className="event-source-badge">{eventSourceLabel(event.source, i18n.language)}</span>
-        {agentLabel && <span className="event-agent">{agentLabel}</span>}
+        {label && <span className="event-agent" title={label}>{label}</span>}
         <strong className="event-type" title={event.type}>{eventTypeLabel(event.type, i18n.language)}</strong>
       </div>
       <div className="event-meta">
@@ -223,13 +230,12 @@ export function EventRow({ event, linkedCall, linkedResult, highlighted, onJump 
       </div>
     </header>
     <div className="event-content">
-      {event.type === "agent.text" && text
-        ? <div className="event-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>
-        : event.type === "agent.tool_call"
-          ? <ToolCallContent payload={payload} linkedResult={linkedResult} onJump={onJump} />
-          : event.type === "agent.tool_result"
-            ? <ToolResultContent event={event} payload={payload} linkedCall={linkedCall} onJump={onJump} />
-            : <StandardEventContent event={event} payload={payload} />}
+      {spawned && <EventFact label={t("events.spawnedAgent")}><span className="mono breakable">{agentLabel(spawned, i18n.language)}</span></EventFact>}
+      {event.type === "agent.tool_call"
+        ? <ToolCallContent payload={payload} linkedResult={linkedResult} onJump={onJump} />
+        : event.type === "agent.tool_result"
+          ? <ToolResultContent event={event} payload={payload} linkedCall={linkedCall} onJump={onJump} agentIndex={agentIndex} />
+          : <StandardEventContent event={event} payload={payload} />}
     </div>
     <button type="button" className="event-expand" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? <ChevronDown /> : <ChevronRight />}{t("events.payload")}</button>
     {expanded && <pre className="event-payload">{JSON.stringify(event.payload, null, 2)}</pre>}

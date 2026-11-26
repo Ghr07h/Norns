@@ -28,26 +28,26 @@ import (
 const memoryLimitExceededCode = "RUNTIME_MEMORY_LIMIT_EXCEEDED"
 
 type Options struct {
-	Owner       *root.Owner
-	Profile     domain.RuntimeProfile
-	Concurrency int
-	SlotConfigs []*config.Config // indexed by stable slot number; element 0 is ignored
-	Norns       *nornsadapter.Adapter
-	MemoryLimit uint64
-	OnError     func(error)
+	Owner         *root.Owner
+	Concurrency   int
+	SlotConfigs   []*config.Config // indexed by stable slot number; element 0 is ignored
+	Norns         *nornsadapter.Adapter
+	MemoryLimit   uint64
+	OnError       func(error)
+	OnQueueExport func(string, int)
 }
 
 type Manager struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	owner       *root.Owner
-	store       *storesqlite.Store
-	profile     domain.RuntimeProfile
-	configs     []*config.Config
-	norns       *nornsadapter.Adapter
-	memoryLimit uint64
-	onError     func(error)
-	scheduler   *scheduler.Scheduler
+	ctx           context.Context
+	cancel        context.CancelFunc
+	owner         *root.Owner
+	store         *storesqlite.Store
+	configs       []*config.Config
+	norns         *nornsadapter.Adapter
+	memoryLimit   uint64
+	onError       func(error)
+	onQueueExport func(string, int)
+	scheduler     *scheduler.Scheduler
 
 	mu               sync.RWMutex
 	active           map[string]*managedRuntime
@@ -70,18 +70,19 @@ type managedRuntime struct {
 	done            chan struct{}
 	exited          chan struct{}
 	first           bool
-	instructionSent bool
-	resumeStartup   bool
+	initialized     bool
+	rootProcessing  bool // protected by protocolMu; avoids a DB write per token
 	recoveryNotice  string
 	finish          sync.Once
 	closeOnce       sync.Once
 	protocolMu      sync.Mutex
 	identity        process.Identity
+	workers         sync.WaitGroup
 }
 
 func NewManager(parent context.Context, opts Options) *Manager {
 	ctx, cancel := context.WithCancel(parent)
-	m := &Manager{ctx: ctx, cancel: cancel, owner: opts.Owner, store: opts.Owner.Store, profile: opts.Profile, configs: opts.SlotConfigs, norns: opts.Norns, memoryLimit: opts.MemoryLimit, onError: opts.OnError, active: map[string]*managedRuntime{}}
+	m := &Manager{ctx: ctx, cancel: cancel, owner: opts.Owner, store: opts.Owner.Store, configs: opts.SlotConfigs, norns: opts.Norns, memoryLimit: opts.MemoryLimit, onError: opts.OnError, onQueueExport: opts.OnQueueExport, active: map[string]*managedRuntime{}}
 	m.projectorHealthy.Store(true)
 	m.scheduler = scheduler.New(ctx, opts.Concurrency, m.claim, opts.OnError)
 	return m
@@ -134,36 +135,60 @@ func (m *Manager) launch(subject domain.Subject, r domain.Runtime, slot int) {
 	if slot < len(m.configs) {
 		cfg = m.configs[slot]
 	}
-	settingsPath, configHash, err := config.Publish(subject.Profile.Agent, path, r.ID, cfg)
+	if cfg != nil {
+		effective, mergeErr := config.Effective(*cfg, r.ConfigOverride)
+		if mergeErr != nil {
+			m.failBeforeStart(subject, r, slot, "INVALID_SETTING", mergeErr)
+			return
+		}
+		cfg = &effective
+		r.Profile = cfg.Profile()
+		if err = m.store.SaveRuntimeConfig(m.ctx, r.ID, r.Profile, cfg); err != nil {
+			m.failBeforeStart(subject, r, slot, "INVALID_SETTING", err)
+			return
+		}
+		if r.Profile.Has("norns") {
+			if m.norns == nil {
+				m.failBeforeStart(subject, r, slot, "NORNS_UNAVAILABLE", fmt.Errorf("norns CLI is unavailable"))
+				return
+			}
+			probeCtx, probeCancel := context.WithTimeout(m.ctx, version.ControlTimeout)
+			err = m.norns.Preflight(probeCtx)
+			probeCancel()
+			if err != nil {
+				m.failBeforeStart(subject, r, slot, "NORNS_UNAVAILABLE", err)
+				return
+			}
+		}
+		preflightCtx, cancel := context.WithTimeout(m.ctx, version.ControlTimeout)
+		err = ccagent.Preflight(preflightCtx, cfg.AgentExec, ccagent.RequiresExactVersion(cfg.AgentExec, cfg.AgentExecExplicit()))
+		cancel()
+		if err != nil {
+			m.failBeforeStart(subject, r, slot, "AGENT_UNAVAILABLE", err)
+			return
+		}
+	} else {
+		m.failBeforeStart(subject, r, slot, "INVALID_SETTING", fmt.Errorf("Runtime template is missing"))
+		return
+	}
+	settingsPath, configHash, err := config.Publish(r.Profile.Agent, path, r.ID, cfg)
 	if err != nil {
 		m.failBeforeStart(subject, r, slot, "INVALID_SETTING", err)
 		return
 	}
-	customPluginPath, customPluginHash, err := config.PublishCustom(path, r.ID, cfg)
+	preparedPlugins, err := plugin.Prepare(r.Profile.Agent, path, r.ID, cfg)
 	if err != nil {
-		m.failBeforeStart(subject, r, slot, "CUSTOM_PUBLICATION_FAILED", err)
+		code := "CUSTOM_PUBLICATION_FAILED"
+		if r.Profile.Has("norns") {
+			code = "PLUGIN_GENERATION_FAILED"
+		}
+		if cfg.ReuseRuntimeDir != "" {
+			code = "PLUGIN_REUSE_FAILED"
+		}
+		m.failBeforeStart(subject, r, slot, code, err)
 		return
 	}
-	pluginPaths := make([]string, 0, 2)
-	if cfg != nil {
-		pluginPaths = append(pluginPaths, cfg.CustomPluginDirs...)
-	}
-	if customPluginPath != "" {
-		pluginPaths = append(pluginPaths, customPluginPath)
-	}
-	pluginHash := ""
-	rootAgent := ""
-	if m.profile.Has("norns") {
-		publication, publishErr := plugin.Publish(subject.Profile.Agent, path, r.ID, cfg)
-		err = publishErr
-		if err != nil {
-			m.failBeforeStart(subject, r, slot, "PLUGIN_GENERATION_FAILED", err)
-			return
-		}
-		pluginPaths = append(pluginPaths, publication.Path)
-		pluginHash = publication.Hash
-		rootAgent = publication.RootAgent
-	}
+	pluginPaths, rootAgent := preparedPlugins.Paths, preparedPlugins.RootAgent
 	execArgs := []string{"claude"}
 	strict := true
 	if cfg != nil {
@@ -177,7 +202,7 @@ func (m *Manager) launch(subject domain.Subject, r domain.Runtime, slot int) {
 	}
 	launch := ccagent.Launch{Exec: execArgs, SessionID: r.ID, ResumeSessionID: resumeSessionID, SettingsPath: settingsPath, PluginPaths: pluginPaths, RootAgent: rootAgent, Dir: path}
 	createdAt := time.Now().UTC()
-	snapshot, err := runtimeartifact.Publish(path, runtimeartifact.Input{Subject: subject, Runtime: r, Launch: launch, Managed: true, Config: cfg, ConfigHash: configHash, PluginHash: pluginHash, CustomPluginHash: customPluginHash, Slot: &slot, CreatedAt: createdAt})
+	snapshot, err := runtimeartifact.Publish(path, runtimeartifact.Input{Subject: subject, Runtime: r, Launch: launch, Managed: true, Config: cfg, ConfigHash: configHash, Slot: &slot, CreatedAt: createdAt})
 	if err != nil {
 		m.failBeforeStart(subject, r, slot, "RUNTIME_SNAPSHOT_FAILED", err)
 		return
@@ -191,17 +216,24 @@ func (m *Manager) launch(subject domain.Subject, r domain.Runtime, slot int) {
 		m.failBeforeStart(subject, r, slot, "EVENT_PROJECTOR_FAILED", err)
 		return
 	}
-	recoveryNotice, previousRuntimeID, noticeErr := m.memoryRecoveryNotice(subject.ID, r.ID, memoryRecoveryNoticeEnabled(subject.Profile, resumeSessionID))
+	recoveryNotice, previousRuntimeID, noticeErr := m.memoryRecoveryNotice(subject.ID, r.ID, memoryRecoveryNoticeEnabled(r.Profile, resumeSessionID))
 	if noticeErr != nil {
 		m.report(fmt.Errorf("load runtime recovery notice: %w", noticeErr))
 	}
-	mr := &managedRuntime{subject: subject, runtime: r, resumeSessionID: resumeSessionID, slot: slot, path: path, logger: logger, wake: make(chan struct{}, 1), done: make(chan struct{}), exited: make(chan struct{}), first: true, resumeStartup: resumeSessionID != "", recoveryNotice: recoveryNotice}
+	mr := &managedRuntime{subject: subject, runtime: r, resumeSessionID: resumeSessionID, slot: slot, path: path, logger: logger, wake: make(chan struct{}, 1), done: make(chan struct{}), exited: make(chan struct{}), first: true, recoveryNotice: recoveryNotice}
+	// Keep launch, resource sampling and instruction delivery inside the Runtime's
+	// write lifetime. Idle must mean all Subject writers have finished.
+	mr.workers.Add(1)
+	defer mr.workers.Done()
+	mr.protocolMu.Lock()
 	session, err := ccagent.StartManaged(m.ctx, launch, logger.RawHandler(m.ctx), func(raw json.RawMessage) error { return m.handleMessage(mr, raw) })
 	if err != nil {
+		mr.protocolMu.Unlock()
 		m.failBeforeStart(subject, r, slot, "AGENT_UNAVAILABLE", err)
 		return
 	}
 	mr.session = session
+	mr.protocolMu.Unlock()
 	identity, identityErr := session.Identity()
 	if identityErr != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), version.ControlTimeout)
@@ -222,7 +254,11 @@ func (m *Manager) launch(subject domain.Subject, r domain.Runtime, slot int) {
 	forceClosing := m.forceClosing
 	m.mu.Unlock()
 	m.run(func() { m.wait(mr) })
-	m.run(func() { m.monitor(mr) })
+	mr.workers.Add(1)
+	m.run(func() {
+		defer mr.workers.Done()
+		m.monitor(mr)
+	})
 	if closing {
 		mode := "graceful"
 		if forceClosing {
@@ -252,7 +288,21 @@ func (m *Manager) launch(subject domain.Subject, r domain.Runtime, slot int) {
 		_ = session.Terminate(context.Background())
 		return
 	}
-	m.run(func() { m.writer(mr) })
+	mr.protocolMu.Lock()
+	mr.initialized = true
+	if resumeSessionID != "" {
+		_, err = mr.logger.Event(m.ctx, "runtime.session_resumed", "runtime", map[string]any{"resume_session_id": resumeSessionID, "session_id": r.ID, "confirmation": "initialize"}, time.Now().UTC())
+	}
+	mr.protocolMu.Unlock()
+	if err != nil {
+		m.failActive(mr, "EVENT_PROJECTOR_FAILED", err)
+		return
+	}
+	mr.workers.Add(1)
+	m.run(func() {
+		defer mr.workers.Done()
+		m.writer(mr)
+	})
 	m.wake(mr)
 }
 
@@ -268,12 +318,12 @@ func (m *Manager) failBeforeStart(subject domain.Subject, r domain.Runtime, slot
 	now := time.Now().UTC()
 	_ = m.store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, r.ID, domain.RuntimeError, "runtime launch failed", code, map[string]any{"message": cause.Error()}, now, false)
 	_, _ = m.store.AppendEvent(context.Background(), subject.ID, &r.ID, "runtime.error", "runtime", map[string]any{"code": code, "message": cause.Error()}, now)
-	_ = m.store.FinalizeRuntime(context.Background(), subject.ID, r.ID, time.Now().UTC())
 	if path, pathErr := m.owner.SubjectPath(subject.DirectoryName); pathErr == nil {
 		if repairErr := eventlog.SyncReadable(context.Background(), m.store, path, subject.ID); repairErr != nil {
 			m.projectorHealthy.Store(false)
 		}
 	}
+	_ = m.store.FinalizeRuntime(context.Background(), subject.ID, r.ID, time.Now().UTC())
 	m.scheduler.Release(slot)
 	m.report(cause)
 }
@@ -302,8 +352,15 @@ func (m *Manager) writer(mr *managedRuntime) {
 			return
 		case <-mr.done:
 			return
+		case <-mr.exited:
+			return
 		case <-mr.wake:
 			for {
+				select {
+				case <-mr.exited:
+					return
+				default:
+				}
 				items, group, err := m.store.DispatchPending(m.ctx, mr.subject.ID, mr.runtime.ID, mr.first, time.Now().UTC())
 				if err != nil {
 					m.failActive(mr, "INSTRUCTION_DELIVERY_FAILED", err)
@@ -325,7 +382,7 @@ func (m *Manager) writer(mr *managedRuntime) {
 				}
 				mr.first = false
 				mr.protocolMu.Lock()
-				if err = mr.session.SendUser(content); err != nil {
+				if err = mr.session.SendUser(domain.InputUUID(mr.runtime.ID, group), content); err != nil {
 					mr.protocolMu.Unlock()
 					m.failActive(mr, "INSTRUCTION_DELIVERY_FAILED", err)
 					return
@@ -335,7 +392,6 @@ func (m *Manager) writer(mr *managedRuntime) {
 					m.failActive(mr, "INSTRUCTION_DELIVERY_FAILED", err)
 					return
 				}
-				mr.instructionSent = true
 				if err = eventlog.SyncReadable(m.ctx, m.store, mr.path, mr.subject.ID); err != nil {
 					mr.protocolMu.Unlock()
 					m.projectorHealthy.Store(false)
@@ -352,30 +408,27 @@ func (m *Manager) handleMessage(mr *managedRuntime, raw json.RawMessage) error {
 	mr.protocolMu.Lock()
 	defer mr.protocolMu.Unlock()
 	var envelope struct {
-		Type   string `json:"type"`
-		Origin struct {
+		Type             string  `json:"type"`
+		Subtype          string  `json:"subtype"`
+		UUID             string  `json:"uuid"`
+		IsReplay         bool    `json:"isReplay"`
+		Status           string  `json:"status"`
+		ParentToolUseID  *string `json:"parent_tool_use_id"`
+		SubagentType     string  `json:"subagent_type"`
+		AttributionAgent string  `json:"attributionAgent"`
+		Origin           struct {
 			Kind string `json:"kind"`
 		} `json:"origin"`
 	}
-	parsed := json.Unmarshal(raw, &envelope) == nil
-	taskNotificationResult := parsed && envelope.Type == "result" && envelope.Origin.Kind == "task-notification"
-	if mr.resumeStartup && parsed && envelope.Type == "result" && !taskNotificationResult && !mr.instructionSent {
-		mr.resumeStartup = false
-		if err := mr.logger.RecordSessionResumed(m.ctx, raw, mr.resumeSessionID, time.Now().UTC()); err != nil {
-			m.projectorHealthy.Store(false)
-			return fmt.Errorf("event projector: %w", err)
-		}
-		return nil
-	}
-	if mr.resumeStartup && parsed && (envelope.Type == "assistant" || envelope.Type == "stream_event" || (envelope.Type == "result" && !taskNotificationResult)) {
-		mr.resumeStartup = false
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return err
 	}
 	result, err := mr.logger.Record(m.ctx, "stdout", "agent_message", raw, time.Now().UTC())
 	if err != nil {
 		m.projectorHealthy.Store(false)
 		return fmt.Errorf("event projector: %w", err)
 	}
-	if result.CloseSucceeded && m.profile.Has("norns") {
+	if result.CloseSucceeded && mr.runtime.Profile.Has("norns") {
 		mr.closeOnce.Do(func() {
 			now := time.Now().UTC()
 			deadline := now.Add(version.NornsCloseGrace)
@@ -392,16 +445,39 @@ func (m *Manager) handleMessage(mr *managedRuntime, raw json.RawMessage) error {
 			return err
 		}
 	}
-	// Claude emits an extra result for asynchronous task notifications. Depending
-	// on whether the task belongs to this process or a resumed process, that
-	// result may have non-zero turns and usage. Its origin, rather than those
-	// counters, identifies it as a notification instead of an instruction boundary.
-	if !result.IsResult || taskNotificationResult {
+	root := envelope.ParentToolUseID == nil && envelope.SubagentType == "" && envelope.AttributionAgent == ""
+	if envelope.Type == "user" && envelope.IsReplay && root {
+		if err = m.store.AcceptInput(m.ctx, mr.subject.ID, mr.runtime.ID, envelope.UUID, time.Now().UTC()); err != nil {
+			return err
+		}
+		return eventlog.SyncReadable(m.ctx, m.store, mr.path, mr.subject.ID)
+	}
+	if !result.IsResult {
+		if root && ((envelope.Type == "system" && (envelope.Subtype == "api_retry" || (envelope.Subtype == "status" && envelope.Status == "requesting"))) || envelope.Type == "assistant" || envelope.Type == "stream_event") {
+			if !mr.rootProcessing {
+				if err := m.store.MarkAgentProcessing(m.ctx, mr.subject.ID, mr.runtime.ID, time.Now().UTC()); err != nil {
+					return err
+				}
+				mr.rootProcessing = true
+			}
+		}
 		return nil
 	}
-	updated, err := m.store.CompleteTurn(m.ctx, mr.subject.ID, mr.runtime.ID, result.Usage, time.Now().UTC())
+	if !root {
+		return nil
+	}
+	updated, err := m.store.CompleteResult(m.ctx, mr.subject.ID, mr.runtime.ID, raw, result.RawSeq, time.Now().UTC())
 	if err != nil {
 		return err
+	}
+	mr.rootProcessing = false
+	// A missing resumed session emits an error result before initialization,
+	// not a successful resume handshake. Preserve the full structured error.
+	if !mr.initialized && result.IsError && envelope.Origin.Kind != "task-notification" {
+		return m.store.SetRuntimeTerminalWithDetails(m.ctx, mr.subject.ID, mr.runtime.ID, domain.RuntimeError, "agent startup failed", "AGENT_STARTUP_FAILED", map[string]any{"result": raw}, time.Now().UTC(), false)
+	}
+	if err = eventlog.SyncReadable(m.ctx, m.store, mr.path, mr.subject.ID); err != nil {
+		return fmt.Errorf("event projector: %w", err)
 	}
 	if updated.State == domain.RuntimeWaiting && updated.Closing {
 		_ = m.store.SetRuntimeTerminal(context.Background(), mr.subject.ID, mr.runtime.ID, domain.RuntimeEnded, "norns task closed", "", time.Now().UTC(), false)
@@ -436,7 +512,11 @@ func (m *Manager) wait(mr *managedRuntime) {
 }
 
 func (m *Manager) finishRuntime(mr *managedRuntime, result process.Result, waitErr error) {
+	mr.workers.Wait()
 	now := time.Now().UTC()
+	if _, err := m.store.MarkUncertainDeliveries(context.Background(), mr.subject.ID, mr.runtime.ID, now); err != nil {
+		mr.logger.Diagnostic(context.Background(), "DELIVERY_AUDIT_FAILED", err)
+	}
 	current, err := m.store.GetRuntime(context.Background(), mr.subject.ID, mr.runtime.ID, false)
 	if err == nil && !current.State.Terminal() {
 		code := "AGENT_EXITED"
@@ -472,7 +552,7 @@ func (m *Manager) finishRuntime(mr *managedRuntime, result process.Result, waitE
 		mr.logger.Diagnostic(context.Background(), "TRANSCRIPT_ARCHIVE_FAILED", archiveErr)
 	}
 	_ = m.store.UpdateRuntimeTranscript(context.Background(), mr.subject.ID, mr.runtime.ID, transcript)
-	if m.profile.Has("norns") && m.norns != nil && (current.State == domain.RuntimeCancelled || current.State == domain.RuntimeError) {
+	if mr.runtime.Profile.Has("norns") && m.norns != nil && (current.State == domain.RuntimeCancelled || current.State == domain.RuntimeError) {
 		outcome, reason := "failed", "Runtime failed under nornsd control"
 		if current.State == domain.RuntimeCancelled {
 			outcome, reason = "cancelled", "Runtime terminated externally by nornsd"
@@ -680,6 +760,9 @@ func (m *Manager) Close() {
 		m.cancel()
 		m.scheduler.Close()
 		m.lifecycle.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), version.GracefulStopTimeout)
+		defer cancel()
+		m.report(m.ExportQueued(ctx, "server shutdown"))
 	})
 }
 func (m *Manager) report(err error) {
@@ -689,6 +772,9 @@ func (m *Manager) report(err error) {
 }
 
 func (m *Manager) Recover(ctx context.Context) error {
+	if err := m.ExportQueued(ctx, "server restart"); err != nil {
+		return err
+	}
 	if err := m.recoverSubjects(ctx); err != nil {
 		return err
 	}
@@ -722,7 +808,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 				_, _ = m.store.AppendEvent(ctx, r.SubjectID, &r.ID, "runtime.error", "runtime", map[string]any{"code": "SERVER_INTERRUPTED", "recovery_blocked": true}, now)
 			}
 			detail := map[string]any{"identity": identity, "recovery": map[string]any{"status": "blocked", "reason": "process_identity_unconfirmed"}}
-			if sessionID := recoveredSessionID(r, ""); sessionID != "" {
+			if sessionID := recoveredSessionID(r); sessionID != "" {
 				detail["session_id"] = sessionID
 			}
 			if resumeSessionID, resumeErr := runtimeResumeSessionID(r); resumeErr == nil && resumeSessionID != "" {
@@ -742,16 +828,32 @@ func (m *Manager) Recover(ctx context.Context) error {
 		subject, subjectErr := m.store.GetSubject(ctx, r.SubjectID)
 		if subjectErr == nil {
 			if path, pathErr := m.owner.SubjectPath(subject.DirectoryName); pathErr == nil {
-				sessionID := recoveredSessionID(r, subject.SessionID)
+				sessionID := recoveredSessionID(r)
 				transcript, archiveErr := ccagent.ArchiveTranscript(path, sessionID, r.ID)
 				if archiveErr != nil {
 					transcript.Status = "failed"
 				}
 				_ = m.store.UpdateRuntimeTranscript(ctx, subject.ID, r.ID, transcript)
-				if subject.Profile.Has("norns") && m.norns != nil {
-					cleanupCtx, cancel := context.WithTimeout(ctx, version.ControlTimeout)
-					_, _ = m.norns.Cleanup(cleanupCtx, path, "failed", "Runtime interrupted by nornsd restart")
+				if r.Profile.Has("norns") {
+					if m.norns == nil {
+						adapter, err := nornsadapter.Discover("")
+						if err != nil {
+							return fmt.Errorf("recover Norns Runtime %s: %w", r.ID, err)
+						}
+						m.norns = &adapter
+					}
+					probeCtx, cancel := context.WithTimeout(ctx, version.ControlTimeout)
+					probeErr := m.norns.Preflight(probeCtx)
 					cancel()
+					if probeErr != nil {
+						return fmt.Errorf("recover Norns Runtime %s: %w", r.ID, probeErr)
+					}
+					cleanupCtx, cancel := context.WithTimeout(ctx, version.ControlTimeout)
+					_, cleanupErr := m.norns.Cleanup(cleanupCtx, path, "failed", "Runtime interrupted by nornsd restart")
+					cancel()
+					if cleanupErr != nil {
+						return cleanupErr
+					}
 				}
 			}
 		}
@@ -763,16 +865,15 @@ func (m *Manager) Recover(ctx context.Context) error {
 	return nil
 }
 
-func recoveredSessionID(runtime domain.Runtime, legacySubjectSessionID string) string {
+func recoveredSessionID(runtime domain.Runtime) string {
 	var processData struct {
 		SessionID string `json:"session_id"`
 	}
 	if json.Unmarshal(runtime.ProcessJSON, &processData) == nil && processData.SessionID != "" {
 		return processData.SessionID
 	}
-	// Runtime records created before per-Runtime sessions did not persist the
-	// launch session ID and always used the Subject session.
-	return legacySubjectSessionID
+	// Every new Runtime owns a session with the same ID.
+	return runtime.ID
 }
 
 func runtimeResumeSessionID(runtime domain.Runtime) (string, error) {
@@ -824,67 +925,58 @@ func (m *Manager) recoverSubjects(ctx context.Context) error {
 		return err
 	}
 	byID := map[string]domain.Subject{}
-	byDir := map[string]domain.Subject{}
+	byDir := map[string]string{}
 	for _, subject := range subjects {
 		byID[subject.ID] = subject
-		byDir[subject.DirectoryName] = subject
+		byDir[subject.DirectoryName] = subject.ID
 	}
-	entries, err := os.ReadDir(m.owner.Path)
+	entries, err := os.ReadDir(filepath.Join(m.owner.Control, "subjects"))
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == ".nornsd_root" {
+		if !entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(m.owner.Path, entry.Name())
-		identity, readErr := root.ReadSubjectIdentity(path)
+		identity, readErr := root.ReadSubjectDataIdentity(filepath.Join(m.owner.Control, "subjects", entry.Name()))
 		if readErr != nil {
 			continue
 		}
-		if existing, ok := byID[identity.SubjectID]; ok {
-			if existing.DirectoryName != entry.Name() || !existing.Profile.Equal(identity.RuntimeProfile) {
-				_ = m.store.MarkUnavailable(ctx, existing.ID, map[string]any{"code": "SUBJECT_IDENTITY_CONFLICT"}, time.Now().UTC())
-			}
+		if identity.SubjectID != entry.Name() {
+			return fmt.Errorf("Subject identity does not match its control directory")
+		}
+		if _, ok := byID[identity.SubjectID]; ok {
 			continue
 		}
-		if conflict, ok := byDir[entry.Name()]; ok {
-			_ = m.store.MarkUnavailable(ctx, conflict.ID, map[string]any{"code": "SUBJECT_DIRECTORY_CONFLICT"}, time.Now().UTC())
-			continue
+		if _, ok := byDir[identity.DirectoryName]; ok {
+			return fmt.Errorf("conflicting Subject directory")
 		}
-		subject := domain.Subject{ID: identity.SubjectID, DirectoryName: entry.Name(), WorkspaceState: domain.WorkspaceMaterialized, Profile: identity.RuntimeProfile, SessionID: identity.SessionID, CreatedAt: identity.CreatedAt, UpdatedAt: time.Now().UTC()}
+		subject := domain.Subject{ID: identity.SubjectID, DirectoryName: identity.DirectoryName, CreatedAt: identity.CreatedAt}
 		if err = m.store.CreateSubject(ctx, subject, nil, "", identity.CreatedAt); err != nil {
 			return err
 		}
-		if err = m.store.MarkMaterialized(ctx, subject.ID, time.Now().UTC()); err != nil {
-			return err
-		}
-		_, _ = m.store.AppendEvent(ctx, subject.ID, nil, "diagnostic", "runtime", map[string]any{"code": "SUBJECT_REGISTRATION_RECOVERED"}, time.Now().UTC())
 	}
 	subjects, _, err = m.store.ListSubjects(ctx, nil, 1_000_000, "", "")
 	if err != nil {
 		return err
 	}
 	for _, subject := range subjects {
-		if subject.WorkspaceState == domain.WorkspacePlanned && subject.State == domain.SubjectQueuing {
+		if subject.WorkspaceState == domain.WorkspaceUnavailable {
 			continue
 		}
-		if subject.WorkspaceState == domain.WorkspaceMaterializing {
+		path, err := m.owner.SubjectPath(subject.DirectoryName)
+		if err != nil {
+			return err
+		}
+		if subject.WorkspaceState == domain.WorkspaceMaterializing || subject.WorkspaceState == domain.WorkspacePlanned {
 			if _, err = m.owner.MaterializeSubject(ctx, subject); err != nil {
 				_ = m.store.MarkUnavailable(ctx, subject.ID, map[string]any{"code": "MATERIALIZATION_RECOVERY_FAILED"}, time.Now().UTC())
 				continue
 			}
 		}
-		if subject.WorkspaceState == domain.WorkspaceUnavailable {
-			continue
-		}
-		path, pathErr := m.owner.SubjectPath(subject.DirectoryName)
-		if pathErr != nil {
-			_ = m.store.MarkUnavailable(ctx, subject.ID, map[string]any{"code": "INVALID_SUBJECT_PATH"}, time.Now().UTC())
-			continue
-		}
 		identity, readErr := root.ReadSubjectIdentity(path)
-		if readErr != nil || identity.SubjectID != subject.ID || identity.DirectoryName != subject.DirectoryName || identity.SessionID != subject.SessionID || !identity.RuntimeProfile.Equal(subject.Profile) {
+		info, statErr := os.Lstat(path)
+		if readErr != nil || identity.SubjectID != subject.ID || identity.DirectoryName != subject.DirectoryName || statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			_ = m.store.MarkUnavailable(ctx, subject.ID, map[string]any{"code": "SUBJECT_IDENTITY_MISMATCH"}, time.Now().UTC())
 			continue
 		}
@@ -894,8 +986,9 @@ func (m *Manager) recoverSubjects(ctx context.Context) error {
 		if err = eventlog.RepairReadable(ctx, m.store, path, subject.ID); err != nil {
 			return err
 		}
-		_ = os.RemoveAll(filepath.Join(path, ".nornsd", "staging"))
-		if err = os.MkdirAll(filepath.Join(path, ".nornsd", "staging"), 0700); err != nil {
+		staging := filepath.Join(m.owner.SubjectData(subject.ID), "staging")
+		_ = os.RemoveAll(staging)
+		if err = os.MkdirAll(staging, 0700); err != nil {
 			return err
 		}
 	}

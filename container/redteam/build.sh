@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
-# 构建带 Claude Code、Norns 和 nornsd 的红队服务镜像。
-#
-# 用法：
-#   container/redteam/build.sh --backend docker
-#   container/redteam/build.sh --backend apple
-#   container/redteam/build.sh --backend docker --use-mirror
-#   container/redteam/build.sh --backend docker --proxy 127.0.0.1:1080
-#
+# 构建红队 nornsd 服务镜像，工具链与 redteam_for_benchmark 保持一致。
+# 用法：container/redteam/build.sh --backend docker [--use-mirror]
 # 参数：
-#   --backend apple|docker  构建后端，默认 docker。
-#   --image IMAGE           Python 基础镜像，默认 python:3.13.15-slim。
-#   --tag IMAGE             输出镜像，默认 nornsd-redteam-server:latest。
-#   --proxy host:port       国外资源下载使用的构建期代理。
-#   --use-mirror            使用阿里云 APT/PyPI 和 npmmirror，默认关闭。
-#   --use-ecs-mirror        使用阿里云 ECS 内网 APT/PyPI，默认关闭，并启用 --use-mirror。
+#   --backend apple|docker   构建后端，默认 docker。
+#   --image IMAGE            Python 基础镜像，默认 python:3.13.15-slim。
+#   --tag IMAGE              输出镜像，默认 nornsd-redteam-server:latest。
+#   --proxy host:port        构建期代理。
+#   --use-mirror             使用国内 APT/PyPI/Maven/Node/npm 镜像。
+#   --use-ecs-mirror         使用 ECS 内网 APT/PyPI，并启用 --use-mirror。
 
 set -euo pipefail
 
@@ -29,7 +23,7 @@ use_mirror=0
 use_ecs_mirror=0
 
 usage() {
-  sed -n '2,16p' "$0"
+  sed -n '2,10p' "$0"
   exit "${1:-0}"
 }
 
@@ -48,20 +42,20 @@ done
 
 case "$backend" in
   apple|docker) ;;
-  *) echo "错误: --backend 仅支持 apple|docker，收到 '$backend'" >&2; exit 2 ;;
+  *) echo "错误: --backend 仅支持 apple|docker，收到 '$backend'" >&2; exit 2; ;;
 esac
 
 if [ -n "$proxy" ]; then
   case "$proxy" in
     *:*) ;;
-    *) echo "错误: --proxy 格式应为 host:port，收到 '$proxy'" >&2; exit 2 ;;
+    *) echo "错误: --proxy 格式应为 host:port，收到 '$proxy'" >&2; exit 2; ;;
   esac
 fi
 
 case "$(uname -m)" in
   arm64|aarch64) release_arch="arm64"; expected_arch="ARM aarch64" ;;
   x86_64|amd64) release_arch="x64"; expected_arch="x86-64" ;;
-  *) echo "错误: 不支持的主机架构 $(uname -m)" >&2; exit 1 ;;
+  *) echo "错误: 不支持的主机架构 $(uname -m)" >&2; exit 1; ;;
 esac
 release_dir="$project_root/release/linux-$release_arch"
 
@@ -89,19 +83,21 @@ if [ -n "$proxy" ]; then
   http_proxy_url="http://$proxy"
   all_proxy_url="socks5://$proxy"
 fi
-no_proxy_list="localhost,127.0.0.1,::1,mirrors.aliyun.com,mirrors.cloud.aliyuncs.com,registry.npmmirror.com,npmmirror.com,cdn.npmmirror.com"
+no_proxy_list="localhost,127.0.0.1,::1,mirrors.aliyun.com,mirrors.cloud.aliyuncs.com,maven.aliyun.com,registry.npmmirror.com,npmmirror.com,cdn.npmmirror.com"
 
 npm_registry=""
 node_dist_url="https://nodejs.org/dist"
 pip_index_url=""
 pip_trusted_host=""
 apt_source_block=""
+maven_mirror_url=""
 if [ "$use_mirror" = 1 ]; then
   npm_registry="https://registry.npmmirror.com"
   node_dist_url="https://npmmirror.com/mirrors/node"
   pip_index_url="https://mirrors.aliyun.com/pypi/simple/"
   pip_trusted_host="mirrors.aliyun.com"
   apt_mirror_base="https://mirrors.aliyun.com"
+  maven_mirror_url="https://maven.aliyun.com/repository/public"
   if [ "$use_ecs_mirror" = 1 ]; then
     apt_mirror_base="http://mirrors.cloud.aliyuncs.com"
     pip_index_url="http://mirrors.cloud.aliyuncs.com/pypi/simple/"
@@ -119,6 +115,7 @@ build_args=(
   --build-arg "PIP_INDEX_URL=$pip_index_url"
   --build-arg "PIP_TRUSTED_HOST=$pip_trusted_host"
   --build-arg "APT_SOURCE_BLOCK=$apt_source_block"
+  --build-arg "MAVEN_MIRROR_URL=$maven_mirror_url"
 )
 if [ -n "$proxy" ]; then
   build_args+=(
@@ -139,6 +136,7 @@ echo "  proxy   : ${proxy:-<none>}"
 echo "  mirror  : $([ "$use_mirror" = 1 ] && echo yes || echo no)"
 echo "  apt     : ${apt_mirror_base:-image default}"
 echo "  pypi    : ${pip_index_url:-pip default}"
+echo "  maven   : ${maven_mirror_url:-maven central}"
 
 case "$backend" in
   apple)

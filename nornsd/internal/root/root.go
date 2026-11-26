@@ -38,12 +38,22 @@ func Acquire(ctx context.Context, path string, mode string, now time.Time) (*Own
 	if err != nil {
 		return nil, domain.Wrap("INVALID_REQUEST", "invalid workspace root", http.StatusBadRequest, err)
 	}
-	control := filepath.Join(abs, ".nornsd_root")
-	if err = os.MkdirAll(control, 0700); err != nil {
+	control := filepath.Join(abs, ".nornsd")
+	for _, name := range []string{"root.json", "nornsd.sqlite", "lock"} {
+		if _, legacyErr := os.Lstat(filepath.Join(control, name)); legacyErr == nil {
+			return nil, domain.NewError("UNSUPPORTED_DATABASE", "legacy nornsd root layout is not supported", http.StatusConflict)
+		} else if !os.IsNotExist(legacyErr) {
+			return nil, legacyErr
+		}
+	}
+	if err = os.MkdirAll(filepath.Join(control, "service"), 0700); err != nil {
 		return nil, domain.Wrap("SERVICE_UNAVAILABLE", "cannot create nornsd root", http.StatusServiceUnavailable, err)
 	}
-	lock := flock.New(filepath.Join(control, "lock"))
-	ok, err := lock.TryLockContext(ctx, 0)
+	lock := flock.New(filepath.Join(control, "service", "nornsd_lock"))
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	ok, err := lock.TryLock()
 	if err != nil {
 		return nil, domain.Wrap("ROOT_IN_USE", "cannot lock nornsd root", http.StatusConflict, err)
 	}
@@ -52,7 +62,7 @@ func Acquire(ctx context.Context, path string, mode string, now time.Time) (*Own
 	}
 	owner := &Owner{Path: abs, Control: control, lock: lock}
 	cleanup := func(e error) (*Owner, error) { _ = lock.Unlock(); return nil, e }
-	identityPath := filepath.Join(control, "root.json")
+	identityPath := filepath.Join(control, "service", "root.json")
 	identity, exists, err := readIdentity(identityPath)
 	if err != nil {
 		return cleanup(err)
@@ -61,9 +71,9 @@ func Acquire(ctx context.Context, path string, mode string, now time.Time) (*Own
 		if hasSubjectIdentity(abs) {
 			return cleanup(domain.NewError("UNSUPPORTED_DATABASE", "nornsd database is missing while Subject identities exist", http.StatusInternalServerError))
 		}
-		identity = Identity{FormatVersion: 1, RootID: uuid.NewString(), DatabaseSchema: version.DatabaseSchema, CreatedAt: now.UTC()}
+		identity = Identity{FormatVersion: 2, RootID: uuid.NewString(), DatabaseSchema: version.DatabaseSchema, CreatedAt: now.UTC()}
 	}
-	databasePath := filepath.Join(control, "nornsd.sqlite")
+	databasePath := filepath.Join(control, "service", "nornsd.sqlite")
 	if exists {
 		if _, statErr := os.Stat(databasePath); errors.Is(statErr, os.ErrNotExist) {
 			return cleanup(domain.NewError("UNSUPPORTED_DATABASE", "nornsd database is missing", http.StatusInternalServerError))
@@ -85,8 +95,8 @@ func Acquire(ctx context.Context, path string, mode string, now time.Time) (*Own
 			return cleanup(err)
 		}
 	}
-	_ = writeJSONAtomic(filepath.Join(control, "owner.json"), map[string]any{"mode": mode, "pid": os.Getpid(), "started_at": now.UTC()}, 0600)
-	for _, dir := range []string{"log", "staging"} {
+	_ = writeJSONAtomic(filepath.Join(control, "service", "owner.json"), map[string]any{"mode": mode, "pid": os.Getpid(), "started_at": now.UTC()}, 0600)
+	for _, dir := range []string{"configs", "subjects", "staging", "queue_record"} {
 		if err = os.MkdirAll(filepath.Join(control, dir), 0700); err != nil {
 			_ = owner.Close()
 			return nil, err
@@ -96,16 +106,15 @@ func Acquire(ctx context.Context, path string, mode string, now time.Time) (*Own
 }
 
 func hasSubjectIdentity(rootPath string) bool {
-	entries, err := os.ReadDir(rootPath)
+	entries, err := os.ReadDir(filepath.Join(rootPath, ".nornsd", "subjects"))
 	if err != nil {
 		return false
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == ".nornsd_root" {
-			continue
-		}
-		if _, err = os.Stat(filepath.Join(rootPath, entry.Name(), ".nornsd", "subject.json")); err == nil {
-			return true
+		if entry.IsDir() {
+			if _, err := os.Stat(filepath.Join(rootPath, ".nornsd", "subjects", entry.Name(), "subject.json")); err == nil {
+				return true
+			}
 		}
 	}
 	return false
@@ -123,7 +132,7 @@ func readIdentity(path string) (Identity, bool, error) {
 	if err = json.Unmarshal(b, &id); err != nil {
 		return id, false, domain.Wrap("UNSUPPORTED_DATABASE", "invalid root.json", http.StatusInternalServerError, err)
 	}
-	if id.FormatVersion != 1 || id.DatabaseSchema != version.DatabaseSchema || id.RootID == "" {
+	if id.FormatVersion != 2 || id.DatabaseSchema != version.DatabaseSchema || id.RootID == "" {
 		return id, false, domain.NewError("UNSUPPORTED_DATABASE", "unsupported root identity", http.StatusInternalServerError)
 	}
 	return id, true, nil

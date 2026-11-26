@@ -5227,7 +5227,7 @@ dependencies = [
 
 [[package]]
 name = "well"
-version = "0.2.1"
+version = "0.3.2"
 dependencies = [
  "futures-util",
  "httpmock",
@@ -5238,6 +5238,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "url",

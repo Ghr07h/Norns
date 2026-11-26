@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -150,7 +152,7 @@ func (s *Store) probe(ctx context.Context) error {
 	if schemaVersion != version.SchemaVersion {
 		return domain.Errorf("UNSUPPORTED_SCHEMA_VERSION", "unsupported schema version %d", schemaVersion)
 	}
-	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('workspace_meta','tasks','cognitions','explorations','exploration_sources')`)
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('workspace_meta','tasks','cognitions','explorations')`)
 	if err != nil {
 		return domain.Wrap("INVALID_DATABASE", "cannot inspect database schema", err)
 	}
@@ -166,7 +168,7 @@ func (s *Store) probe(ctx context.Context) error {
 	if err := rows.Close(); err != nil {
 		return domain.Wrap("INVALID_DATABASE", "cannot inspect database schema", err)
 	}
-	for _, name := range []string{"workspace_meta", "tasks", "cognitions", "explorations", "exploration_sources"} {
+	for _, name := range []string{"workspace_meta", "tasks", "cognitions", "explorations"} {
 		if !tables[name] {
 			return domain.NewError("INVALID_DATABASE", "Workspace database is missing required tables; try norns workspace reset")
 		}
@@ -346,6 +348,11 @@ func Validate(ctx context.Context, q Queryer) error {
 		query   string
 		message string
 	}{
+		{`SELECT count(*) FROM workspace_meta WHERE
+            typeof(last_cognition_number)<>'integer' OR last_cognition_number<0 OR
+            typeof(last_exploration_number)<>'integer' OR last_exploration_number<0 OR
+            last_cognition_number<COALESCE((SELECT max(CAST(substr(id,5) AS INTEGER)) FROM cognitions),0) OR
+            last_exploration_number<COALESCE((SELECT max(CAST(substr(id,5) AS INTEGER)) FROM explorations),0)`, "Workspace entity ID counters are invalid"},
 		{`SELECT count(*) FROM tasks WHERE length(trim(purpose))=0 OR max_concurrency<1 OR
 			(status='open' AND (outcome IS NOT NULL OR outcome_reason IS NOT NULL OR closed_at IS NOT NULL)) OR
 			(status='closed' AND (outcome NOT IN ('succeeded','unachievable','failed','cancelled') OR outcome_reason IS NULL OR length(trim(outcome_reason))=0 OR closed_at IS NULL)) OR
@@ -353,40 +360,21 @@ func Validate(ctx context.Context, q Queryer) error {
 		{`SELECT count(*) FROM tasks t WHERE NOT EXISTS (
 			SELECT 1 FROM cognitions c WHERE c.id=t.init_cognition_ref AND c.origin='task')`, "Task init does not refer to a Task-init Cognition"},
 		{`SELECT count(*) FROM cognitions WHERE length(trim(title))=0 OR length(trim(content))=0 OR task_purpose_relevant NOT IN (0,1) OR
-			(origin='task' AND (task_id IS NULL OR origin_exploration_id IS NOT NULL OR task_purpose_relevant<>0)) OR
-			(origin='user' AND NOT ((task_id IS NULL AND origin_cognition_id IS NOT NULL AND origin_exploration_id IS NULL AND task_purpose_relevant=0) OR
-			                         (task_id IS NOT NULL AND origin_cognition_id IS NULL AND origin_exploration_id IS NOT NULL))) OR
-			(origin='exploration' AND (task_id IS NULL OR origin_cognition_id IS NOT NULL OR origin_exploration_id IS NULL)) OR
+			(origin='task' AND (task_id IS NULL OR origin_task_id IS NULL OR origin_task_id<>task_id OR origin_exploration_id IS NOT NULL OR task_purpose_relevant<>0)) OR
+			(origin='user' AND NOT ((task_id IS NULL AND origin_task_id IS NOT NULL AND origin_exploration_id IS NULL AND task_purpose_relevant=0) OR
+			                         (task_id IS NOT NULL AND origin_task_id IS NULL AND origin_exploration_id IS NOT NULL))) OR
+			(origin='exploration' AND (task_id IS NULL OR origin_task_id IS NOT NULL OR origin_exploration_id IS NULL)) OR
 			origin NOT IN ('task','user','exploration')`, "Cognition fields violate the origin matrix"},
 		{`SELECT count(*) FROM cognitions c WHERE c.origin='task' AND NOT EXISTS (
 			SELECT 1 FROM tasks t WHERE t.id=c.task_id AND t.init_cognition_ref=c.id)`, "Task-init Cognition ownership is invalid"},
 		{`SELECT count(*) FROM cognitions c JOIN explorations e ON e.id=c.origin_exploration_id
 			WHERE c.origin='exploration' AND c.task_id<>e.task_id`, "Explorer Cognition belongs to a different Task"},
-		{`SELECT count(*) FROM cognitions c WHERE c.origin='task' AND (
-			(NOT EXISTS (SELECT 1 FROM cognitions earlier WHERE earlier.origin='task' AND earlier.rowid<c.rowid)
-			 AND c.origin_cognition_id IS NOT NULL) OR
-			(EXISTS (SELECT 1 FROM cognitions earlier WHERE earlier.origin='task' AND earlier.rowid<c.rowid)
-			 AND (c.origin_cognition_id IS NULL OR c.origin_cognition_id<>(
-				SELECT expected.id FROM cognitions expected
-				WHERE expected.origin='task' AND expected.rowid<c.rowid
-				ORDER BY expected.created_at DESC,expected.id ASC LIMIT 1))))`, "Task-init Cognition predecessor does not match the creation-time selection rule"},
 		{`SELECT count(*) FROM explorations WHERE length(trim(title))=0 OR length(trim(content))=0 OR
-			(status='todo' AND (executor_id IS NOT NULL OR output_ref IS NOT NULL OR assigned_at IS NOT NULL OR outcome IS NOT NULL OR outcome_reason IS NOT NULL OR finished_at IS NOT NULL)) OR
-			(status='running' AND (executor_id IS NULL OR length(trim(executor_id))=0 OR output_ref IS NULL OR length(trim(output_ref))=0 OR assigned_at IS NULL OR outcome IS NOT NULL OR outcome_reason IS NOT NULL OR finished_at IS NOT NULL)) OR
+			(status='todo' AND (explorer_id IS NOT NULL OR output_ref IS NOT NULL OR assigned_at IS NOT NULL OR outcome IS NOT NULL OR outcome_reason IS NOT NULL OR finished_at IS NOT NULL)) OR
+			(status='running' AND (explorer_id IS NULL OR length(trim(explorer_id))=0 OR output_ref IS NULL OR length(trim(output_ref))=0 OR assigned_at IS NULL OR outcome IS NOT NULL OR outcome_reason IS NOT NULL OR finished_at IS NOT NULL)) OR
 			(status='finished' AND (outcome NOT IN ('succeeded','inconclusive','failed','cancelled') OR outcome_reason IS NULL OR length(trim(outcome_reason))=0 OR finished_at IS NULL OR
-			 ((executor_id IS NULL OR output_ref IS NULL OR assigned_at IS NULL) AND NOT (executor_id IS NULL AND output_ref IS NULL AND assigned_at IS NULL AND outcome='cancelled')))) OR
+			 ((explorer_id IS NULL OR output_ref IS NULL OR assigned_at IS NULL) AND NOT (explorer_id IS NULL AND output_ref IS NULL AND assigned_at IS NULL AND outcome='cancelled')))) OR
 			status NOT IN ('todo','running','finished')`, "Exploration fields violate the lifecycle state matrix"},
-		{`SELECT count(*) FROM explorations e WHERE NOT EXISTS (SELECT 1 FROM exploration_sources s WHERE s.exploration_id=e.id)`, "Exploration has no source Cognition"},
-		{`SELECT count(*) FROM explorations e WHERE EXISTS (SELECT 1 FROM exploration_sources s WHERE s.exploration_id=e.id)
-			AND (SELECT min(ordinal) FROM exploration_sources s WHERE s.exploration_id=e.id)<>0`, "Exploration source ordinals do not start at zero"},
-		{`SELECT count(*) FROM explorations e WHERE (SELECT count(*) FROM exploration_sources s WHERE s.exploration_id=e.id)<>
-			(SELECT max(ordinal)+1 FROM exploration_sources s WHERE s.exploration_id=e.id)`, "Exploration source ordinals are not contiguous"},
-		{`SELECT count(*) FROM explorations e JOIN explorations p ON p.id=e.retry_of
-			WHERE p.status<>'finished' OR e.title<>p.title OR e.content<>p.content OR
-			EXISTS (SELECT cognition_id,ordinal FROM exploration_sources WHERE exploration_id=e.id
-			        EXCEPT SELECT cognition_id,ordinal FROM exploration_sources WHERE exploration_id=p.id) OR
-			EXISTS (SELECT cognition_id,ordinal FROM exploration_sources WHERE exploration_id=p.id
-			        EXCEPT SELECT cognition_id,ordinal FROM exploration_sources WHERE exploration_id=e.id)`, "retry Exploration does not preserve its finished source definition"},
 		{`SELECT count(*) FROM tasks t WHERE t.status='closed' AND EXISTS (
 			SELECT 1 FROM explorations e WHERE e.task_id=t.id AND e.status<>'finished')`, "closed Task contains unfinished Exploration"},
 	}
@@ -395,11 +383,124 @@ func Validate(ctx context.Context, q Queryer) error {
 			return err
 		}
 	}
+	if err := validateCognitionLists(ctx, q); err != nil {
+		return err
+	}
 	if err := validateDAG(ctx, q); err != nil {
 		return err
 	}
 	if err := validateIdentifiersAndTimes(ctx, q); err != nil {
 		return err
+	}
+	return nil
+}
+
+// DecodeCognitionIDs rejects malformed persisted lists instead of silently repairing them.
+func DecodeCognitionIDs(encoded string) ([]string, error) {
+	var ids []string
+	if err := json.Unmarshal([]byte(encoded), &ids); err != nil || ids == nil {
+		return nil, domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Cognition references must be a JSON array of IDs")
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if domain.ValidateID(id, "cognition") != nil || seen[id] {
+			return nil, domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Cognition references contain an invalid or duplicate ID")
+		}
+		seen[id] = true
+	}
+	return ids, nil
+}
+
+func validateCognitionLists(ctx context.Context, q Queryer) error {
+	type cognitionOrigin struct {
+		origin      string
+		exploration sql.NullString
+	}
+	cogs := map[string]cognitionOrigin{}
+	rows, err := q.QueryContext(ctx, `SELECT id,origin,origin_exploration_id,meta FROM cognitions`)
+	if err != nil {
+		return mapDBError(err)
+	}
+	for rows.Next() {
+		var id string
+		var metaJSON string
+		var c cognitionOrigin
+		if err := rows.Scan(&id, &c.origin, &c.exploration, &metaJSON); err != nil {
+			rows.Close()
+			return mapDBError(err)
+		}
+		if _, err := domain.DecodeCognitionMeta(metaJSON); err != nil {
+			rows.Close()
+			return domain.Wrap("WORKSPACE_STATE_UNTRUSTED", "Cognition meta must be a JSON object with string values", err)
+		}
+		cogs[id] = c
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return mapDBError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return mapDBError(err)
+	}
+	type definition struct {
+		title, content, status string
+		retry                  sql.NullString
+		sources                []string
+	}
+	exps := map[string]definition{}
+	members := map[string]bool{}
+	rows, err = q.QueryContext(ctx, `SELECT id,title,content,status,retry_of,sources,hints FROM explorations`)
+	if err != nil {
+		return mapDBError(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, sourcesJSON, hintsJSON string
+		var e definition
+		if err := rows.Scan(&id, &e.title, &e.content, &e.status, &e.retry, &sourcesJSON, &hintsJSON); err != nil {
+			return mapDBError(err)
+		}
+		e.sources, err = DecodeCognitionIDs(sourcesJSON)
+		if err != nil {
+			return err
+		}
+		if len(e.sources) == 0 {
+			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Exploration has no source Cognition")
+		}
+		for _, cid := range e.sources {
+			if _, ok := cogs[cid]; !ok {
+				return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Exploration references a missing source Cognition")
+			}
+		}
+		hints, err := DecodeCognitionIDs(hintsJSON)
+		if err != nil {
+			return err
+		}
+		for _, cid := range hints {
+			c, ok := cogs[cid]
+			if !ok || c.origin != "user" || !c.exploration.Valid || c.exploration.String != id || members[cid] {
+				return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Exploration hint membership does not match Cognition provenance")
+			}
+			members[cid] = true
+		}
+		exps[id] = e
+	}
+	if err := rows.Err(); err != nil {
+		return mapDBError(err)
+	}
+	for id, c := range cogs {
+		if c.origin == "user" && c.exploration.Valid && !members[id] {
+			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Exploration user Cognition is missing from hints")
+		}
+	}
+	for _, e := range exps {
+		if !e.retry.Valid {
+			continue
+		}
+		p, ok := exps[e.retry.String]
+		if !ok || p.status != "finished" || e.title != p.title || e.content != p.content || !slices.Equal(e.sources, p.sources) {
+			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "retry Exploration does not preserve its finished source definition")
+		}
 	}
 	return nil
 }
@@ -479,8 +580,7 @@ type edge struct{ from, to string }
 func validateDAG(ctx context.Context, q Queryer) error {
 	edges := []edge{}
 	queries := []string{
-		`SELECT cognition_id, exploration_id FROM exploration_sources`,
-		`SELECT origin_cognition_id, id FROM cognitions WHERE origin_cognition_id IS NOT NULL`,
+		`SELECT s.value, e.id FROM explorations e, json_each(e.sources) s`,
 		`SELECT origin_exploration_id, id FROM cognitions WHERE origin_exploration_id IS NOT NULL`,
 	}
 	for _, query := range queries {

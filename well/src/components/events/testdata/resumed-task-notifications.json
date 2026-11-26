@@ -1,0 +1,199 @@
+[
+  {
+    "seq": "156",
+    "type": "agent.task_started",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.329032449Z",
+    "payload": {
+      "agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-1",
+        "tool_use_id": "prior-call-1",
+        "task_id": "prior-task-1"
+      },
+      "session_id": "prior-runtime",
+      "subagent_type": "norns:explorer-for-redteam",
+      "task_id": "prior-task-1",
+      "task_type": "local_agent",
+      "tool_use_id": "prior-call-1"
+    }
+  },
+  {
+    "seq": "157",
+    "type": "agent.tool_result",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.338357804Z",
+    "payload": {
+      "agent": {
+        "role": "main",
+        "name": "Coordinator"
+      },
+      "spawned_agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-1",
+        "tool_use_id": "prior-call-1",
+        "task_id": "prior-task-1",
+        "agent_id": "prior-task-1"
+      },
+      "subagent_status": "running",
+      "tool_call_id": "prior-call-1"
+    }
+  },
+  {
+    "seq": "159",
+    "type": "agent.task_started",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.535806437Z",
+    "payload": {
+      "agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-2",
+        "tool_use_id": "prior-call-2",
+        "task_id": "prior-task-2"
+      },
+      "session_id": "prior-runtime",
+      "subagent_type": "norns:explorer-for-redteam",
+      "task_id": "prior-task-2",
+      "task_type": "local_agent",
+      "tool_use_id": "prior-call-2"
+    }
+  },
+  {
+    "seq": "160",
+    "type": "agent.tool_result",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.545430732Z",
+    "payload": {
+      "agent": {
+        "role": "main",
+        "name": "Coordinator"
+      },
+      "spawned_agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-2",
+        "tool_use_id": "prior-call-2",
+        "task_id": "prior-task-2",
+        "agent_id": "prior-task-2"
+      },
+      "subagent_status": "running",
+      "tool_call_id": "prior-call-2"
+    }
+  },
+  {
+    "seq": "162",
+    "type": "agent.task_started",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.851852759Z",
+    "payload": {
+      "agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-3",
+        "tool_use_id": "prior-call-3",
+        "task_id": "prior-task-3"
+      },
+      "session_id": "prior-runtime",
+      "subagent_type": "norns:explorer-for-redteam",
+      "task_id": "prior-task-3",
+      "task_type": "local_agent",
+      "tool_use_id": "prior-call-3"
+    }
+  },
+  {
+    "seq": "163",
+    "type": "agent.tool_result",
+    "runtime_id": "prior-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T08:24:11.86270909Z",
+    "payload": {
+      "agent": {
+        "role": "main",
+        "name": "Coordinator"
+      },
+      "spawned_agent": {
+        "role": "sub",
+        "name": "Explorer-For-Redteam",
+        "source": "norns:explorer-for-redteam",
+        "instance_id": "tool:prior-call-3",
+        "tool_use_id": "prior-call-3",
+        "task_id": "prior-task-3",
+        "agent_id": "prior-task-3"
+      },
+      "subagent_status": "running",
+      "tool_call_id": "prior-call-3"
+    }
+  },
+  {
+    "seq": "1152",
+    "type": "agent.task_notification",
+    "runtime_id": "resumed-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T09:00:50.313272505Z",
+    "payload": {
+      "agent": {
+        "role": "unknown",
+        "name": "Background task"
+      },
+      "session_id": "resumed-runtime",
+      "status": "failed",
+      "task_id": "prior-task-1"
+    }
+  },
+  {
+    "seq": "1153",
+    "type": "agent.task_notification",
+    "runtime_id": "resumed-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T09:00:50.319795417Z",
+    "payload": {
+      "agent": {
+        "role": "unknown",
+        "name": "Background task"
+      },
+      "session_id": "resumed-runtime",
+      "status": "failed",
+      "task_id": "prior-task-2"
+    }
+  },
+  {
+    "seq": "1154",
+    "type": "agent.task_notification",
+    "runtime_id": "resumed-runtime",
+    "source": "agent",
+    "timestamp": "2026-11-25T09:00:50.325136255Z",
+    "payload": {
+      "agent": {
+        "role": "unknown",
+        "name": "Background task"
+      },
+      "session_id": "resumed-runtime",
+      "status": "failed",
+      "task_id": "prior-task-3"
+    }
+  },
+  {
+    "seq": "1156",
+    "type": "runtime.session_resumed",
+    "runtime_id": "resumed-runtime",
+    "source": "runtime",
+    "timestamp": "2026-11-25T09:00:50.345694211Z",
+    "payload": {
+      "resume_session_id": "prior-runtime",
+      "session_id": "resumed-runtime"
+    }
+  }
+]

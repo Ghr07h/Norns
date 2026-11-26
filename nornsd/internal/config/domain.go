@@ -33,20 +33,20 @@ func LoadDomain(dir string) (Domain, error) {
 	var meta domainMeta
 	file, err := os.Open(filepath.Join(dir, "meta.json"))
 	if err != nil {
-		return Domain{}, fmt.Errorf("cannot read NORNS_CUSTOM_DOMAIN_DIR meta.json: %w", err)
+		return Domain{}, fmt.Errorf("cannot read AGENT_NORNS_EXTENDS_AGENTS_DIR meta.json: %w", err)
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	if err = decoder.Decode(&meta); err != nil {
-		return Domain{}, fmt.Errorf("invalid NORNS_CUSTOM_DOMAIN_DIR meta.json: %w", err)
+		return Domain{}, fmt.Errorf("invalid AGENT_NORNS_EXTENDS_AGENTS_DIR meta.json: %w", err)
 	}
 	var trailing any
 	if err = decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
 			err = fmt.Errorf("multiple JSON values are not allowed")
 		}
-		return Domain{}, fmt.Errorf("invalid NORNS_CUSTOM_DOMAIN_DIR meta.json: %w", err)
+		return Domain{}, fmt.Errorf("invalid AGENT_NORNS_EXTENDS_AGENTS_DIR meta.json: %w", err)
 	}
 	meta.DomainName = strings.TrimSpace(meta.DomainName)
 	meta.DomainDeciderDescription = strings.TrimSpace(meta.DomainDeciderDescription)
@@ -81,7 +81,7 @@ func readDomainExtraInfo(dir, name, field string) (string, error) {
 	}
 	root, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve NORNS_CUSTOM_DOMAIN_DIR: %w", err)
+		return "", fmt.Errorf("cannot resolve AGENT_NORNS_EXTENDS_AGENTS_DIR: %w", err)
 	}
 	target, err := filepath.EvalSymlinks(filepath.Join(dir, name))
 	if err != nil {
@@ -89,7 +89,7 @@ func readDomainExtraInfo(dir, name, field string) (string, error) {
 	}
 	rel, err := filepath.Rel(root, target)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s must stay within NORNS_CUSTOM_DOMAIN_DIR", field)
+		return "", fmt.Errorf("%s must stay within AGENT_NORNS_EXTENDS_AGENTS_DIR", field)
 	}
 	info, err := os.Stat(target)
 	if err != nil || !info.Mode().IsRegular() {

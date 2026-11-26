@@ -16,11 +16,11 @@ func TestViewPublicationFailuresReturnIOErrorWithoutTemporaryFiles(t *testing.T)
 		call func(*Service, string) error
 	}{
 		{"status", func(service *Service, _ string) error {
-			_, _, err := service.StatusView(context.Background(), nil, false)
+			_, _, err := service.StatusView(context.Background(), nil, ViewYAML)
 			return err
 		}},
 		{"trace", func(service *Service, explorationID string) error {
-			_, _, err := service.TraceView(context.Background(), explorationID, false)
+			_, _, err := service.TraceView(context.Background(), explorationID, ViewYAML)
 			return err
 		}},
 		{"visual", func(service *Service, _ string) error {

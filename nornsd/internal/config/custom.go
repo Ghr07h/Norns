@@ -26,10 +26,13 @@ var customPluginMetadata = []byte(`{
 `)
 
 func PublishCustom(subjectPath, runtimeID string, c *Config) (pluginPath string, hash string, err error) {
-	if c == nil || (c.CustomAgentsDir == "" && c.CustomSkillsDir == "") {
+	if c == nil || c.NornsEnable || (c.CustomAgentsDir == "" && c.CustomSkillsDir == "" && c.MainAgentFile == "") {
 		return "", "", nil
 	}
-	stage := filepath.Join(subjectPath, ".nornsd", "staging", "custom-plugin-"+runtimeID)
+	if err = ValidateResources(*c); err != nil {
+		return "", "", err
+	}
+	stage := filepath.Join(root.SubjectDataPath(subjectPath), "staging", "custom-plugin-"+runtimeID)
 	_ = os.RemoveAll(stage)
 	defer os.RemoveAll(stage)
 	if err = os.MkdirAll(filepath.Join(stage, ".claude-plugin"), 0700); err != nil {
@@ -46,6 +49,11 @@ func PublishCustom(subjectPath, runtimeID string, c *Config) (pluginPath string,
 			continue
 		}
 		if err = root.CopyTreeNoLinks(source.path, filepath.Join(stage, source.target)); err != nil {
+			return "", "", err
+		}
+	}
+	if c.MainAgentFile != "" {
+		if _, _, err = CopyMainAgent(c.MainAgentFile, filepath.Join(stage, "agents")); err != nil {
 			return "", "", err
 		}
 	}
@@ -83,7 +91,7 @@ func PublishCustom(subjectPath, runtimeID string, c *Config) (pluginPath string,
 	if err = os.WriteFile(filepath.Join(stage, "plugin.manifest.json"), manifestBytes, 0600); err != nil {
 		return "", "", err
 	}
-	artifact := filepath.Join(subjectPath, ".nornsd", "runtimes", runtimeID, "artifacts", "custom-plugin")
+	artifact := filepath.Join(root.RuntimeDataPath(subjectPath, runtimeID), "plugins", "custom-plugin")
 	if err = os.MkdirAll(filepath.Dir(artifact), 0700); err != nil {
 		return "", "", err
 	}

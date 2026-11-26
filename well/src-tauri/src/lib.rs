@@ -2,6 +2,7 @@ mod api;
 mod state;
 mod version;
 
+use api::archive::{cancel_archive, download_archive};
 use api::command::*;
 use state::AppState;
 
@@ -29,6 +30,9 @@ pub fn run() {
             get_norns_status,
             get_norns_trace,
             get_norns_visual,
+            get_norns_entity,
+            download_archive,
+            cancel_archive,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Well");

@@ -20,9 +20,23 @@ Well 只通过 nornsd API 工作，不直接访问 Subject 文件系统、SQLite
 1. 添加 Server 名称、基础 URL 和 Bearer Token；URL 只填写 origin，不包含 `/api/` 或其他路径。
 2. 连接成功后，Well 会绑定 nornsd 返回的稳定 `server_id`。
 3. 进入 Server workspace 浏览 Subject 和 Queue，或创建 Subject 并提交首条 instruction。
-4. 在 Subject 详情中查看实体概览、Runtime（含历史记录）、事件记录和可选 Norns View。
+4. 在 Subject 详情中查看实体概览、Runtime（含历史记录）、Agent 消息、事件记录和 Norns 信息。
 
 同一 URL 后的 `server_id` 改变时，Well 会阻止继续操作，直到用户确认清理该连接的本地缓存。不同 Server 即使产生相同 Subject UUID，也通过本地 Server ID 隔离。
+
+Status/Trace 默认 Markdown，可在格式下拉框切换 YAML/JSON。Norns 信息同时提供 Visual 和 Cog/Exp ID 查询；入口始终开放，服务端分别检查工作区和当前服务的 Norns 可用性。
+
+新 Runtime 可填写可选的 AGENT_* JSON 配置覆盖及 resume-session；活跃 Runtime 只追加 instruction。Profile 随 Runtime 展示，不再属于 Subject 或 Server。事件以角色名和实例 ID 区分同名 Subagent；优先显示 Agent 工具返回的实际 agentId，返回前使用调用 ID，缺少依据时标明实例未知。
+
+事件记录支持内容搜索叠加 Runtime ID、事件类型、来源智能体角色和来源智能体 ID 筛选。ID 支持片段匹配，角色可选主/子智能体或具体名称；筛选仅作用于当前事件页（最多 200 条），翻页保留条件，可一键清空。智能体筛选以事件来源/工具调用者为准。
+
+事件记录和 Agent 消息均提供默认关闭的 `Agent Only` 开关。开启后仅显示输出消息、调用工具、返回工具结果、本次处理中断、本次处理结果五类事件；关闭后恢复完整事件范围。事件记录中该开关与其他筛选取交集，清空筛选时一并关闭。Agent 消息在筛选后分页，切换开关回到最新页；Agent 列表和状态仍根据完整历史判断。
+
+Agent 消息可选择运行中或已结束的 Runtime，左侧按 Main Agent、进行中子智能体、已结束子智能体排列；各子分组按首次出现时间从早到晚排序。右侧只显示所选实例的 `agent.*` 事件，按事件序号排列，复用事件栏渲染并支持每页 200 条翻页。首次打开会补齐事件历史并复用本地缓存；活跃 Runtime 每 30 秒增量同步，可手动刷新。恢复会话时，CC 可能关闭上一 Runtime 强制终止后遗留的任务；Well 根据明确的 `runtime.session_resumed` 关系和精确 task ID，从同 Subject 的历史身份元数据恢复通知归属，分别显示对应的已结束 Agent。历史正文不混入当前消息列表，缺少恢复关系或匹配依据时仍保留归属未知。
+
+同步 Agent 返回完成结果后结束；后台启动结果仍为进行中，收到对应 Agent task 的完成/失败/停止通知后结束；恢复后回到进行中。子智能体内部的 Bash task 完成不会结束该智能体。旧记录缺少状态依据时标为状态未知，缺少实例依据的消息放入归属未知栏目；Runtime 结束后其已知实例统一显示已结束。
+
+进入服务后的右上方“归档”按钮支持下载整个 Root、Subject 工作目录、全部运行数据、Subject 运行数据或指定 Runtime 运行数据。服务端要求相应范围空闲，五种范围共用一个打包额度；下载支持取消，独立超时 10 分钟。归档由 Rust 流式写入用户选择的位置，失败时不覆盖原有文件。
 
 ## 本地开发
 
@@ -81,11 +95,17 @@ npm run release
 npm run release -- --output ../custom-release
 ```
 
-构建实现与测试位于本目录 `scripts/`，不依赖两个 Go 项目的构建代码，默认同样输出到 `../release/`。原有桌面构建命令也保持可用，但不额外整理发布产物：
+构建实现与测试位于本目录 `scripts/`，不依赖两个 Go 项目的构建代码，默认同样输出到 `../release/`。
+
+发布入口自动对 Rust 源码路径进行映射，避免将本机用户目录、项目路径及 Cargo 依赖路径嵌入发布的可执行文件，并在发布前检查。这只影响本次构建的环境，保留调用者已有 Rust 参数，不修改全局配置。
+
+原有桌面构建命令也保持可用，但不额外整理发布产物，也不会经过发布入口的路径隐私检查：
 
 ```sh
 npm run tauri build
 ```
+
+根入口 `./release.sh --gitrelease` 固定构建 Norns、Nornsd 的三平台 ZIP 和 Well 的 macOS ARM64 DMG，输出到 `release/gitrelease/`。可重复传入 `--with-ext <名称>` 将所选扩展二进制、元数据和声明的附件加入 Norns ZIP。需要 macOS ARM64 宿主；暂不包含 Well Windows 安装包。具体附件与打包规则见根目录 `QUICKSTART.md`。
 
 ### 版本来源
 
@@ -107,7 +127,7 @@ Server registry 和偏好保存在 WebView `localStorage`，Event cache 保存�
 
 Norns Visual View 在 sandboxed iframe 中显示，不获得 Well storage、Tauri bridge、导航或外部网络权限。
 
-生成 Norns View 后可以通过系统保存对话框导出。Well 保存 Visual HTML 或 Status/Trace JSON，并在服务端源文件名前增加 `well-`；文件只写入用户明确选择的位置。
+生成 Norns View 后可以通过系统保存对话框导出。Well 保存 Visual HTML 或 Status/Trace 当前所选 Markdown、YAML 或 JSON 原文，并在服务端源文件名前增加 `well-`；文件只写入用户明确选择的位置。
 
 ## 文档
 

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { ConnectionInput } from "../../api/dto";
 import { getRuntime, listRuntimesPage } from "../../api/commands";
 import { keys } from "../../api/query-keys";
+import { JsonViewer } from "../common/JsonViewer";
 import { CopyButton } from "../common/CopyButton";
 import { StatusBadge } from "../common/StatusBadge";
 import { endReasonKey, formatTime } from "../../lib/format";
@@ -51,6 +52,7 @@ export function HistoryPanel({ serverId, subjectId, connection }: { serverId: st
             {detail.isPending ? <div className="loading-state compact">{t("common.loading")}</div> : detail.data ? <>
               <div className="detail-section-header"><div><FileText /><h3>{t("runtime.details")}</h3></div></div>
               <dl className="detail-values">
+                <div className="value-row"><dt>{t("subject.profile")}</dt><dd>{detail.data.runtime_profile ? `${detail.data.runtime_profile.agent} ${detail.data.runtime_profile.agent_version} · ${detail.data.runtime_profile.capabilities.includes("norns") ? "Norns" : "Agent"}` : t("runtime.awaitingProfile")}</dd></div>
                 <div className="value-row"><dt>{t("runtime.endReason")}</dt><dd>{reason ? t(`runtime.endReasons.${endReasonKey(reason)}`, { defaultValue: reason }) : "-"}</dd></div>
                 <div className="value-row"><dt>{t("subject.runtimeId")}</dt><dd className="mono breakable">{detail.data.id}<CopyButton value={detail.data.id} /></dd></div>
                 <div className="value-row"><dt>{t("subject.sessionId")}</dt><dd className="mono breakable">{detail.data.session_id}<CopyButton value={detail.data.session_id} /></dd></div>
@@ -61,8 +63,12 @@ export function HistoryPanel({ serverId, subjectId, connection }: { serverId: st
               <section className="artifact-section"><h4>{t("runtime.artifacts")}</h4><dl>
                 <ArtifactPath label={t("runtime.rawLog")} value={artifacts?.raw_log_path} fallback={t("subject.notProvided")} />
                 <ArtifactPath label={t("runtime.readableLog")} value={artifacts?.readable_log_path} fallback={t("subject.notProvided")} />
+                <ArtifactPath label={t("runtime.memorySamples")} value={artifacts?.memory_samples_path} fallback={t("subject.notProvided")} />
                 <ArtifactPath label={t("runtime.transcript")} value={artifacts?.transcript_path} fallback={transcriptFallback} />
               </dl></section>
+              {detail.data.usage != null && <section className="runtime-diagnostics"><h4>{t("runtime.usage")}</h4><p>{t("runtime.usageHint")}</p><JsonViewer value={detail.data.usage} /></section>}
+              {detail.data.error != null && <section className="runtime-diagnostics"><h4>{t("runtime.errorDetails")}</h4><JsonViewer value={detail.data.error} /></section>}
+              {detail.data.resources != null && <section className="runtime-diagnostics"><h4>{t("runtime.resources")}</h4><JsonViewer value={detail.data.resources} /></section>}
             </> : <div className="notice danger">{String(detail.error)}</div>}
           </div>}
         </Fragment>;

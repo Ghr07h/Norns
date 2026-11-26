@@ -23,12 +23,12 @@ import (
 )
 
 type Service struct {
-	Owner   *root.Owner
-	Store   *storesqlite.Store
-	Manager *runtimemanager.Manager
-	Profile domain.RuntimeProfile
-	Norns   *nornsadapter.Adapter
-	locks   sync.Map
+	Owner    *root.Owner
+	Store    *storesqlite.Store
+	Manager  *runtimemanager.Manager
+	Norns    *nornsadapter.Adapter
+	locks    sync.Map
+	archives archiveAdmission
 }
 
 type Current struct {
@@ -50,7 +50,14 @@ func (s *Service) subjectLock(id string) *sync.Mutex {
 	return value.(*sync.Mutex)
 }
 
-func (s *Service) CreateSubject(ctx context.Context, name *string, instruction *string) (domain.Subject, error) {
+func (s *Service) CreateSubject(ctx context.Context, name *string, instruction *string, overrides ...json.RawMessage) (domain.Subject, error) {
+	raw, err := validateConfigOverride(overrides)
+	if err != nil {
+		return domain.Subject{}, err
+	}
+	if instruction == nil && len(raw) > 2 {
+		return domain.Subject{}, domain.NewError("INVALID_REQUEST", "config requires a new Runtime", http.StatusBadRequest)
+	}
 	if instruction != nil {
 		if err := domain.ValidateInstruction(*instruction, version.MaxInstructionBytes); err != nil {
 			return domain.Subject{}, err
@@ -58,12 +65,17 @@ func (s *Service) CreateSubject(ctx context.Context, name *string, instruction *
 	}
 	now := time.Now().UTC()
 	id := uuid.NewString()
+	release, err := s.archives.beginWork(id)
+	if err != nil {
+		return domain.Subject{}, err
+	}
+	defer release()
 	runtimeID := ""
 	if instruction != nil {
 		runtimeID = uuid.NewString()
 	}
-	subject := domain.Subject{ID: id, Name: name, State: domain.SubjectIdle, DirectoryName: root.DirectoryName(now, id), WorkspaceState: domain.WorkspaceMaterializing, Profile: s.Profile, SessionID: id, CreatedAt: now, UpdatedAt: now}
-	if err := s.Store.CreateSubject(ctx, subject, instruction, runtimeID, now); err != nil {
+	subject := domain.Subject{ID: id, Name: name, State: domain.SubjectIdle, DirectoryName: root.DirectoryName(now, id), WorkspaceState: domain.WorkspaceMaterializing, CreatedAt: now, UpdatedAt: now}
+	if err := s.Store.CreateSubject(ctx, subject, instruction, runtimeID, now, raw); err != nil {
 		return domain.Subject{}, err
 	}
 	created, err := s.Store.GetSubject(ctx, id)
@@ -117,15 +129,24 @@ func (s *Service) current(ctx context.Context, subject domain.Subject) (Current,
 	return Current{Runtime: &runtime, QueuePosition: position}, nil
 }
 
-func (s *Service) Submit(ctx context.Context, subjectID, content string, resumeSession bool) (domain.Runtime, *int, error) {
+func (s *Service) Submit(ctx context.Context, subjectID, content string, resumeSession bool, overrides ...json.RawMessage) (domain.Runtime, *int, error) {
+	raw, err := validateConfigOverride(overrides)
+	if err != nil {
+		return domain.Runtime{}, nil, err
+	}
 	if err := domain.ValidateInstruction(content, version.MaxInstructionBytes); err != nil {
 		return domain.Runtime{}, nil, err
 	}
+	release, err := s.archives.beginWork(subjectID)
+	if err != nil {
+		return domain.Runtime{}, nil, err
+	}
+	defer release()
 	lock := s.subjectLock(subjectID)
 	lock.Lock()
 	defer lock.Unlock()
 	runtimeID := uuid.NewString()
-	runtime, err := s.Store.SubmitInstruction(ctx, subjectID, runtimeID, content, s.Profile, resumeSession, time.Now().UTC())
+	runtime, err := s.Store.SubmitInstruction(ctx, subjectID, runtimeID, content, resumeSession, time.Now().UTC(), raw)
 	if err != nil {
 		return domain.Runtime{}, nil, err
 	}
@@ -145,6 +166,11 @@ func (s *Service) Stop(ctx context.Context, subjectID, mode string) (domain.Runt
 	if mode != "graceful" && mode != "force" {
 		return domain.Runtime{}, domain.NewError("INVALID_REQUEST", "mode must be graceful or force", http.StatusBadRequest)
 	}
+	release, err := s.archives.beginWork(subjectID)
+	if err != nil {
+		return domain.Runtime{}, err
+	}
+	defer release()
 	lock := s.subjectLock(subjectID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -189,39 +215,46 @@ func (s *Service) SubjectPath(ctx context.Context, subjectID string) (domain.Sub
 		return subject, "", err
 	}
 	identity, err := root.ReadSubjectIdentity(path)
-	if err != nil || identity.SubjectID != subject.ID {
+	info, statErr := os.Lstat(path)
+	if err != nil || identity.SubjectID != subject.ID || identity.DirectoryName != subject.DirectoryName || statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return subject, "", domain.NewError("WORKSPACE_UNAVAILABLE", "subject workspace identity is invalid", http.StatusConflict)
 	}
 	return subject, path, nil
 }
 
-func (s *Service) StatusView(ctx context.Context, subjectID string, taskID *string) ([]byte, string, error) {
-	subject, path, err := s.SubjectPath(ctx, subjectID)
+func (s *Service) StatusView(ctx context.Context, subjectID string, taskID *string, format nornsadapter.ViewFormat) ([]byte, string, error) {
+	release, err := s.archives.beginWork(subjectID)
 	if err != nil {
 		return nil, "", err
 	}
-	if !subject.Profile.Has("norns") || s.Norns == nil {
-		return nil, "", domain.NewError("CAPABILITY_NOT_ENABLED", "Norns is not enabled for this subject", http.StatusConflict)
+	defer release()
+	path, err := s.nornsSubjectPath(ctx, subjectID)
+	if err != nil {
+		return nil, "", err
 	}
-	return s.Norns.Status(ctx, path, taskID)
+	return s.Norns.Status(ctx, path, taskID, format)
 }
-func (s *Service) TraceView(ctx context.Context, subjectID, explorationID string) ([]byte, string, error) {
-	subject, path, err := s.SubjectPath(ctx, subjectID)
+func (s *Service) TraceView(ctx context.Context, subjectID, explorationID string, format nornsadapter.ViewFormat) ([]byte, string, error) {
+	release, err := s.archives.beginWork(subjectID)
 	if err != nil {
 		return nil, "", err
 	}
-	if !subject.Profile.Has("norns") || s.Norns == nil {
-		return nil, "", domain.NewError("CAPABILITY_NOT_ENABLED", "Norns is not enabled for this subject", http.StatusConflict)
+	defer release()
+	path, err := s.nornsSubjectPath(ctx, subjectID)
+	if err != nil {
+		return nil, "", err
 	}
-	return s.Norns.Trace(ctx, path, explorationID)
+	return s.Norns.Trace(ctx, path, explorationID, format)
 }
 func (s *Service) VisualView(ctx context.Context, subjectID, lang string) ([]byte, string, error) {
-	subject, path, err := s.SubjectPath(ctx, subjectID)
+	release, err := s.archives.beginWork(subjectID)
 	if err != nil {
 		return nil, "", err
 	}
-	if !subject.Profile.Has("norns") || s.Norns == nil {
-		return nil, "", domain.NewError("CAPABILITY_NOT_ENABLED", "Norns is not enabled for this subject", http.StatusConflict)
+	defer release()
+	path, err := s.nornsSubjectPath(ctx, subjectID)
+	if err != nil {
+		return nil, "", err
 	}
 	view, err := s.Norns.Visual(ctx, path, lang)
 	if err != nil {
@@ -229,6 +262,39 @@ func (s *Service) VisualView(ctx context.Context, subjectID, lang string) ([]byt
 	}
 	b, err := os.ReadFile(view)
 	return b, filepath.Base(view), err
+}
+
+func (s *Service) Cognition(ctx context.Context, subjectID, id string) (json.RawMessage, error) {
+	path, err := s.nornsSubjectPath(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Norns.Cognition(ctx, path, id)
+}
+
+func (s *Service) Exploration(ctx context.Context, subjectID, id string) (json.RawMessage, error) {
+	path, err := s.nornsSubjectPath(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Norns.Exploration(ctx, path, id)
+}
+
+func (s *Service) nornsSubjectPath(ctx context.Context, subjectID string) (string, error) {
+	_, path, err := s.SubjectPath(ctx, subjectID)
+	if err != nil {
+		return "", err
+	}
+	if !hasNornsWorkspace(path) {
+		return "", domain.NewError("WORKSPACE_NOT_INITIALIZED", "this Subject is not a Norns workspace: .norns/ and .norns/norns.sqlite are required", http.StatusConflict)
+	}
+	if s.Norns == nil {
+		return "", domain.NewError("NORNS_UNAVAILABLE", "this Subject has a Norns workspace, but Norns is unavailable in the current service", http.StatusServiceUnavailable)
+	}
+	if err := s.Norns.Preflight(ctx); err != nil {
+		return "", domain.Wrap("NORNS_UNAVAILABLE", "this Subject has a Norns workspace, but the current service cannot run a compatible Norns CLI", http.StatusServiceUnavailable, err)
+	}
+	return path, nil
 }
 
 func (s *Service) Health(ctx context.Context) error {
@@ -255,7 +321,7 @@ func (s *Service) ReadableEvents(ctx context.Context, subjectID, mode string, cu
 	if err != nil {
 		return eventlog.ReadablePage{}, err
 	}
-	path := filepath.Join(subjectPath, ".nornsd", "log", "readable.jsonl")
+	path := filepath.Join(root.SubjectDataPath(subjectPath), "logs", "readable.jsonl")
 	switch mode {
 	case "latest":
 		return eventlog.ReadableLatest(path, limit)
@@ -273,7 +339,7 @@ func (s *Service) ReadableEventsUpdated(ctx context.Context, subjectID string, c
 	if err != nil {
 		return false, err
 	}
-	return eventlog.ReadableHasUpdates(filepath.Join(subjectPath, ".nornsd", "log", "readable.jsonl"), cursor)
+	return eventlog.ReadableHasUpdates(filepath.Join(root.SubjectDataPath(subjectPath), "logs", "readable.jsonl"), cursor)
 }
 func (s *Service) ListRuntimes(ctx context.Context, subjectID string, limit int, afterTime, afterID string) ([]domain.Runtime, error) {
 	if _, err := s.Store.GetSubject(ctx, subjectID); err != nil {
@@ -308,11 +374,11 @@ func (s *Service) RuntimeArtifacts(subject domain.Subject, runtime domain.Runtim
 	if err != nil || subjectPath == nil {
 		return out, err
 	}
-	raw := filepath.Join(*subjectPath, ".nornsd", "log", "raw.jsonl")
-	readable := filepath.Join(*subjectPath, ".nornsd", "log", "readable.jsonl")
+	raw := filepath.Join(root.SubjectDataPath(*subjectPath), "logs", "raw.jsonl")
+	readable := filepath.Join(root.SubjectDataPath(*subjectPath), "logs", "readable.jsonl")
 	out.RawLogPath = &raw
 	out.ReadableLogPath = &readable
-	memorySamples := filepath.Join(*subjectPath, ".nornsd", "runtimes", runtime.ID, "memory-samples.jsonl")
+	memorySamples := filepath.Join(root.RuntimeDataPath(*subjectPath, runtime.ID), "memory", "memory-samples.jsonl")
 	if info, statErr := os.Stat(memorySamples); statErr == nil && info.Mode().IsRegular() {
 		out.MemorySamplesPath = &memorySamples
 	}
@@ -333,8 +399,6 @@ func (s *Service) RuntimeArtifacts(subject domain.Subject, runtime domain.Runtim
 		out.SessionID = archive.SessionID
 	} else if legacySessionID := archivedSessionID(archive.Copied, archive.Missing); legacySessionID != "" {
 		out.SessionID = legacySessionID
-	} else if runtime.SessionMode == "resume" {
-		out.SessionID = subject.SessionID
 	}
 	if archive.Status == "failed" {
 		out.TranscriptStatus = "failed"
@@ -345,7 +409,7 @@ func (s *Service) RuntimeArtifacts(subject domain.Subject, runtime domain.Runtim
 		if copied != wanted {
 			continue
 		}
-		transcript := filepath.Join(*subjectPath, ".nornsd", "runtimes", runtime.ID, wanted)
+		transcript := filepath.Join(root.RuntimeDataPath(*subjectPath, runtime.ID), "transcripts", wanted)
 		if info, statErr := os.Stat(transcript); statErr == nil && info.Mode().IsRegular() {
 			out.TranscriptPath = &transcript
 			out.TranscriptStatus = "available"

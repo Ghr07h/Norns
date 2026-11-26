@@ -9,8 +9,8 @@ import yaml
 
 
 # Runtime paths and defaults. Keep these together so the image contract is easy to inspect.
-TEMPLATE_PATH = Path("/norns/config/agent.example.yaml")
-CONFIG_PATH = Path("/norns/config/agent.yaml")
+TEMPLATE_PATH = Path("/norns/config/nornsd.example.yaml")
+CONFIG_PATH = Path("/norns/config/nornsd.yaml")
 WORKSPACE_PATH = Path("/workspace")
 TOKEN_PATH = WORKSPACE_PATH / ".nornsd-token"
 LEGACY_PASSWORD_PATH = WORKSPACE_PATH / ".nornsd-password"
@@ -25,39 +25,60 @@ DEFAULT_MAX_CONCURRENT_EXPLORATIONS = 3
 DEFAULT_EXPLORATION_TIMEOUT = 1200
 DEFAULT_ALLOW_HUMAN_INTERVENTION = False
 DEFAULT_NORNS_ENABLE = True
-DEFAULT_NORNS_CUSTOM_DOMAIN_DIR = ""
+DEFAULT_NORNS_EXTENDS_AGENTS_DIR = ""
 DEFAULT_NORNS_CUSTOM_SKILLS_DIR = ""
 
-REQUIRED_ENV = ("LLM_URL", "LLM_KEY", "LLM_MODEL")
+REQUIRED_ENV = ("AGENT_LLM_URL", "AGENT_LLM_KEY", "AGENT_LLM_MODEL")
 STRING_FIELDS = (
-    "LLM_URL",
-    "LLM_KEY",
-    "LLM_MODEL",
-    "LLM_FAST_MODEL",
-    "NORNS_SERVER_HOST",
-    "NORNS_SERVER_TOKEN",
-    "NORNS_CUSTOM_DOMAIN_DIR",
-    "NORNS_CUSTOM_SKILLS_DIR",
-    "NORNS_CUSTOM_AGENTS_DIR",
-    "CUSTOM_AGENTS_DIR",
-    "CUSTOM_SKILLS_DIR",
+    "AGENT_MAINAGENT_FILE", "AGENT_REUSE_RUNTIME_DIR",
+    "AGENT_LLM_URL",
+    "AGENT_LLM_KEY",
+    "AGENT_LLM_MODEL",
+    "AGENT_LLM_FAST_MODEL",
+    "SERVICE_HOST",
+    "SERVICE_TOKEN",
+    "AGENT_NORNS_EXTENDS_AGENTS_DIR",
+    "AGENT_NORNS_CUSTOM_SKILLS_DIR",
+    "AGENT_NORNS_CUSTOM_AGENTS_DIR",
+    "AGENT_CUSTOM_AGENTS_DIR",
+    "AGENT_CUSTOM_SKILLS_DIR",
 )
 INTEGER_FIELDS = (
-    "NORNS_SERVER_PORT",
-    "NORNS_MAX_CONCURRENT_EXPLORATIONS",
-    "NORNS_EXPLORATION_TIMEOUT",
+    "SERVICE_PORT",
+    "AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS",
+    "AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS",
 )
 BOOLEAN_FIELDS = (
-    "NORNS_ENABLE",
-    "NORNS_ALLOW_HUMAN_INTERVENTION",
+    "AGENT_NORNS_ENABLE",
+    "AGENT_NORNS_ALLOW_HUMAN_INTERVENTION",
 )
-DIRECTORY_FIELDS = (
-    "NORNS_CUSTOM_DOMAIN_DIR",
-    "NORNS_CUSTOM_SKILLS_DIR",
-    "NORNS_CUSTOM_AGENTS_DIR",
-    "CUSTOM_AGENTS_DIR",
-    "CUSTOM_SKILLS_DIR",
-)
+
+
+def validate_resources(config: dict) -> None:
+    norns_resources = (
+        "AGENT_NORNS_EXTENDS_AGENTS_DIR", "AGENT_NORNS_CUSTOM_AGENTS_DIR",
+        "AGENT_NORNS_CUSTOM_SKILLS_DIR",
+    )
+    custom_resources = ("AGENT_CUSTOM_AGENTS_DIR", "AGENT_CUSTOM_SKILLS_DIR", "AGENT_CUSTOM_PLUGIN_DIRS")
+    if config.get("AGENT_REUSE_RUNTIME_DIR"):
+        if any(config.get(name) for name in (*norns_resources, *custom_resources, "AGENT_MAINAGENT_FILE")):
+            raise ValueError("AGENT_REUSE_RUNTIME_DIR cannot be combined with other plugin resources or AGENT_MAINAGENT_FILE")
+    elif config["AGENT_NORNS_ENABLE"]:
+        if any(config.get(name) for name in custom_resources):
+            raise ValueError("AGENT_CUSTOM_* resources require AGENT_NORNS_ENABLE=false")
+    elif any(config.get(name) for name in norns_resources):
+        raise ValueError("AGENT_NORNS_* resources require AGENT_NORNS_ENABLE=true")
+
+    for name in (*norns_resources, "AGENT_CUSTOM_AGENTS_DIR", "AGENT_CUSTOM_SKILLS_DIR", "AGENT_REUSE_RUNTIME_DIR"):
+        value = config.get(name, "")
+        if value and (not Path(value).is_absolute() or not Path(value).is_dir()):
+            raise ValueError(f"{name} must name an existing absolute directory: {value}")
+    for value in config.get("AGENT_CUSTOM_PLUGIN_DIRS", []):
+        if not Path(value).is_absolute() or not Path(value).is_dir():
+            raise ValueError(f"AGENT_CUSTOM_PLUGIN_DIRS must contain existing absolute directories: {value}")
+    value = config.get("AGENT_MAINAGENT_FILE", "")
+    if value and (not Path(value).is_absolute() or not Path(value).is_file()):
+        raise ValueError(f"AGENT_MAINAGENT_FILE must name an existing absolute file: {value}")
 
 
 def parse_integer(name: str, value: str) -> int:
@@ -96,8 +117,8 @@ def parse_string_list(name: str, value: str) -> list[str]:
 
 def server_concurrency() -> int:
     return parse_positive_integer(
-        "NORNS_SERVER_CONCURRENCY",
-        os.environ.get("NORNS_SERVER_CONCURRENCY", str(DEFAULT_SERVER_CONCURRENCY)),
+        "SERVICE_CONCURRENCY",
+        os.environ.get("SERVICE_CONCURRENCY", str(DEFAULT_SERVER_CONCURRENCY)),
     )
 
 
@@ -109,7 +130,7 @@ def write_server_token(token: str) -> None:
 
 
 def persisted_server_token() -> str:
-    configured = os.environ.get("NORNS_SERVER_TOKEN", "").strip()
+    configured = os.environ.get("SERVICE_TOKEN", "").strip()
     if configured:
         write_server_token(configured)
         return configured
@@ -141,19 +162,27 @@ def load_runtime_config() -> dict:
         raise ValueError(f"{TEMPLATE_PATH} must contain a YAML mapping")
 
     config.update({
-        "NORNS_ENABLE": DEFAULT_NORNS_ENABLE,
-        "NORNS_SERVER_HOST": DEFAULT_SERVER_HOST,
-        "NORNS_SERVER_PORT": DEFAULT_SERVER_PORT,
-        "NORNS_MAX_CONCURRENT_EXPLORATIONS": DEFAULT_MAX_CONCURRENT_EXPLORATIONS,
-        "NORNS_EXPLORATION_TIMEOUT": DEFAULT_EXPLORATION_TIMEOUT,
-        "NORNS_ALLOW_HUMAN_INTERVENTION": DEFAULT_ALLOW_HUMAN_INTERVENTION,
-        "NORNS_CUSTOM_DOMAIN_DIR": DEFAULT_NORNS_CUSTOM_DOMAIN_DIR,
-        "NORNS_CUSTOM_SKILLS_DIR": DEFAULT_NORNS_CUSTOM_SKILLS_DIR,
-        "NORNS_CUSTOM_AGENTS_DIR": "",
-        "CUSTOM_AGENTS_DIR": "",
-        "CUSTOM_SKILLS_DIR": "",
-        "CUSTOM_PLUGIN_DIRS": [],
+        "SERVICE_NORNSD_ROOT_DIR": str(WORKSPACE_PATH),
+        "SERVICE_CONCURRENCY": server_concurrency(),
+        "AGENT_NORNS_ENABLE": DEFAULT_NORNS_ENABLE,
+        "SERVICE_HOST": DEFAULT_SERVER_HOST,
+        "SERVICE_PORT": DEFAULT_SERVER_PORT,
+        "AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS": DEFAULT_MAX_CONCURRENT_EXPLORATIONS,
+        "AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS": DEFAULT_EXPLORATION_TIMEOUT,
+        "AGENT_NORNS_ALLOW_HUMAN_INTERVENTION": DEFAULT_ALLOW_HUMAN_INTERVENTION,
+        "AGENT_NORNS_EXTENDS_AGENTS_DIR": DEFAULT_NORNS_EXTENDS_AGENTS_DIR,
+        "AGENT_NORNS_CUSTOM_SKILLS_DIR": DEFAULT_NORNS_CUSTOM_SKILLS_DIR,
+        "AGENT_NORNS_CUSTOM_AGENTS_DIR": "",
+        "AGENT_CUSTOM_AGENTS_DIR": "",
+        "AGENT_CUSTOM_SKILLS_DIR": "",
+        "AGENT_CUSTOM_PLUGIN_DIRS": [],
     })
+
+    # Image defaults must not introduce plugin resources in plain or reuse mode.
+    enabled = parse_boolean("AGENT_NORNS_ENABLE", os.environ.get("AGENT_NORNS_ENABLE", str(DEFAULT_NORNS_ENABLE)))
+    if not enabled or os.environ.get("AGENT_REUSE_RUNTIME_DIR"):
+        config["AGENT_NORNS_EXTENDS_AGENTS_DIR"] = ""
+        config["AGENT_NORNS_CUSTOM_SKILLS_DIR"] = ""
 
     for name in STRING_FIELDS:
         if name in os.environ:
@@ -164,13 +193,15 @@ def load_runtime_config() -> dict:
     for name in BOOLEAN_FIELDS:
         if name in os.environ:
             config[name] = parse_boolean(name, os.environ[name])
-    if "CUSTOM_PLUGIN_DIRS" in os.environ:
-        config["CUSTOM_PLUGIN_DIRS"] = parse_string_list(
-            "CUSTOM_PLUGIN_DIRS", os.environ["CUSTOM_PLUGIN_DIRS"])
+    if "AGENT_CUSTOM_PLUGIN_DIRS" in os.environ:
+        config["AGENT_CUSTOM_PLUGIN_DIRS"] = parse_string_list(
+            "AGENT_CUSTOM_PLUGIN_DIRS", os.environ["AGENT_CUSTOM_PLUGIN_DIRS"])
 
-    config["LLM_FAST_MODEL"] = os.environ.get("LLM_FAST_MODEL", "").strip() or config["LLM_MODEL"]
-    config["NORNS_SERVER_TOKEN"] = persisted_server_token()
+    config["AGENT_LLM_FAST_MODEL"] = os.environ.get("AGENT_LLM_FAST_MODEL", "").strip() or config["AGENT_LLM_MODEL"]
+    config["SERVICE_TOKEN"] = persisted_server_token()
     config["AGENT_EXEC"] = [str(CLAUDE_EXEC)]
+    config["AGENT_MAINAGENT_FILE"] = config.get("AGENT_MAINAGENT_FILE", "")
+    config["AGENT_REUSE_RUNTIME_DIR"] = config.get("AGENT_REUSE_RUNTIME_DIR", "")
     return config
 
 
@@ -179,13 +210,7 @@ def validate_runtime(config: dict) -> None:
         if not path.is_file() or not os.access(path, os.X_OK):
             raise ValueError(f"{name} is not executable: {path}")
 
-    for name in DIRECTORY_FIELDS:
-        value = str(config.get(name, "")).strip()
-        if value and not Path(value).is_dir():
-            raise ValueError(f"{name} directory does not exist: {value}")
-    for value in config.get("CUSTOM_PLUGIN_DIRS", []):
-        if not Path(value).is_dir():
-            raise ValueError(f"CUSTOM_PLUGIN_DIRS directory does not exist: {value}")
+    validate_resources(config)
 
 
 def write_runtime_config(config: dict) -> None:
@@ -203,7 +228,6 @@ def main() -> int:
     try:
         WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        concurrency = server_concurrency()
         config = load_runtime_config()
         validate_runtime(config)
         write_runtime_config(config)
@@ -211,16 +235,7 @@ def main() -> int:
         print(f"nornsd: container configuration failed: {error}", file=sys.stderr)
         return 2
 
-    argv = [
-        str(NORNSD_BIN),
-        "server",
-        "--workspace-root",
-        str(WORKSPACE_PATH),
-        "--settings",
-        str(CONFIG_PATH),
-        "--concurrency",
-        str(concurrency),
-    ]
+    argv = [str(NORNSD_BIN), "server", "--configs", str(CONFIG_PATH)]
     os.execv(argv[0], argv)
     return 0
 

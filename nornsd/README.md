@@ -1,233 +1,222 @@
 # nornsd
 
-`nornsd` 是面向批量任务的 Agent Runtime 管理服务。它将不同业务对象或问题隔离为 Subject，统一创建和排队 Runtime、限制并发、投递 instruction，并保存 Event、运行历史和 artifacts，适合企业内部大量相似模式任务的持续处理。
+`nornsd` 将业务对象隔离为 Subject，为其排队和执行 Runtime、持续投递 instruction，并保存日志、Event、会话与运行历史。正式执行使用 Go 单一可执行文件和 Claude Code CLI 2.1.199，不依赖 Python 或 Claude Agent SDK。
 
-nornsd 可以独立批量驱动普通 Agent，也可以通过 `--norns` 启用可选的 Norns 模式。Norns 模式在相同的 Subject、Runtime 和队列能力上增加 Norns Plugin、开放任务求解流程与 View；它不是运行 nornsd server 的前置条件。
-
-正式运行路径为 Go 单一可执行文件与 Claude Code CLI 2.1.199，不依赖 Python 或 Claude Agent SDK。运行前需要确保 `claude` 可执行文件版本为 `2.1.199`；启用 Norns 模式时，还需要在 PATH 或 nornsd 同目录提供支持相同协议版本的 `norns`，对应清单中的 `nornsd.support_protocol` 与 `norns.support_protocol`。
-
-Norns Plugin 在 Linux 和 macOS 上使用 POSIX `sh`/`awk` PreToolUse hook，拦截 Bash 工具中由 shell snapshot shadow 到 Claude Code 内嵌 ugrep 7.5.0 的危险 `grep` 正则；其他系统不会发布该 hook。两个 bounded repeat（例如同一模式内出现两次 `{0,40}`）会触发旧版 ugrep 的正则编译内存爆炸；显式使用 `/usr/bin/grep`、Claude Code 内置 Grep 工具，或者改用 `awk` 不会命中此拦截。Claude Code 2.1.235 已通过升级内嵌 ugrep 修复该问题，但固定使用 2.1.199 的 Runtime 必须保留此 hook。
-
-## 工作模式
-
-- `nornsd server` 是主要的批量管理方式。调用方通过 HTTP API 创建多个 Subject 和 Runtime，nornsd 使用稳定 FIFO 和全局并发槽驱动执行。
-- `nornsd agent` 用于本地调试与快速启动，直接在终端中创建或恢复一个 Subject，不进入 server 队列。
-- 普通模式只管理 Agent Runtime；两个入口都可以通过 `--norns` 选择启用 Norns 能力。
-
-Subject 通常对应一个需要持续处理的业务对象或问题，可以先后运行多个 Runtime。业务 Task 仍由具体 Agent workflow 或 Norns 定义，不是 nornsd 的资源。
-
-Subject、Runtime 与 Claude Session 使用彼此清晰的身份边界：Subject ID 标识长期实体和工作目录；Runtime ID 标识单次执行，并同时作为该次新 Claude Session ID。默认情况下，每个 Runtime 都通过 `--session-id=<runtime_id>` 启动空白会话。调用方也可以显式恢复最新 Runtime 的会话上下文；nornsd 使用 `--resume=<previous_session_id> --fork-session --session-id=<runtime_id>` 派生新会话，仍保持 Runtime、Session 和 transcript 一一对应。
-
-- 普通模式下，后续 Runtime 复用 Subject 工作目录中的文件，但不继承上一 Runtime 的 Claude 对话上下文。
-- Norns 模式下，后续 Runtime 同样使用新 Claude Session；跨 Runtime 的持续状态来自 Subject 工作目录中的 `.norns/` Workspace、Task 和 Graph。Status、Trace 与 Visual View 是该状态的只读投影，不是会话存储。
-- 同一个 Runtime 内追加的多条 instruction 继续使用该 Runtime 的同一个 Claude Session。
-- `resume-session` 只继承最新 Runtime 的 Claude 对话上下文，不复用其 Session ID；派生会话的 Session ID 仍等于新 Runtime ID。
+普通 Agent 与 Norns 模式由每个 Runtime 的配置决定；同一 Subject 可以在不同 Runtime 使用不同模式。Norns 模式额外需要支持 `nornsd.support_protocol` 的 Norns CLI 和内嵌 Plugin。
 
 ## 构建
 
-推荐从项目根目录执行 `./release.sh nornsd`，自动同步版本代码、生成内嵌资源并编译当前平台产物。六平台产物使用 `./release.sh nornsd --all-platforms`。
+在仓库根目录执行 `./release.sh nornsd`；六平台使用 `--all-platforms`。也可在本模块执行 `go run ./scripts/release.go`，支持 `--output` 和可重复的 `--target <os>/<arch>`（不能与 `--all-platforms` 合用）。发布入口读取根 `versions.json`、生成版本代码和内嵌资源、编译并输出校验和。
 
-也可以在本目录执行 `go run ./scripts/release.go`，独立完成版本与内嵌资源生成、编译、产物整理和校验和生成，不依赖 norns 或 Well 的构建实现。支持 `--all-platforms` 与 `--output <directory>`，默认产物写入 `../release/`；构建脚本测试随 `go test ./...` 运行。仍需仓库根版本清单、共享协议文档与 Plugin 源文件。
-
-模块内开发构建可从 `nornsd/` 目录执行：
+模块开发检查：
 
 ```sh
-go generate ./internal/assets
 go build -o ./bin/nornsd ./cmd/nornsd
-go test ./...
+go test -race ./...
+go vet ./...
 ```
 
-从完整仓库构建：产品版本、支持的协议版本、数据库 schema、API schema、Agent 配置 schema 和 CC Plugin 版本来自根目录 `versions.json`。版本代码由统一或本目录入口生成到 `internal/version/versions_generated.go` 并纳入 Git，同时更新 `configs/nornsd/agent.example.yaml` 的 `VERSION`，无需额外的运行时版本文件。修改清单后应先执行对应构建入口，普通 `go build` 不会刷新版本；`go generate` 只刷新内嵌资源。
+`go build` 不刷新版本或内嵌资源。需要更新协议/Plugin 资源时单独执行 `go generate ./internal/assets`。配置示例是外部文件，不内嵌，也不含 VERSION。旧数据库和目录布局不自动迁移。
 
-生成步骤将 `documents/protocol/protocol.md` 与整个 `plugin/` 目录编译为按 Agent 类型分层的内嵌 Plugin 资源，同时从版本清单填入协议和 Plugin 版本。`plugin/cc/` 是不单独声明版本的源模板：生成时将 `nornsd.plugins.cc` 转换为 `<整数>.0.0` 写入 Plugin 元信息，将 `nornsd.support_protocol` 写入 `NORNS_PROTOCOL_VERSION`。当前运行时按 `cc` 选择内嵌资源；修改清单中的协议或 Plugin 版本后需重新生成资源。
-
-API 路径固定使用 `/api/`，不随 API schema 改变。`GET /api/` 和 `nornsd version --json` 使用整数 `api_schema` 报告接口格式版本，不再提供 `api_version` 字符串。旧数据库与旧 `VERSION` 的 Agent 配置继续按现有兼容性检查拒绝，不自动迁移。
-
-## 命令
+## 启动与配置
 
 ```text
-nornsd agent [--cc] [--resume-subject SUBJECT_UUID] [--resume-session]
-              [--norns[=true|false]] [--setting[=FILE]] -- [AGENT_ARGS...]
-
-nornsd server [--agent cc] [--host HOST] [--port PORT] [--token TOKEN]
-              [--workspace-root PATH] [--norns[=true|false]]
-              [--settings FILE]... [--concurrency N]
-
+nornsd server --configs FILE [--configs FILE ...]
+nornsd agent --config FILE [--resume-subject SUBJECT_UUID] [--resume-session] -- [AGENT_ARGS...]
 nornsd version [--json]
 ```
 
-server 默认监听 `127.0.0.1:28081`，API 基础路径为 `/api/`。所有接口（包括健康检查）都要求 `Authorization: Bearer <token>`。Token 必须通过 `--token` 或 `agent.yaml` 的 `NORNS_SERVER_TOKEN` 提供。
-
-启动时会向 stderr 输出目录/数据库检查和 Subject/Runtime 恢复阶段的提示。恢复较大的已有目录可能需要数分钟；每 5 秒会输出当前阶段及已等待时间，结束时报告完成或失败。恢复完成并显示 `nornsd listening on ...` 后，HTTP API 才就绪。
-
-`GET /api/health` 同时检查调度器和数据库开启写事务的能力，不会仅凭只读查询成功报告健康。
-数据库事务开启失败或回滚失败时丢弃对应连接，防止异常事务状态被连接池反复复用。
-服务端错误日志保留原始错误和请求 ID；数据库事务错误响应包含可用的 `sqlite_code` 和 `sqlite_error`（SQLite 原始原因，单行且最多 1024 字节，超出时附截断标记），便于直接从 Benchmark 的报错和服务恢复重试日志定位锁竞争、存储故障等问题。
-
-## 快速开始
-
-### 批量 Runtime 服务
-
-启动一个普通 Agent 模式、具有两个并发槽的 server：
-
-先将 `agent.yaml` 中的 `NORNS_ENABLE` 设置为 `false`，再启动：
+必须显式提供配置，不再自动发现，也不提供旧 host/port/token/workspace-root/norns/settings 等配置参数。
 
 ```sh
-nornsd server \
-  --workspace-root ./runtime-root \
-  --settings ./agent.yaml \
-  --concurrency 2
+cp configs/nornsd/nornsd.example.yaml ./nornsd.yaml
+# 修改 Root、凭据、Agent 路径等字段后启动
+nornsd server --configs ./nornsd.yaml
 ```
 
-通过同一个处理模式提交多个相互隔离的任务：
+配置分为 `SERVICE_*` 与 `AGENT_*`：
+
+- `SERVICE_NORNSD_ROOT_DIR`：必填绝对路径，工作根目录。
+- `SERVICE_HOST` / `SERVICE_PORT`：默认 `127.0.0.1:28081`。
+- `SERVICE_TOKEN`：server 必填、非空且不含空白；所有 API 包括 health 均要求 Bearer 认证。
+- `SERVICE_CONCURRENCY`：正整数，默认 1。
+- `AGENT_TYPE`：默认 cc，当前只实现 cc。
+- `AGENT_EXEC`：可执行文件绝对路径与固定 argv 数组；省略或设为 `[]` 时从 PATH 查找 claude。Runtime 覆盖传入 `[]` 可恢复此默认命令，省略则继承模板。
+- `AGENT_LLM_URL` / `AGENT_LLM_KEY` / `AGENT_LLM_MODEL`：必填；`AGENT_LLM_FAST_MODEL` 留空使用主模型。
+- `AGENT_NORNS_ENABLE`：默认 false；探索并发 `AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS` 默认 3，问询周期 `AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS` 默认 1200 秒，`AGENT_NORNS_ALLOW_HUMAN_INTERVENTION` 默认 false。
+
+配置中的非空路径必须绝对，可选资源目录可以留空。YAML 拒绝未知字段、重复键、null 字段、错误类型和多文档。
+
+一份模板供全部槽位复用；多份模板数量必须等于第一份的 SERVICE_CONCURRENCY：
 
 ```sh
-curl -X POST \
+nornsd server --configs ./slot1.yaml --configs ./slot2.yaml
+```
+
+多份配置以第一份的 SERVICE_* 为准。启动时冻结并按顺序保存到 `.nornsd/configs/nornsd.yaml`、`nornsd2.yaml` 等；修改源文件需重启。Runtime 领取哪个槽位，就使用该槽模板与创建时的 config 覆盖形成最终配置。
+
+服务启动会报告目录/数据库检查和恢复阶段，长阶段每 5 秒报告进度；显示 listening 后 API 就绪。非 loopback 明文监听保留风险提示。health 检查数据库写事务与调度器；事务错误保留请求 ID 和可用 SQLite 诊断。
+
+## HTTP 执行
+
+```sh
+curl -X POST http://127.0.0.1:28081/api/subjects \
   -H 'Authorization: Bearer replace-with-a-long-random-token' \
   -H 'Content-Type: application/json' \
-  --data '{"name":"review-repository-a","runtime":{"instruction":"审查 repository A 并输出风险清单"}}' \
-  http://127.0.0.1:28081/api/subjects
+  --data '{"name":"review-a","runtime":{"instruction":"审查 repository A","config":{"AGENT_LLM_MODEL":"review-model"}}}'
+```
 
-curl -X POST \
+创建 Subject 可不传 runtime，此时立即物化为空闲目录；传入时 Subject、Runtime、instruction、queue 在同一事务创建。空闲 Subject 提交创建新 Runtime，已有 queued/running/waiting Runtime 提交追加 instruction FIFO：
+
+```sh
+curl -X POST http://127.0.0.1:28081/api/subjects/SUBJECT_UUID/runtime \
   -H 'Authorization: Bearer replace-with-a-long-random-token' \
   -H 'Content-Type: application/json' \
-  --data '{"name":"review-repository-b","runtime":{"instruction":"审查 repository B 并输出风险清单"}}' \
-  http://127.0.0.1:28081/api/subjects
+  --data '{"instruction":"继续工作","config":{"AGENT_NORNS_ENABLE":false}}'
 ```
 
-创建 Subject 与首个 Runtime 是一次原子操作。两个 Runtime 会根据 `--concurrency` 立即运行或进入 FIFO；调用方可以通过 `/api/subjects`、`/api/queue`、Runtime 和 Event 接口持续观察进展。
+config 仅允许 AGENT_*，省略、null、{} 均无覆盖。显式 false/0/空字符串/空数组会参与覆盖，再校验有效值；数组整体替换。逐字段 null、错误类型、未知字段和 SERVICE_* 拒绝。已有 Runtime 追加 instruction 时非空 config 返回 `409 RUNTIME_CONFIG_CONFLICT`，包括尚未领取槽位的 queued Runtime。
 
-检查服务与队列：
+Runtime 详情中的 runtime_profile 在领取模板前为 null，领取后冻结。配置、完整启动 argv 和凭据不通过普通详情响应返回。
+
+常用查询：
+
+```text
+GET /api/
+GET /api/health
+GET /api/subjects
+GET /api/subjects/{subject_id}
+GET /api/subjects/{subject_id}/runtime
+GET /api/subjects/{subject_id}/runtimes
+GET /api/subjects/{subject_id}/runtimes/{runtime_id}
+GET /api/subjects/{subject_id}/events
+GET /api/queue
+```
+
+API 路径固定 `/api/`，整数 api_schema 报告格式版本。Event 分页使用接口返回的不透明 cursor，不把 Subject.last_event_seq 当作续读游标。调用方不要自动重试创建/提交，结果不确定时先查询。
+
+## 会话与 Direct agent
+
+每个 Runtime 的 ID 同时是新 Claude Session ID。默认后续 Runtime 只复用 Subject 文件，不继承对话；Norns 的跨 Runtime 状态保留在 `.norns/`。同一 Runtime 的追加 instruction 使用相同 Session。
+
+HTTP 提交 `resume_session: true` 或 direct 使用 `--resume-session` 可从最新 Runtime 会话派生新 Session，实际传入 `--resume=<previous_session_id> --fork-session --session-id=<new_runtime_id>`。Subject 必须 idle 且存在历史会话；使用中的 Subject 返回 SUBJECT_RUNTIME_ACTIVE，无历史返回 RUNTIME_SESSION_NOT_FOUND。
 
 ```sh
-curl -H 'Authorization: Bearer replace-with-a-long-random-token' \
-  http://127.0.0.1:28081/api/
-
-curl -H 'Authorization: Bearer replace-with-a-long-random-token' \
-  http://127.0.0.1:28081/api/queue
+nornsd agent --config ./nornsd.yaml
+nornsd agent --config ./nornsd.yaml --resume-subject SUBJECT_UUID
+nornsd agent --config ./nornsd.yaml --resume-subject SUBJECT_UUID --resume-session
 ```
 
-在空闲的已有 Subject 下创建 Runtime，并从其最新 Claude Session 派生对话上下文：
+direct 不进入服务队列，但与 server 共用 Root 锁、身份、配置发布和 Runtime 记录；同一个 Root 不能同时运行两个进程。Root 由配置决定，不由当前目录决定。恢复时允许更换 Runtime 配置和模式；仍须使用原 Root、空闲 Subject 和兼容的 cc 会话。
 
-```sh
-curl -X POST \
-  -H 'Authorization: Bearer replace-with-a-long-random-token' \
-  -H 'Content-Type: application/json' \
-  --data '{"instruction":"继续上一轮尚未完成的工作","resume_session":true}' \
-  http://127.0.0.1:28081/api/subjects/SUBJECT_UUID/runtime
+托管 Agent 使用 stream-json，固定开启 `--replay-user-messages`。每组输入带 UUID，分别记录管道写入、CC 回显接受和结果结算；多条输入可由一个 result 完成。后台通知如吸收了新输入也会结算对应指令，纯通知不会消耗其他输入。未确认输入不会自动重投。
+
+恢复会话在 initialize 成功后记录一次 `runtime.session_resumed`，无需首次启动 result；不存在的会话保留真实错误并记为 `AGENT_STARTUP_FAILED`。API 错误、429 重试耗尽和中断只表示本次处理失败；CC 仍存活且无剩余输入时回到 waiting，允许在同一 Runtime 继续提交。nornsd 不叠加模型调用重试。进程退出时先读完两路输出再归档和释放槽位。Direct 保留终端交互。
+
+Runtime 详情的 `usage` 包含 result_count、error_result_count、totals（累计已报告 result.usage 数值）、latest、latest_result，以及 model_usage/total_cost_usd 进程累计快照。快照只替换、不累加；后台通知也计入结果统计。`totals` 与 model_usage 覆盖范围不同，不应相加。事件增加 API 重试、任务进度、输入确认/结算与中断标记，错误详情保留 errors、api_error_status 和合成消息 error。
+
+## 资源与 Plugin
+
+资源配置按 `AGENT_NORNS_ENABLE` 区分，两类非空资源不得混用；空字符串/空列表可用于清空继承值。
+
+Norns 模式（true）：
+
+- `AGENT_NORNS_EXTENDS_AGENTS_DIR`：原 `AGENT_NORNS_CUSTOM_DOMAIN_DIR` 改名，继续读取 meta.json 与指定知识文件，拼接到内置 Decider/Explorer 正文，生成领域角色；文件结构不变。
+- `AGENT_NORNS_CUSTOM_AGENTS_DIR`：完整的自定义 Norns 角色 Markdown，原样复制到 norns-plugin/agents/，解析 YAML frontmatter.name 并加入 Coordinator 白名单；tools 和其他 Agent 配置保留原文，角色需由提供方遵循 Norns 协议。
+- `AGENT_NORNS_CUSTOM_SKILLS_DIR`：复制到 Norns Plugin 的 Skill。
+
+Norns 模式只加载生成的 norns-plugin，不允许额外 Plugin；`AGENT_NORNS_CUSTOM_PLUGIN_DIR` 不是合法配置字段。扩展角色、完整自定义角色都加入白名单，名称不得与内置或其他角色冲突。
+
+普通模式（false）：
+
+- `AGENT_CUSTOM_AGENTS_DIR` / `AGENT_CUSTOM_SKILLS_DIR`：复制为独立 custom-plugin，不写 Subject .claude/。
+- `AGENT_CUSTOM_PLUGIN_DIRS`：按顺序复制为 Runtime plugins/external-plugin-N/，每个副本生成 manifest；不直接加载外部源目录。
+
+普通模式依次加载外部 Plugin 副本与 custom-plugin。未指定 Main Agent 时，Norns 使用 `--agent norns:coordinator`，普通模式沿用 Agent 默认系统提示词。目录结构与 meta.json 示例见[设计文档](../documents/design/nornsd.md#41-基于通用角色扩展领域知识)。资源继续拒绝符号链接逃逸。
+
+`AGENT_MAINAGENT_FILE` 可在两种模式下指定 Agent Markdown 文件的绝对路径，以 YAML frontmatter.name 选择 Main Agent。**除非了解修改的影响，否则不要改动此配置。** Norns 模式将文件复制到 norns-plugin/agents/，启动 `--agent norns:<name>`，替换 `Agent(...)` 白名单和正文中的 `{{NORNS_RUNTIME_CONFIGURATION}}`；白名单排除通用 Coordinator 和自身。普通模式原样复制到 custom-plugin/agents/，启动 `--agent nornsd-custom:<name>`。仅指定 Main 文件也会生成 custom-plugin。
+
+改写 Coordinator、所选 Main Agent 和派生领域角色时保留完整 YAML frontmatter，只更新指定字段；未知字段、嵌套配置和注释保留。未选中的通用 Coordinator、完整自定义子角色不进行改写。
+
+配置末尾的 `AGENT_REUSE_RUNTIME_DIR` 指向旧 Runtime 目录，例如 `.nornsd/subjects/<subject_id>/runtimes/<runtime_id>/` 的绝对路径。读取其中的 `launch.json` 恢复插件加载顺序和 Main Agent，将整个 `plugins/` 复制到新 Runtime 的 `plugins/`；启动只引用新副本，源目录保持独立。两种模式均支持复用，不重新生成插件、改写 Agent 或注入配置，旧 manifest 的 Runtime ID 也原样保留；新 `launch.json` 记录本次 Runtime 与新副本路径。
+
+复用与非空 `AGENT_MAINAGENT_FILE`、`AGENT_NORNS_EXTENDS_AGENTS_DIR`、全部 `AGENT_NORNS_CUSTOM_*`、`AGENT_CUSTOM_*` 互斥；须显式清空模板中继承的冲突字段。复用时忽略探索并发、超时问询周期和人类干预设置，LLM 等非插件配置仍使用新配置。缺失或无效的 launch、插件加载记录与文件不匹配、符号链接或源目标 Runtime 重叠均拒绝复用。
+
+Runtime 覆盖切换模式时，须同时清空模板中另一模式的资源字段；不静默忽略。路径仍须为绝对路径，旧 `AGENT_NORNS_CUSTOM_DOMAIN_DIR` 不保留别名。
+
+所有 Runtime 固定 `--dangerously-skip-permissions`、`IS_SANDBOX=1` 和 `--setting-sources=`；仅加载生成 settings、显式 Plugin 和不可关闭的 managed settings。默认或显式直接指向 claude 的命令预检精确版本 2.1.199；wrapper 保留兼容模式，仍要求可执行且兼容控制协议。
+
+Linux/macOS 的内嵌 Norns Plugin 保留 POSIX sh/awk PreToolUse hook，防止 Claude Code 2.1.199 内嵌 ugrep 7.5.0 因多个 bounded repeat 正则编译耗尽内存；显式 /usr/bin/grep、内置 Grep 或 awk 不受该拦截影响。
+
+托管 Runtime 启动即采样进程树 RSS，此后每 500ms 采样。单 Runtime 额度为系统内存基准 50%，Linux 容器有更小有限 cgroup 额度时采用该额度。超限终止对应进程树，记录 RUNTIME_MEMORY_LIMIT_EXCEEDED。下一 Norns Runtime 或显式恢复会话的普通 Runtime 保留原有内存恢复提示。
+
+## View 与详情
+
+Subject 存在有效 `.norns/` 时，查询不受最新 Runtime 是否启用 Norns 影响；需要可用 Norns CLI。
+
+```text
+GET /api/subjects/{subject_id}/norns/views/status?format=yaml
+GET /api/subjects/{subject_id}/norns/views/trace?exploration_id=exp_1&format=md
+GET /api/subjects/{subject_id}/norns/views/visual
+GET /api/subjects/{subject_id}/norns/cognitions/cog_1
+GET /api/subjects/{subject_id}/norns/explorations/exp_1
 ```
 
-该请求要求 Subject 当前没有 Runtime 且至少有一个历史 Runtime；否则分别返回 `SUBJECT_RUNTIME_ACTIVE` 或 `RUNTIME_SESSION_NOT_FOUND`。不传或传入 `false` 时保持原行为：空闲时创建全新 Session，使用中时向当前 Runtime 追加 instruction。
+所有 Norns View 和 Cog/Exp 详情接口按顺序校验：Subject 下必须同时存在 `.norns/` 目录和 `.norns/norns.sqlite` 常规文件，否则返回 `409 WORKSPACE_NOT_INITIALIZED`（非 Norns 模式的工作区）；工作区存在后，再检查当前服务是否具备可用、兼容的 Norns CLI，否则返回 `503 NORNS_UNAVAILABLE`。不以最新 Runtime 或某个配置模板的 Norns 开关替代这两步检查。
 
-### Norns 模式
+Status/Trace 默认 YAML，可选 json/md，原样返回完整 UTF-8 正文。Norns CLI 返回文件引用时读取完整文件，不受 CLI 6 KiB 内联阈值影响。错误统一为 JSON。Visual 文件限制在 Subject .norns/view/ 内。
 
-需要用 Norns 协议处理开放任务时，将 `agent.yaml` 中的 `NORNS_ENABLE` 设置为 `true`：
+## 打包下载
 
-```sh
-nornsd server \
-  --workspace-root ./runtime-root \
-  --settings ./agent.yaml \
-  --concurrency 2
+统一使用 `GET /api/archive`，scope 必填：
+
+| 参数 | 目录 |
+| --- | --- |
+| scope=subject | 整个 Root，含 .nornsd/ 和其他文件。 |
+| scope=subject&subject_id=UUID | 对应 Subject 工作目录，含 .norns/，不含移出的配置、日志和 transcript。 |
+| scope=rundata | 整个 .nornsd/。 |
+| scope=rundata&subject_id=UUID | 对应 Subject 的运行数据目录。 |
+| scope=rundata&subject_id=UUID&runtime_id=UUID | 对应 Subject 下的 Runtime 运行数据目录。 |
+
+runtime_id 必须同时提供 subject_id 且只能用于 rundata，归属不匹配返回 404。旧 Subject archive 路由不保留。
+
+全量要求全部 Subject idle，指定范围要求该 Subject idle（包括单 Runtime）。五种范围共享一个生成额度；冲突返回 ARCHIVE_BUSY。请求内生成临时 tar.gz 后下载，独立 10 分钟超时覆盖生成和下载，客户端断开即取消。生成完成释放额度，下载结束/失败清理临时文件。
+
+保留目录名、隐藏文件和不跟随的符号链接；SQLite 使用一致性快照，排除 WAL/SHM、活锁、owner、内部 staging 和 socket 等临时项。
+
+## 目录与重启
+
+```text
+<nornsd_root>/
+  .nornsd/
+    service/{root.json,owner.json,nornsd_lock,nornsd.sqlite[-wal|-shm]}
+    configs/{nornsd.yaml,nornsd2.yaml,...}
+    staging/
+    queue_record/<UTC>.json
+    subjects/<subject_id>/
+      subject.json
+      staging/
+      logs/{raw.jsonl,readable.jsonl}
+      runtimes/<runtime_id>/
+        launch.json
+        configs/{nornsd.yaml,agent/settings.json}
+        plugins/{external-plugin-N,custom-plugin,norns-plugin}/
+        memory/memory-samples.jsonl
+        transcripts/{transcript.manifest.json,<runtime_id>.jsonl,<runtime_id>/...}
+  <subject_uuid>_<UTC纳秒>/
+    # Agent 工作文件与可选 .norns/；不创建 .nornsd/
 ```
 
-HTTP 批量提交方式保持不变。每个 Subject 会获得 Norns Plugin 和 Workspace；Runtime 由 Norns Coordinator 驱动，服务额外提供 Status、Trace 与 Visual View API。`NORNS_ENABLE` 为 `false` 时不会预检 `norns` CLI，也不会生成 Norns Plugin。
+launch.json 合并启动快照，包含 runtime、session、agent、config、plugins 分组，记录完整 argv 和有序副本 hash，不生成旧 snapshot.json/config.snapshot.json。全量有效配置（含 SERVICE_* 和凭据）单独保存在 Runtime configs/nornsd.yaml。终态、usage 和资源结果留在数据库。
 
-### Direct agent
+服务运行期间保留 FIFO；跨服务生命周期不再恢复旧排队 Runtime。正常停服停止新提交与领取并导出未启动队列，异常退出在下次启动调度器前补导出。文件位于 queue_record，包含原模板、请求覆盖、身份、顺序、instructions 和恢复会话元数据。
 
-在终端中直接创建一个 Subject：
+导出成功后原 Runtime cancelled、释放 Subject，历史与 instructions 保留；失败回滚并阻止启动。文件发布与事务提交之间崩溃可验证并复用已有导出。无遗留队列不生成文件。已经启动的 Runtime 继续进行进程身份确认、进程树清理、transcript 和 Norns 收尾；无法确认进程时保留 busy，不假定安全接管。
 
-```sh
-mkdir -p ./runtime-root
-cd ./runtime-root
-../nornsd/bin/nornsd agent --setting=../agent.yaml
-```
+Root 锁是否被持有决定占用，owner 文件存在不能判断进程存活。配置、launch、queue export 和 transcript 可能含敏感信息；不要提交到版本库。非 loopback 明文 HTTP 应由可信网络或 TLS 反向代理保护。
 
-`NORNS_ENABLE` 可以启用 Norns 模式；恢复 Subject 时必须保持原 Subject 的 Runtime Profile：
+完整说明见 [设计与 HTTP API](../documents/design/nornsd.md) 和 [Norns 协议](../documents/protocol/protocol.md)。
 
-```sh
-nornsd agent --resume-subject SUBJECT_UUID --setting=./agent.yaml
-```
+事件的 agent 元数据记录 Runtime 内的 Subagent 实例关联；Agent 工具返回的实际 agentId 与 parent_tool_use_id、后台 task ID 通过明确标识关联，同名角色不合并。调用/结果事件的 spawned_agent 描述子实例，agent 仍表示调用者。关联依据随现有 JSON payload 保存，raw 重放可重建。
 
-`--resume-subject` 选择已有 Subject，复用其工作目录并创建新的 Runtime。它不恢复上一 Runtime 的 Claude Session：新 Runtime ID 同时作为新的 Claude Session ID，Claude Code 启动参数中不会包含 `--resume`。普通模式只能从工作目录中的文件延续工作；Norns 模式则由新的 Coordinator 读取 `.norns/` 持久状态，重新评估并继续探索。
-
-需要同时恢复最新 Runtime 的 Claude 对话上下文时，显式增加 `--resume-session`：
-
-```sh
-nornsd agent --resume-subject SUBJECT_UUID --resume-session --setting=./agent.yaml
-```
-
-`--resume-session` 必须与 `--resume-subject` 一起使用，Subject 必须空闲且至少存在一个历史 Runtime。nornsd 读取最新 Runtime 实际使用的 Session ID，并通过 Claude Code 的 `--resume` 与 `--fork-session` 将上下文派生到新 Runtime ID 对应的新 Session；上一 Session 和 transcript 不会被继续写入。
-
-Claude Code 会为后台任务通知额外输出 `origin.kind=task-notification` 的 `result`。当前进程创建的后台任务可能产生非零 `num_turns` 和 token 用量；恢复 Session 时，上一进程遗留任务的通知则常见零 turn、零 token，而且可能晚于新 Runtime 的首条 instruction 到达。nornsd 只按 `origin.kind` 识别这类通知，保留其结果和诊断字段，但不会将其视为 instruction 完成，也不会减少 `inflight_turns`；它们不会生成额外的 `runtime.session_resumed`，一次 Runtime 恢复只记录一条会话恢复事件。
-
-恢复 Subject 时有以下边界：
-
-- 必须在原 `<nornsd_root>` 中执行，而不是进入 Subject 目录执行；当前目录决定要打开的 `.nornsd_root/nornsd.sqlite`。
-- server 必须已经完全停止。direct agent 与 server 使用同一 root lock，不能同时操作同一个根目录。
-- Subject 必须处于 `idle`，并保持原 Runtime Profile（Agent 类型和是否启用 Norns）不变。
-- `--resume-session` 还要求存在历史 Runtime；连续使用时始终从最新 Runtime 的派生 Session 继续。
-- direct agent 会在原数据库中写入新的 Runtime、Event、日志和 transcript；退出后重启 server 可以继续读取这些记录。
-- 不提供 `--resume-subject` 会创建新 Subject。仅在 Subject 目录执行裸 `nornsd agent` 也不会恢复该 Subject，而会把该目录当作新的 nornsd root。
-
-`--settings` 可以不提供、提供一份供全部槽复用，或提供与 `--concurrency` 数量相同的多份配置。server 启动时读取并冻结配置；修改源文件需要重启 server 才会生效。多份配置中的第一份负责 `NORNS_ENABLE` 和 `NORNS_SERVER_*` 全局字段。YAML 中显式声明的值优先于 `--norns`、`--host`、`--port` 和 `--token`。
-
-## Runtime 内存保护
-
-server 托管的 Runtime 在所有平台统一按完整进程树 RSS 监控，不依赖 Windows Job Object 或 Linux cgroup 硬限制。Runtime 启动后立即采样，随后每 500ms 采样一次，记录追加到 `.nornsd/runtimes/<runtime_id>/memory-samples.jsonl`；同一采样同时用于 Runtime 资源摘要和超限判断。
-
-单 Runtime 终止额度是系统内存基准的 50%。Windows 与 macOS 使用物理内存；Linux 使用宿主机 `MemTotal`，但在 Docker、Podman、Kubernetes 等 cgroup 环境中发现更小的有限 `memory.max` 或 `memory.limit_in_bytes` 时，改用该限额作为内存基准。容器未设置有限内存额度时仍使用宿主机内存。
-
-RSS 超限后仅终止对应 Runtime 进程树，并将 `end_reason` 和 `error_code` 统一记录为 `RUNTIME_MEMORY_LIMIT_EXCEEDED`。若紧邻的上一 Runtime 因此结束，Norns Subject 创建下一 Runtime 时会在首条 instruction 前注入恢复提示；普通 Subject 只有在显式使用 `resume_session` 时才注入，创建全新 Session 时不注入。
-
-## agent.yaml
-
-公开配置模板集中放在 `configs/`：`configs/nornsd/agent.example.yaml` 是启动 nornsd 时提供的外部输入，不会编译进二进制；`configs/cc/settings.json` 是编译内嵌的 Claude Code 基础配置模板。
-
-```sh
-cp configs/nornsd/agent.example.yaml ./agent.yaml
-```
-
-示例的 `VERSION` 由构建入口根据 `versions.json` 的 `nornsd.agent_config_schema` 同步，其余字段仍可按需维护。已有用户配置不会被构建修改。配置 schema 升级后，应对照新模板迁移字段；运行时要求配置 `VERSION` 等于 `nornsd version --json` 返回的 `agent_config_version`，不应只修改版本数字绕过检查。
-
-`nornsd agent --setting=./agent.yaml` 显式使用该文件。裸 `nornsd agent --setting` 自动读取可执行文件同目录的 `agent.yaml`；使用 `--resume-subject` 时再合并 Subject 当前配置。自动发现成功并完成预检后，nornsd 会在 stderr 列出实际配置来源，等待 3 秒再启动 Claude Code，期间可以按 `Ctrl+C` 取消。
-
-`NORNS_ENABLE` 同样适用于 direct agent，并优先于 `--norns`。`NORNS_SERVER_HOST`、`NORNS_SERVER_PORT` 和 `NORNS_SERVER_TOKEN` 仅供 server 使用。
-
-各 Agent 的基础配置模板按类型位于 `configs/<agent>/`，由 `configs/templates.go` 编译内嵌；Claude Code 使用 `configs/cc/settings.json`。运行时不依赖源码目录，根据 Runtime Profile 的 Agent 类型选择模板，解析 JSON，并以 `agent.yaml` 中的 URL、密钥和模型字段生成本次 Runtime settings。server 托管 Runtime 和提供了 `--setting` 的 direct agent 会传入 `--setting-sources=`，不额外读取用户、Subject project 或 local settings；裸 `nornsd agent` 不传该参数，沿用 Claude Code 的默认配置来源。显式生成的临时 settings 和 `--plugin-dir` 仍会加载。
-
-`NORNS_EXPLORATION_TIMEOUT` 设置 running Exploration 的超时问询周期，单位为秒，默认 `1200`。该值会注入 Coordinator 的 Runtime 配置；Coordinator 在运行时长达到该周期及其后续整数倍时执行问询或终止规则。
-
-nornsd 启动的所有 Claude Code Runtime 都固定传入 `--dangerously-skip-permissions`，并在子进程环境中强制设置 `IS_SANDBOX=1`，避免 Claude Code 在 root/sudo 环境下拒绝该参数。Runtime 不会停下来请求工具权限确认，因此只应在可信且权限受限的 Subject 工作目录中运行 nornsd。
-
-`CUSTOM_PLUGIN_DIRS` 是现有 Plugin 目录列表，可以为空或包含一个或多个目录；相对路径以声明它的 `agent.yaml` 为基准解析。每个目录都会按列表顺序通过独立的 `--plugin-dir` 参数传给 Agent CLI。
-
-`CUSTOM_AGENTS_DIR` 和 `CUSTOM_SKILLS_DIR` 会复制到当前 Runtime 独立生成的 `nornsd-custom` Plugin，不会写入 Subject 的 `.claude/`。Plugin 加载顺序依次为 `CUSTOM_PLUGIN_DIRS`、动态生成的 `nornsd-custom`、Norns Profile 的 `norns` Plugin。Norns Profile 通过 `--agent norns:coordinator` 让 Coordinator 作为根 Agent；普通 Profile 不传 `--agent` 或 `--system-prompt`，沿用 Agent 默认系统提示词。
-
-生成 Norns Plugin 时，Coordinator 的 `Agent(...)` 工具白名单会从最终 Plugin 集合动态生成：包括 Norns 内置 Agent、领域 Agent、`NORNS_CUSTOM_AGENTS_DIR`、`CUSTOM_AGENTS_DIR`，以及各 `CUSTOM_PLUGIN_DIRS/agents/` 下声明的 Agent。外部 Plugin 的命名空间读取自其 `.claude-plugin/plugin.json`。
-
-`NORNS_CUSTOM_DOMAIN_DIR` 指向一个包含 `meta.json` 和领域知识文件的目录：
-
-```json
-{
-  "domain_name": "code_review",
-  "domain_decider_description": "选择代码审查方向。",
-  "domain_decider_extra_info_file": "decider.md",
-  "domain_explorer_description": "执行代码审查并收集证据。",
-  "domain_explorer_extra_info_file": "explorer.md"
-}
-```
-
-启用 Norns Profile 时，它会生成 `decider-for-<domain_name>.md` 和 `explorer-for-<domain_name>.md`。例如 `domain_name` 为 `code_review` 时，Agent 名称分别是 `decider-for-code_review` 和 `explorer-for-code_review`。生成器会将 description 写入 frontmatter，把相应 extra-info 文件追加到正文末尾，并把二者加入 Coordinator 的可调用 Agent 列表。文件路径相对领域目录解析且不能逃逸目录。
-
-三个 `NORNS_CUSTOM_*` 字段只在 Norns Profile 下参与 Norns Plugin 生成；`CUSTOM_AGENTS_DIR` 和 `CUSTOM_SKILLS_DIR` 生成独立的 Runtime Plugin，`CUSTOM_PLUGIN_DIRS` 直接加载已有 Plugin。`LLM_KEY`、生成 settings、Runtime artifacts 和 transcript 可能包含敏感信息。
-
-## 数据与安全
-
-`--workspace-root` 中的 `.nornsd_root/` 保存服务身份和 SQLite，Subject 子目录保存配置、Plugin、日志、Runtime artifacts、Claude transcript 和可选 Norns Workspace。每个 transcript 归档到 `.nornsd/runtimes/<runtime_id>/<runtime_id>.jsonl`，历史版本创建的 Subject 级 transcript 仍可读取。nornsd 不自动删除这些内容，备份时应将整个 root 作为一致的数据域。
-
-不要把 `agent.yaml`、Subject `.nornsd/` 或服务 Token 提交到版本库。绑定非 loopback 地址仍使用明文 HTTP Bearer Token；应放在可信网络或 TLS 反向代理后。由于 Agent 固定跳过权限确认，Subject 工作目录及 Agent 进程权限本身也是安全边界。
-
-## 文档
-
-- [nornsd 设计与 HTTP API](../documents/design/nornsd.md)
-- [Norns 协议](../documents/protocol/protocol.md)
+关联子实例的工具结果还保留可选 `subagent_status`：同步完成/失败与后台启动、恢复的进行中状态分别记录；后台启动结果不会被当作执行结束。客户端可结合 Agent task 的完成/失败/停止通知显示实例状态，不能用内部 Bash task 或 Main 的一轮 result 推断整个 Agent/Runtime 结束。

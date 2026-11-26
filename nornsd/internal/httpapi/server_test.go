@@ -57,11 +57,11 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: 1, SlotConfigs: nil})
+
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1, SlotConfigs: nil})
 	manager.Start()
 	defer func() { manager.Close(); _ = owner.Close() }()
-	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
 	server := New(Config{Service: service, Token: "secret", Concurrency: 1, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	request := httptest.NewRequest(http.MethodGet, "/api/", nil)
 	response := httptest.NewRecorder()
@@ -259,14 +259,17 @@ func TestAPIAuthenticationAndSubjectLifecycle(t *testing.T) {
 	if json.Unmarshal(response.Body.Bytes(), &runtimeDetail) != nil || runtimeDetail.Artifacts.Transcript != nil || runtimeDetail.Artifacts.TranscriptStatus != "missing" {
 		t.Fatalf("invalid missing transcript artifact: %s", response.Body.String())
 	}
-	transcriptPath := filepath.Join(*detail.Workspace.Path, ".nornsd", "runtimes", runtime.ID, runtime.ID+".jsonl")
+	transcriptPath := filepath.Join(root.RuntimeDataPath(*detail.Workspace.Path, runtime.ID), "transcripts", runtime.ID+".jsonl")
 	if err = os.MkdirAll(filepath.Dir(transcriptPath), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err = os.WriteFile(transcriptPath, []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	memorySamplesPath := filepath.Join(filepath.Dir(transcriptPath), "memory-samples.jsonl")
+	memorySamplesPath := filepath.Join(root.RuntimeDataPath(*detail.Workspace.Path, runtime.ID), "memory", "memory-samples.jsonl")
+	if err = os.MkdirAll(filepath.Dir(memorySamplesPath), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err = os.WriteFile(memorySamplesPath, []byte("{\"sampled_at\":\"2026-10-21T00:00:00Z\",\"memory_bytes\":1024}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -328,10 +331,10 @@ func TestSubmitCanForkLatestRuntimeSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: 1})
+
+	manager := runtimemanager.NewManager(ctx, runtimemanager.Options{Owner: owner, Concurrency: 1})
 	defer manager.Close()
-	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile}
+	service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager}
 	server := New(Config{Service: service, Token: "secret", Concurrency: 1, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 
 	withoutHistory, err := service.CreateSubject(ctx, nil, nil)

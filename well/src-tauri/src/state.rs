@@ -1,4 +1,5 @@
-use std::time::Duration;
+use std::{collections::HashMap, sync::Mutex, time::Duration};
+use tokio::sync::oneshot;
 
 use reqwest::Client;
 
@@ -6,6 +7,7 @@ use crate::api::error::ClientError;
 
 pub struct AppState {
     pub client: Client,
+    pub downloads: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl AppState {
@@ -15,6 +17,9 @@ impl AppState {
             .pool_idle_timeout(Duration::from_secs(90))
             .build()
             .map_err(|error| ClientError::configuration("cannot build HTTP client", error))?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            downloads: Mutex::new(HashMap::new()),
+        })
     }
 }

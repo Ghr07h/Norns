@@ -2,7 +2,7 @@
 
 ## DDGS
 
-Parts of `internal/websearch` are Go adaptations of the Google text search
+Parts of `internal/custom_extensions/websearch` are Go adaptations of the Google text search
 request, result processing, and simple ranking behavior from DDGS 9.x.
 
 Source project: <https://github.com/deedy5/ddgs>

@@ -233,7 +233,7 @@ func TestCrossTaskHintsTraceAndRetry(t *testing.T) {
 	}
 	retryID := resultID(t, retry)
 
-	traceBytes, _, err := service.TraceView(ctx, explorationID, true)
+	traceBytes, _, err := service.TraceView(ctx, explorationID, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestCrossTaskHintsTraceAndRetry(t *testing.T) {
 	if err := json.Unmarshal(traceBytes, &trace); err != nil {
 		t.Fatal(err)
 	}
-	if trace.OriginTask.Purpose != "First" || !containsCognition(trace.Related.Cognitions, resultID(t, hint)) || !containsGlobal(trace.GlobalCognitions, resultID(t, global)) {
+	if trace.ParentTask.Purpose != "First" || !containsHint(trace.Related.Explorations, explorationID, resultID(t, hint)) || !containsGlobal(trace.GlobalHints, resultID(t, global)) {
 		t.Fatalf("historical Trace omitted later context: %#v", trace)
 	}
 
@@ -271,7 +271,7 @@ func TestExplorationRejectsInvalidTransitionsAndSources(t *testing.T) {
 	if _, err := service.AddExploration(ctx, AddExplorationRequest{Title: "Duplicate", Content: "Bad", Sources: []string{origin, origin}}); errorCode(err) != "INVALID_ARGUMENT" {
 		t.Fatalf("duplicate sources returned %v", err)
 	}
-	unknown := "cog_ffffffff-ffff-4fff-8fff-ffffffffffff"
+	unknown := "cog_9223372036854775807"
 	if _, err := service.AddExploration(ctx, AddExplorationRequest{Title: "Unknown", Content: "Bad", Sources: []string{unknown}}); errorCode(err) != "COGNITION_NOT_FOUND" {
 		t.Fatalf("unknown source returned %v", err)
 	}
@@ -348,7 +348,7 @@ func TestTaskInitSelectionUsesDocumentedTieBreakers(t *testing.T) {
 		}
 	})
 
-	t.Run("extend latest Task-init", func(t *testing.T) {
+	t.Run("new Task-init refers to creating Task", func(t *testing.T) {
 		service, _ := newTestService(t)
 		firstInfo := "First subject"
 		first, err := service.OpenTask(context.Background(), OpenTaskRequest{Purpose: "First", Concurrency: 1, Info: &firstInfo})
@@ -378,16 +378,16 @@ func TestTaskInitSelectionUsesDocumentedTieBreakers(t *testing.T) {
 		}
 		defer db.Close()
 		var predecessor string
-		if err := db.QueryRow(`SELECT origin_cognition_id FROM cognitions WHERE id=?`, thirdOrigin).Scan(&predecessor); err != nil {
+		if err := db.QueryRow(`SELECT origin_task_id FROM cognitions WHERE id=?`, thirdOrigin).Scan(&predecessor); err != nil {
 			t.Fatal(err)
 		}
-		if predecessor != firstOrigin {
-			t.Fatalf("created_at tie must select id ASC; got %s want %s", predecessor, firstOrigin)
+		if predecessor != resultID(t, third) || predecessor == firstOrigin {
+			t.Fatalf("Task-init must refer to its creating Task; got %s", predecessor)
 		}
 	})
 }
 
-func TestValidationRejectsTamperedTaskInitPredecessor(t *testing.T) {
+func TestValidationRejectsTamperedTaskInitProvenance(t *testing.T) {
 	ctx := context.Background()
 	service, clock := newTestService(t)
 	firstInfo := "First"
@@ -422,14 +422,17 @@ func TestValidationRejectsTamperedTaskInitPredecessor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE cognitions SET origin_cognition_id=? WHERE id=?`, firstOrigin, thirdOrigin); err != nil {
+	if _, err := db.Exec(`PRAGMA ignore_check_constraints=ON`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE cognitions SET origin_task_id=? WHERE id=?`, resultID(t, first), thirdOrigin); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Store.Read(ctx, func(*sql.Tx) error { return nil }); errorCode(err) != "WORKSPACE_STATE_UNTRUSTED" {
-		t.Fatalf("tampered predecessor was accepted: %v", err)
+		t.Fatalf("tampered Task provenance was accepted: %v", err)
 	}
 }
 
@@ -446,7 +449,7 @@ func assertExplorationState(t *testing.T, db *sql.DB, id, status, outcome string
 	t.Helper()
 	var actualStatus string
 	var actualOutcome, executor, output, assigned, actualFinished sql.NullString
-	if err := db.QueryRow(`SELECT status,outcome,executor_id,output_ref,assigned_at,finished_at FROM explorations WHERE id=?`, id).Scan(&actualStatus, &actualOutcome, &executor, &output, &assigned, &actualFinished); err != nil {
+	if err := db.QueryRow(`SELECT status,outcome,explorer_id,output_ref,assigned_at,finished_at FROM explorations WHERE id=?`, id).Scan(&actualStatus, &actualOutcome, &executor, &output, &assigned, &actualFinished); err != nil {
 		t.Fatal(err)
 	}
 	if actualStatus != status || actualOutcome.String != outcome || executor.Valid != executed || output.Valid != executed || assigned.Valid != executed {

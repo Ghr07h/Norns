@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,14 +41,15 @@ type globalProjection struct {
 	CreatedAt string `json:"created_at" yaml:"created_at"`
 }
 type explorationProjection struct {
-	ID            string   `json:"id" yaml:"id"`
-	Content       string   `json:"content" yaml:"content"`
-	RetryOf       *string  `json:"retry_of,omitempty" yaml:"retry_of,omitempty"`
-	Status        string   `json:"status" yaml:"status"`
-	Outcome       *string  `json:"outcome,omitempty" yaml:"outcome,omitempty"`
-	OutcomeReason *string  `json:"outcome_reason,omitempty" yaml:"outcome_reason,omitempty"`
-	Sources       []string `json:"source_cognitions" yaml:"source_cognitions"`
-	FinishedAt    *string  `json:"finished_at,omitempty" yaml:"finished_at,omitempty"`
+	ID            string             `json:"id" yaml:"id"`
+	Content       string             `json:"content" yaml:"content"`
+	RetryOf       *string            `json:"retry_of,omitempty" yaml:"retry_of,omitempty"`
+	Status        string             `json:"status" yaml:"status"`
+	Outcome       *string            `json:"outcome,omitempty" yaml:"outcome,omitempty"`
+	OutcomeReason *string            `json:"outcome_reason,omitempty" yaml:"outcome_reason,omitempty"`
+	Sources       []string           `json:"sources" yaml:"sources,flow"`
+	Hints         []globalProjection `json:"hints,omitempty" yaml:"hints,omitempty"`
+	FinishedAt    *string            `json:"finished_at,omitempty" yaml:"finished_at,omitempty"`
 }
 type graphProjection struct {
 	Cognitions   []cognitionProjection   `json:"cognitions" yaml:"cognitions"`
@@ -62,14 +64,19 @@ type runningProjection struct {
 	Title           string `json:"title" yaml:"title"`
 	DurationSeconds int64  `json:"duration_seconds" yaml:"duration_seconds"`
 }
+type traceRunningProjection struct {
+	runningProjection `yaml:",inline"`
+	ExplorerID        string `json:"explorer_id" yaml:"explorer_id"`
+}
 type statusView struct {
-	Task             *taskProjection     `json:"task,omitempty" yaml:"task,omitempty"`
-	Tasks            *[]taskProjection   `json:"tasks,omitempty" yaml:"tasks,omitempty"`
-	Graph            graphProjection     `json:"graph" yaml:"graph"`
-	GlobalCognitions []globalProjection  `json:"global_cognitions" yaml:"global_cognitions"`
-	Todo             []todoProjection    `json:"todo_explorations" yaml:"todo_explorations"`
-	Running          []runningProjection `json:"running_explorations" yaml:"running_explorations"`
-	GeneratedAt      string              `json:"generated_at" yaml:"generated_at"`
+	Task                         *taskProjection     `json:"task,omitempty" yaml:"task,omitempty"`
+	Tasks                        *[]taskProjection   `json:"tasks,omitempty" yaml:"tasks,omitempty"`
+	Graph                        graphProjection     `json:"graph" yaml:"graph"`
+	GlobalHints                  []globalProjection  `json:"global_hints" yaml:"global_hints"`
+	Todo                         []todoProjection    `json:"todo_explorations" yaml:"todo_explorations"`
+	Running                      []runningProjection `json:"running_explorations" yaml:"running_explorations"`
+	RecentTop10DerivedCognitions []string            `json:"recent_top10_derived_cognitions,omitempty" yaml:"recent_top10_derived_cognitions,omitempty,flow"`
+	GeneratedAt                  string              `json:"generated_at" yaml:"generated_at"`
 }
 
 type loaded struct {
@@ -78,7 +85,10 @@ type loaded struct {
 	Explorations []domain.Exploration
 }
 
-func (s *Service) StatusView(ctx context.Context, taskID *string, asJSON bool) ([]byte, string, error) {
+func (s *Service) StatusView(ctx context.Context, taskID *string, format ViewFormat) ([]byte, string, error) {
+	if err := format.Validate(); err != nil {
+		return nil, "", err
+	}
 	if taskID != nil {
 		if err := domain.ValidateID(*taskID, "task"); err != nil {
 			return nil, "", err
@@ -96,18 +106,18 @@ func (s *Service) StatusView(ctx context.Context, taskID *string, asJSON bool) (
 		if err != nil {
 			return err
 		}
-		bytes, err = encodeView(view, asJSON)
+		bytes, err = encodeView(view, format, "Status", all)
 		if err != nil {
 			return err
 		}
-		path, err = s.publishView(bytes, "status", extension(asJSON))
+		path, err = s.publishView(bytes, "status", string(format))
 		return err
 	})
 	return bytes, path, err
 }
 
 func buildStatus(all loaded, requested *string, generated time.Time) (statusView, error) {
-	view := statusView{Graph: graphProjection{Cognitions: []cognitionProjection{}, Explorations: []explorationProjection{}}, GlobalCognitions: []globalProjection{}, Todo: []todoProjection{}, Running: []runningProjection{}, GeneratedAt: domain.TimeText(generated)}
+	view := statusView{Graph: graphProjection{Cognitions: []cognitionProjection{}, Explorations: []explorationProjection{}}, GlobalHints: []globalProjection{}, Todo: []todoProjection{}, Running: []runningProjection{}, GeneratedAt: domain.TimeText(generated)}
 	var selected *domain.Task
 	if requested != nil {
 		for i := range all.Tasks {
@@ -137,10 +147,29 @@ func buildStatus(all loaded, requested *string, generated time.Time) (statusView
 		}
 		view.Tasks = &tasks
 	}
+	hints := projectHints(all)
+	type recentCognition struct {
+		id      string
+		created time.Time
+	}
+	var recent []recentCognition
+	windowStart := generated.Add(-30 * time.Minute)
 	for _, c := range all.Cognitions {
 		if c.TaskID == nil {
-			view.GlobalCognitions = append(view.GlobalCognitions, globalProjection{c.ID, c.Content, c.CreatedAt})
+			view.GlobalHints = append(view.GlobalHints, globalProjection{c.ID, c.Content, c.CreatedAt})
 			continue
+		}
+		if c.Origin == "user" {
+			continue
+		}
+		if c.Origin == "exploration" {
+			created, err := time.Parse(time.RFC3339Nano, c.CreatedAt)
+			if err != nil {
+				return view, domain.Wrap("WORKSPACE_STATE_UNTRUSTED", "Cognition creation time is invalid", err)
+			}
+			if !created.Before(windowStart) && !created.After(generated) {
+				recent = append(recent, recentCognition{c.ID, created})
+			}
 		}
 		p := projectCognition(c)
 		if c.TaskPurposeRelevant && (selected == nil || *c.TaskID == selected.ID) {
@@ -149,19 +178,23 @@ func buildStatus(all loaded, requested *string, generated time.Time) (statusView
 		}
 		view.Graph.Cognitions = append(view.Graph.Cognitions, p)
 	}
+	sort.Slice(recent, func(i, j int) bool {
+		if recent[i].created.Equal(recent[j].created) {
+			return domain.IDLess(recent[i].id, recent[j].id)
+		}
+		return recent[i].created.After(recent[j].created)
+	})
+	for _, c := range recent[:min(10, len(recent))] {
+		view.RecentTop10DerivedCognitions = append(view.RecentTop10DerivedCognitions, c.id)
+	}
 	for _, e := range all.Explorations {
-		view.Graph.Explorations = append(view.Graph.Explorations, projectExploration(e))
+		view.Graph.Explorations = append(view.Graph.Explorations, projectExploration(e, hints[e.ID]))
 		if selected != nil && e.TaskID == selected.ID {
 			if e.Status == "todo" {
 				view.Todo = append(view.Todo, todoProjection{e.ID, e.Title})
 			}
 			if e.Status == "running" {
-				assigned, _ := time.Parse(time.RFC3339Nano, value(e.AssignedAt))
-				d := int64(generated.Sub(assigned).Seconds())
-				if d < 0 {
-					d = 0
-				}
-				view.Running = append(view.Running, runningProjection{e.ID, e.Title, d})
+				view.Running = append(view.Running, projectRunning(e, generated))
 			}
 		}
 	}
@@ -173,19 +206,23 @@ type currentExploration struct {
 	Title   string `json:"title" yaml:"title"`
 	Content string `json:"content" yaml:"content"`
 }
-type originTask struct {
+type parentTask struct {
 	Purpose string `json:"purpose" yaml:"purpose"`
 	Note    string `json:"note" yaml:"note"`
 }
 type traceView struct {
-	Current          currentExploration `json:"current_exploration" yaml:"current_exploration"`
-	OriginTask       originTask         `json:"origin_task" yaml:"origin_task"`
-	Related          graphProjection    `json:"related_subgraph" yaml:"related_subgraph"`
-	GlobalCognitions []globalProjection `json:"global_cognitions" yaml:"global_cognitions"`
-	GeneratedAt      string             `json:"generated_at" yaml:"generated_at"`
+	Current     currentExploration       `json:"current_exploration" yaml:"current_exploration"`
+	ParentTask  parentTask               `json:"parent_task" yaml:"parent_task"`
+	Related     graphProjection          `json:"related_subgraph" yaml:"related_subgraph"`
+	GlobalHints []globalProjection       `json:"global_hints" yaml:"global_hints"`
+	Running     []traceRunningProjection `json:"running_explorations" yaml:"running_explorations"`
+	GeneratedAt string                   `json:"generated_at" yaml:"generated_at"`
 }
 
-func (s *Service) TraceView(ctx context.Context, id string, asJSON bool) ([]byte, string, error) {
+func (s *Service) TraceView(ctx context.Context, id string, format ViewFormat) ([]byte, string, error) {
+	if err := format.Validate(); err != nil {
+		return nil, "", err
+	}
 	if err := domain.ValidateID(id, "exploration"); err != nil {
 		return nil, "", err
 	}
@@ -200,11 +237,11 @@ func (s *Service) TraceView(ctx context.Context, id string, asJSON bool) ([]byte
 		if err != nil {
 			return err
 		}
-		bytes, err = encodeView(view, asJSON)
+		bytes, err = encodeView(view, format, "Trace", all)
 		if err != nil {
 			return err
 		}
-		path, err = s.publishView(bytes, "trace", extension(asJSON))
+		path, err = s.publishView(bytes, "trace", string(format))
 		return err
 	})
 	return bytes, path, err
@@ -217,8 +254,12 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 	for _, v := range all.Tasks {
 		tasks[v.ID] = v
 	}
+	outputs := map[string][]string{}
 	for _, v := range all.Cognitions {
 		cogs[v.ID] = v
+		if v.Origin == "exploration" && v.OriginExplorationID != nil {
+			outputs[*v.OriginExplorationID] = append(outputs[*v.OriginExplorationID], v.ID)
+		}
 	}
 	for _, v := range all.Explorations {
 		exps[v.ID] = v
@@ -234,36 +275,25 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 	includeC := map[string]bool{}
 	includeE := map[string]bool{}
 	includeOutputs := map[string]bool{}
-	visitingC := map[string]bool{}
 	var addC func(string) error
 	var addE func(string, bool) error
 	addC = func(cid string) error {
 		if includeC[cid] {
 			return nil
 		}
-		if visitingC[cid] {
-			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Graph contains a cycle")
-		}
 		c, ok := cogs[cid]
 		if !ok {
 			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Graph references a missing Cognition")
 		}
-		visitingC[cid] = true
 		includeC[cid] = true
-		if c.OriginCognitionID != nil {
-			if err := addC(*c.OriginCognitionID); err != nil {
-				return err
-			}
-		}
 		if c.OriginExplorationID != nil {
 			if err := addE(*c.OriginExplorationID, false); err != nil {
 				return err
 			}
 		}
-		delete(visitingC, cid)
 		return nil
 	}
-	addE = func(eid string, outputs bool) error {
+	addE = func(eid string, includeAllOutputs bool) error {
 		e, ok := exps[eid]
 		if !ok {
 			return domain.NewError("WORKSPACE_STATE_UNTRUSTED", "Graph references a missing Exploration")
@@ -276,13 +306,11 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 				}
 			}
 		}
-		if outputs && !includeOutputs[eid] {
+		if includeAllOutputs && !includeOutputs[eid] {
 			includeOutputs[eid] = true
-			for _, c := range all.Cognitions {
-				if c.OriginExplorationID != nil && *c.OriginExplorationID == eid {
-					if err := addC(c.ID); err != nil {
-						return err
-					}
+			for _, cid := range outputs[eid] {
+				if err := addC(cid); err != nil {
+					return err
 				}
 			}
 		}
@@ -308,11 +336,12 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 		}
 		cursor = e.RetryOf
 	}
-	view := traceView{Current: currentExploration{current.ID, current.Title, current.Content}, OriginTask: originTask{task.Purpose, traceNote()}, Related: graphProjection{Cognitions: []cognitionProjection{}, Explorations: []explorationProjection{}}, GlobalCognitions: []globalProjection{}, GeneratedAt: domain.TimeText(generated)}
+	hints := projectHints(all)
+	view := traceView{Current: currentExploration{current.ID, current.Title, current.Content}, ParentTask: parentTask{task.Purpose, traceNote()}, Related: graphProjection{Cognitions: []cognitionProjection{}, Explorations: []explorationProjection{}}, GlobalHints: []globalProjection{}, Running: []traceRunningProjection{}, GeneratedAt: domain.TimeText(generated)}
 	for _, c := range all.Cognitions {
 		if c.TaskID == nil {
-			view.GlobalCognitions = append(view.GlobalCognitions, globalProjection{c.ID, c.Content, c.CreatedAt})
-		} else if includeC[c.ID] {
+			view.GlobalHints = append(view.GlobalHints, globalProjection{c.ID, c.Content, c.CreatedAt})
+		} else if c.Origin != "user" && includeC[c.ID] {
 			p := projectCognition(c)
 			p.TaskPurposeRelevant = nil
 			view.Related.Cognitions = append(view.Related.Cognitions, p)
@@ -320,7 +349,10 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 	}
 	for _, e := range all.Explorations {
 		if includeE[e.ID] {
-			view.Related.Explorations = append(view.Related.Explorations, projectExploration(e))
+			view.Related.Explorations = append(view.Related.Explorations, projectExploration(e, hints[e.ID]))
+		}
+		if e.TaskID == task.ID && e.Status == "running" {
+			view.Running = append(view.Running, traceRunningProjection{projectRunning(e, generated), value(e.ExplorerID)})
 		}
 	}
 	return view, nil
@@ -328,9 +360,9 @@ func buildTrace(all loaded, id string, generated time.Time) (traceView, error) {
 
 func traceNote() string {
 	if i18n.Chinese() {
-		return "只需落实 current_exploration，不需要完成整个 origin Task。"
+		return "你只需完成 current_exploration。父任务的目标仅用于帮助你理解本探索的上下文，无需完成整个父任务。"
 	}
-	return "Work only on current_exploration; do not attempt to complete the entire origin Task."
+	return "Complete only current_exploration. Use the parent Task's purpose only as context for understanding this exploration. Do not attempt to complete the entire parent Task."
 }
 
 func (s *Service) VisualView(ctx context.Context, open bool, language string) (Result, error) {
@@ -433,9 +465,6 @@ func visualEdges(all loaded) []visualEdge {
 		}
 	}
 	for _, cognition := range all.Cognitions {
-		if cognition.OriginCognitionID != nil {
-			edges = append(edges, visualEdge{From: *cognition.OriginCognitionID, To: cognition.ID, Kind: "extends"})
-		}
 		if cognition.OriginExplorationID != nil {
 			edges = append(edges, visualEdge{From: *cognition.OriginExplorationID, To: cognition.ID, Kind: "output"})
 		}
@@ -457,7 +486,7 @@ func loadAll(ctx context.Context, tx *sql.Tx) (loaded, error) {
 	out.Tasks = []domain.Task{}
 	out.Cognitions = []domain.Cognition{}
 	out.Explorations = []domain.Exploration{}
-	rows, e := tx.QueryContext(ctx, `SELECT id,purpose,init_cognition_ref,max_concurrency,status,outcome,outcome_reason,created_at,closed_at FROM tasks ORDER BY created_at ASC,id ASC`)
+	rows, e := tx.QueryContext(ctx, `SELECT id,purpose,init_cognition_ref,max_concurrency,status,outcome,outcome_reason,created_at,closed_at FROM tasks ORDER BY substr(created_at,1,19) ASC,rtrim(substr(created_at,20),'Z') ASC,id ASC`)
 	if e != nil {
 		return out, dbErr(e)
 	}
@@ -474,52 +503,38 @@ func loadAll(ctx context.Context, tx *sql.Tx) (loaded, error) {
 		out.Tasks = append(out.Tasks, t)
 	}
 	rows.Close()
-	rows, e = tx.QueryContext(ctx, `SELECT id,title,content,task_id,origin,origin_cognition_id,origin_exploration_id,task_purpose_relevant,created_at FROM cognitions ORDER BY created_at ASC,id ASC`)
+	rows, e = tx.QueryContext(ctx, `SELECT `+cognitionColumns+` FROM cognitions ORDER BY substr(created_at,1,19) ASC,rtrim(substr(created_at,20),'Z') ASC,CAST(substr(id,5) AS INTEGER) ASC`)
 	if e != nil {
 		return out, dbErr(e)
 	}
 	for rows.Next() {
-		var c domain.Cognition
-		var task, oc, oe sql.NullString
-		if e := rows.Scan(&c.ID, &c.Title, &c.Content, &task, &c.Origin, &oc, &oe, &c.TaskPurposeRelevant, &c.CreatedAt); e != nil {
+		c, err := scanCognition(rows)
+		if err != nil {
 			rows.Close()
-			return out, dbErr(e)
-		}
-		c.TaskID = ptr(task)
-		c.OriginCognitionID = ptr(oc)
-		c.OriginExplorationID = ptr(oe)
-		if c.OriginCognitionID != nil {
-			c.OriginRef = c.OriginCognitionID
-		} else {
-			c.OriginRef = c.OriginExplorationID
+			return out, err
 		}
 		out.Cognitions = append(out.Cognitions, c)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return out, dbErr(err)
+	}
 	rows.Close()
-	rows, e = tx.QueryContext(ctx, `SELECT id,title,content,task_id,retry_of,status,executor_id,output_ref,assigned_at,outcome,outcome_reason,created_at,finished_at FROM explorations ORDER BY created_at ASC,id ASC`)
+	rows, e = tx.QueryContext(ctx, `SELECT `+explorationColumns+` FROM explorations ORDER BY substr(created_at,1,19) ASC,rtrim(substr(created_at,20),'Z') ASC,CAST(substr(id,5) AS INTEGER) ASC`)
 	if e != nil {
 		return out, dbErr(e)
 	}
 	for rows.Next() {
-		var v domain.Exploration
-		var retry, executor, outputRef, assigned, outcome, reason, finished sql.NullString
-		if e := rows.Scan(&v.ID, &v.Title, &v.Content, &v.TaskID, &retry, &v.Status, &executor, &outputRef, &assigned, &outcome, &reason, &v.CreatedAt, &finished); e != nil {
+		v, err := scanExploration(rows)
+		if err != nil {
 			rows.Close()
-			return out, dbErr(e)
-		}
-		v.RetryOf = ptr(retry)
-		v.ExecutorID = ptr(executor)
-		v.OutputRef = ptr(outputRef)
-		v.AssignedAt = ptr(assigned)
-		v.Outcome = ptr(outcome)
-		v.OutcomeReason = ptr(reason)
-		v.FinishedAt = ptr(finished)
-		v.Sources, e = sourceIDs(ctx, tx, v.ID)
-		if e != nil {
-			rows.Close()
-			return out, e
+			return out, err
 		}
 		out.Explorations = append(out.Explorations, v)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return out, dbErr(err)
 	}
 	rows.Close()
 	return out, nil
@@ -528,11 +543,28 @@ func loadAll(ctx context.Context, tx *sql.Tx) (loaded, error) {
 func projectTask(t domain.Task) taskProjection {
 	return taskProjection{t.ID, t.Purpose, t.Outcome, t.OutcomeReason, t.ClosedAt}
 }
+func projectRunning(e domain.Exploration, generated time.Time) runningProjection {
+	assigned, _ := time.Parse(time.RFC3339Nano, value(e.AssignedAt))
+	duration := int64(generated.Sub(assigned).Seconds())
+	if duration < 0 {
+		duration = 0
+	}
+	return runningProjection{e.ID, e.Title, duration}
+}
 func projectCognition(c domain.Cognition) cognitionProjection {
 	return cognitionProjection{ID: c.ID, Content: c.Content, CreatedAt: c.CreatedAt, OriginRef: c.OriginRef}
 }
-func projectExploration(e domain.Exploration) explorationProjection {
-	return explorationProjection{ID: e.ID, Content: e.Content, RetryOf: e.RetryOf, Status: e.Status, Outcome: e.Outcome, OutcomeReason: e.OutcomeReason, Sources: e.Sources, FinishedAt: e.FinishedAt}
+func projectExploration(e domain.Exploration, hints []globalProjection) explorationProjection {
+	return explorationProjection{ID: e.ID, Content: e.Content, RetryOf: e.RetryOf, Status: e.Status, Outcome: e.Outcome, OutcomeReason: e.OutcomeReason, Sources: e.Sources, Hints: hints, FinishedAt: e.FinishedAt}
+}
+func projectHints(all loaded) map[string][]globalProjection {
+	hints := map[string][]globalProjection{}
+	for _, c := range all.Cognitions {
+		if c.Origin == "user" && c.OriginExplorationID != nil {
+			hints[*c.OriginExplorationID] = append(hints[*c.OriginExplorationID], globalProjection{c.ID, c.Content, c.CreatedAt})
+		}
+	}
+	return hints
 }
 func ptr(v sql.NullString) *string {
 	if !v.Valid {
@@ -547,20 +579,18 @@ func value(v *string) string {
 	}
 	return *v
 }
-func extension(json bool) string {
-	if json {
-		return "json"
+func encodeView(v any, format ViewFormat, name string, all loaded) ([]byte, error) {
+	if format == ViewMarkdown {
+		return encodeMarkdownView(v, name, all)
 	}
-	return "yaml"
-}
-func encodeView(v any, asJSON bool) ([]byte, error) {
-	if asJSON {
+	if format == ViewJSON {
 		b, e := json.MarshalIndent(v, "", "  ")
 		if e != nil {
 			return nil, domain.Wrap("INTERNAL_ERROR", "cannot encode JSON View", e)
 		}
 		return append(b, '\n'), nil
 	}
+
 	b, e := yaml.Marshal(v)
 	if e != nil {
 		return nil, domain.Wrap("INTERNAL_ERROR", "cannot encode YAML View", e)
@@ -576,7 +606,7 @@ func (s *Service) publishView(content []byte, kind, ext string) (string, error) 
 	if err != nil {
 		return "", domain.Wrap("INTERNAL_ERROR", "cannot generate View token", err)
 	}
-	stamp := s.Clock.Now().UTC().Format("20060102T150405.000000000Z")
+	stamp := s.Clock.Now().UTC().Format("20060102T150405Z")
 	name := fmt.Sprintf("%s-%s-%s.%s", kind, stamp, token[:8], ext)
 	final := filepath.Join(s.Paths.View, name)
 	temp := final + ".tmp"

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"sort"
@@ -22,28 +23,38 @@ import (
 	"github.com/Ghr07h/norns/nornsd/internal/app"
 	"github.com/Ghr07h/norns/nornsd/internal/domain"
 	"github.com/Ghr07h/norns/nornsd/internal/eventlog"
+	nornsadapter "github.com/Ghr07h/norns/nornsd/internal/norns"
 	"github.com/Ghr07h/norns/nornsd/internal/version"
 )
 
 const apiPrefix = "/api"
 
 type Config struct {
-	Service     *app.Service
-	Token       string
-	Concurrency int
-	Logger      *slog.Logger
+	Service        *app.Service
+	Token          string
+	Concurrency    int
+	Logger         *slog.Logger
+	ArchiveTimeout time.Duration
 }
 type Server struct {
-	service     *app.Service
-	tokenHash   [32]byte
-	concurrency int
-	logger      *slog.Logger
-	mux         *http.ServeMux
-	draining    atomic.Bool
+	service        *app.Service
+	tokenHash      [32]byte
+	concurrency    int
+	logger         *slog.Logger
+	mux            *http.ServeMux
+	draining       atomic.Bool
+	archiveTimeout time.Duration
+	archiveContext context.Context
+	cancelArchives context.CancelFunc
 }
 
 func New(cfg Config) *Server {
 	s := &Server{service: cfg.Service, tokenHash: sha256.Sum256([]byte(cfg.Token)), concurrency: cfg.Concurrency, logger: cfg.Logger, mux: http.NewServeMux()}
+	s.archiveContext, s.cancelArchives = context.WithCancel(context.Background())
+	s.archiveTimeout = cfg.ArchiveTimeout
+	if s.archiveTimeout <= 0 {
+		s.archiveTimeout = version.ArchiveRequestTimeout
+	}
 	if s.logger == nil {
 		s.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	}
@@ -71,9 +82,12 @@ func (s *Server) routes() {
 		{"GET", "/subjects/{subject_id}/events/updates", map[string]bool{"cursor": false}, s.eventUpdates},
 		{"GET", "/subjects/{subject_id}/runtimes", map[string]bool{"limit": false, "cursor": false}, s.listRuntimes},
 		{"GET", "/subjects/{subject_id}/runtimes/{runtime_id}", nil, s.getRuntime},
-		{"GET", "/subjects/{subject_id}/norns/views/status", map[string]bool{"task_id": false}, s.statusView},
-		{"GET", "/subjects/{subject_id}/norns/views/trace", map[string]bool{"exploration_id": false}, s.traceView},
+		{"GET", "/subjects/{subject_id}/norns/views/status", map[string]bool{"task_id": false, "format": false}, s.statusView},
+		{"GET", "/subjects/{subject_id}/norns/views/trace", map[string]bool{"exploration_id": false, "format": false}, s.traceView},
 		{"GET", "/subjects/{subject_id}/norns/views/visual", map[string]bool{"lang": false}, s.visualView},
+		{"GET", "/subjects/{subject_id}/norns/cognitions/{cognition_id}", nil, s.cognition},
+		{"GET", "/subjects/{subject_id}/norns/explorations/{exploration_id}", nil, s.exploration},
+		{"GET", "/archive", map[string]bool{"scope": false, "subject_id": false, "runtime_id": false}, s.rootArchive},
 	}
 	methods := map[string][]string{}
 	for _, item := range routes {
@@ -118,6 +132,8 @@ type statusWriter struct {
 	status, bytes int
 }
 
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func (w *statusWriter) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
@@ -148,8 +164,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.writeError(sw, requestID, domain.NewError("UNAUTHORIZED", "authentication required", http.StatusUnauthorized))
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), version.RequestTimeout)
+	if s.draining.Load() && r.Method != "GET" {
+		fail(s, sw, r, domain.NewError("SERVICE_UNAVAILABLE", "server is draining", http.StatusServiceUnavailable))
+		return
+	}
+	timeout := version.RequestTimeout
+	_, pattern := s.mux.Handler(r)
+	archiveRequest := pattern == "GET /api/archive"
+	if archiveRequest {
+		timeout = s.archiveTimeout
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
+	if archiveRequest {
+		stop := context.AfterFunc(s.archiveContext, cancel)
+		defer stop()
+	}
 	s.mux.ServeHTTP(sw, r.WithContext(context.WithValue(ctx, requestIDKey{}, requestID)))
 }
 
@@ -163,7 +193,10 @@ func (s *Server) authorized(r *http.Request) bool {
 	candidate := sha256.Sum256([]byte(strings.TrimPrefix(header, "Bearer ")))
 	return subtle.ConstantTimeCompare(candidate[:], s.tokenHash[:]) == 1
 }
-func (s *Server) SetDraining() { s.draining.Store(true) }
+func (s *Server) SetDraining() {
+	s.draining.Store(true)
+	s.cancelArchives()
+}
 
 func (s *Server) writeError(w http.ResponseWriter, requestID string, err error) {
 	de := domain.AsError(err)
@@ -227,13 +260,14 @@ func (s *Server) serviceInfo(w http.ResponseWriter, r *http.Request) {
 		fail(s, w, r, err)
 		return
 	}
-	caps := []string{"subjects", "runtime_submission", "runtime_queue", "readable_log_polling", "runtime_stop", "runtime_history"}
+	caps := []string{"subjects", "runtime_submission", "runtime_queue", "readable_log_polling", "runtime_stop", "runtime_history", "archive"}
 	var nornsVersion any
-	if s.service.Profile.Has("norns") {
+	if s.service.Norns != nil {
 		caps = append(caps, "norns_views")
+		caps = append(caps, "norns_entity_details")
 		nornsVersion = version.NornsProtocol
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"service": "nornsd", "server_id": s.service.RootID(), "version": version.ProductVersion, "api_schema": version.APISchema, "runtime_profile": s.service.Profile, "protocol_versions": map[string]any{"norns": nornsVersion, "agent_config": version.AgentConfigVersion}, "capacity": map[string]any{"concurrency": s.concurrency, "using": using, "queuing": queuing}, "capabilities": caps})
+	writeJSON(w, http.StatusOK, map[string]any{"service": "nornsd", "server_id": s.service.RootID(), "version": version.ProductVersion, "api_schema": version.APISchema, "protocol_versions": map[string]any{"norns": nornsVersion, "agent_config": version.AgentConfigVersion}, "capacity": map[string]any{"concurrency": s.concurrency, "using": using, "queuing": queuing}, "capabilities": caps})
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
@@ -251,7 +285,8 @@ func (s *Server) createSubject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name    *string `json:"name"`
 		Runtime *struct {
-			Instruction string `json:"instruction"`
+			Instruction string          `json:"instruction"`
+			Config      json.RawMessage `json:"config"`
 		} `json:"runtime"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
@@ -262,7 +297,11 @@ func (s *Server) createSubject(w http.ResponseWriter, r *http.Request) {
 	if body.Runtime != nil {
 		instruction = &body.Runtime.Instruction
 	}
-	subject, err := s.service.CreateSubject(r.Context(), body.Name, instruction)
+	var override json.RawMessage
+	if body.Runtime != nil {
+		override = body.Runtime.Config
+	}
+	subject, err := s.service.CreateSubject(r.Context(), body.Name, instruction, override)
 	if err != nil {
 		fail(s, w, r, err)
 		return
@@ -340,14 +379,15 @@ func subjectStates(states []domain.SubjectState) []string {
 
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Instruction   string `json:"instruction"`
-		ResumeSession bool   `json:"resume_session"`
+		Instruction   string          `json:"instruction"`
+		ResumeSession bool            `json:"resume_session"`
+		Config        json.RawMessage `json:"config"`
 	}
 	if err := decodeBody(w, r, &body); err != nil {
 		fail(s, w, r, err)
 		return
 	}
-	runtime, position, err := s.service.Submit(r.Context(), r.PathValue("subject_id"), body.Instruction, body.ResumeSession)
+	runtime, position, err := s.service.Submit(r.Context(), r.PathValue("subject_id"), body.Instruction, body.ResumeSession, body.Config)
 	if err != nil {
 		fail(s, w, r, err)
 		return
@@ -568,35 +608,127 @@ func (s *Server) getRuntime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) statusView(w http.ResponseWriter, r *http.Request) {
-	var taskID *string
-	if value := r.URL.Query().Get("task_id"); value != "" {
-		taskID = &value
-	}
-	b, filename, err := s.service.StatusView(r.Context(), r.PathValue("subject_id"), taskID)
+	format, err := nornsadapter.ParseViewFormat(r.URL.Query().Get("format"))
 	if err != nil {
 		fail(s, w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	var taskID *string
+	if value := r.URL.Query().Get("task_id"); value != "" {
+		taskID = &value
+	}
+	b, filename, err := s.service.StatusView(r.Context(), r.PathValue("subject_id"), taskID, format)
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", format.ContentType())
 	setViewFilename(w, filename)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
 }
 func (s *Server) traceView(w http.ResponseWriter, r *http.Request) {
+	format, err := nornsadapter.ParseViewFormat(r.URL.Query().Get("format"))
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
 	id := r.URL.Query().Get("exploration_id")
 	if id == "" {
 		fail(s, w, r, domain.NewError("INVALID_REQUEST", "exploration_id is required", http.StatusBadRequest))
 		return
 	}
-	b, filename, err := s.service.TraceView(r.Context(), r.PathValue("subject_id"), id)
+	b, filename, err := s.service.TraceView(r.Context(), r.PathValue("subject_id"), id, format)
 	if err != nil {
 		fail(s, w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", format.ContentType())
 	setViewFilename(w, filename)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
+}
+
+func (s *Server) cognition(w http.ResponseWriter, r *http.Request) {
+	entity, err := s.service.Cognition(r.Context(), r.PathValue("subject_id"), r.PathValue("cognition_id"))
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entity)
+}
+
+func (s *Server) exploration(w http.ResponseWriter, r *http.Request) {
+	entity, err := s.service.Exploration(r.Context(), r.PathValue("subject_id"), r.PathValue("exploration_id"))
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entity)
+}
+
+func (s *Server) rootArchive(w http.ResponseWriter, r *http.Request) {
+	s.downloadArchive(w, r, r.URL.Query().Get("subject_id"))
+}
+
+func (s *Server) downloadArchive(w http.ResponseWriter, r *http.Request, subjectID string) {
+	if s.draining.Load() {
+		fail(s, w, r, domain.NewError("SERVICE_UNAVAILABLE", "server is draining", http.StatusServiceUnavailable))
+		return
+	}
+	file, err := s.service.Archive(r.Context(), r.URL.Query().Get("scope"), subjectID, r.URL.Query().Get("runtime_id"))
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			s.logger.Error("archive cleanup failed", "request_id", w.Header().Get("X-Request-ID"), "error", err)
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	if err := r.Context().Err(); err != nil {
+		fail(s, w, r, err)
+		return
+	}
+	controller := http.NewResponseController(w)
+	deadline, _ := r.Context().Deadline()
+	_ = controller.SetWriteDeadline(deadline)
+	callbackDone := make(chan struct{})
+	stop := context.AfterFunc(r.Context(), func() {
+		defer close(callbackDone)
+		_ = controller.SetWriteDeadline(time.Now())
+	})
+	defer func() {
+		if !stop() {
+			<-callbackDone
+		}
+		_ = controller.SetWriteDeadline(time.Time{})
+	}()
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": file.Filename}))
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.Copy(w, archiveReader{ctx: r.Context(), reader: file.File}); err != nil {
+		s.logger.Error("archive download failed", "request_id", w.Header().Get("X-Request-ID"), "error", err)
+	}
+}
+
+type archiveReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r archiveReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }
 func (s *Server) visualView(w http.ResponseWriter, r *http.Request) {
 	lang := r.URL.Query().Get("lang")
@@ -622,7 +754,7 @@ func setViewFilename(w http.ResponseWriter, filename string) {
 }
 
 func subjectDTO(subject domain.Subject, workspacePath *string) map[string]any {
-	return map[string]any{"id": subject.ID, "name": subject.Name, "state": subject.State, "runtime_profile": subject.Profile, "workspace": map[string]any{"materialized": subject.WorkspaceState == domain.WorkspaceMaterialized, "directory_name": subject.DirectoryName, "path": workspacePath}, "last_event_seq": subject.LastEventSeq, "created_at": subject.CreatedAt, "updated_at": subject.UpdatedAt}
+	return map[string]any{"id": subject.ID, "name": subject.Name, "state": subject.State, "workspace": map[string]any{"materialized": subject.WorkspaceState == domain.WorkspaceMaterialized, "directory_name": subject.DirectoryName, "path": workspacePath}, "last_event_seq": subject.LastEventSeq, "created_at": subject.CreatedAt, "updated_at": subject.UpdatedAt}
 }
 func runtimeDTO(runtime domain.Runtime, position *int) map[string]any {
 	return map[string]any{"id": runtime.ID, "subject_id": runtime.SubjectID, "state": runtime.State, "queue_position": position, "instructions": runtime.Instructions, "created_at": runtime.CreatedAt, "queued_at": runtime.QueuedAt, "started_at": runtime.StartedAt, "ended_at": runtime.EndedAt, "resources": rawValue(runtime.ResourceJSON), "closing": runtime.Closing, "close_deadline": runtime.CloseDeadline, "state_changed_at": runtime.StateChangedAt}
@@ -632,7 +764,13 @@ func runtimeDetail(runtime domain.Runtime, subject domain.Subject, artifacts app
 	if runtime.ErrorCode != nil {
 		runtimeErr = map[string]any{"code": runtime.ErrorCode, "details": rawValue(runtime.ErrorJSON)}
 	}
-	return map[string]any{"id": runtime.ID, "subject_id": runtime.SubjectID, "state": runtime.State, "agent": subject.Profile.Agent, "session_id": artifacts.SessionID, "queued_at": runtime.QueuedAt, "started_at": runtime.StartedAt, "ended_at": runtime.EndedAt, "end_reason": runtime.EndReason, "settings_slot": runtime.SettingsSlot, "config_hash": runtime.ConfigHash, "process": rawValue(runtime.ProcessJSON), "usage": rawValue(runtime.UsageJSON), "resources": rawValue(runtime.ResourceJSON), "error": runtimeErr, "artifacts": artifacts}
+	var profile any
+	var agent any
+	if runtime.Profile.Agent != "" {
+		profile = runtime.Profile
+		agent = runtime.Profile.Agent
+	}
+	return map[string]any{"id": runtime.ID, "subject_id": runtime.SubjectID, "state": runtime.State, "runtime_profile": profile, "agent": agent, "session_id": artifacts.SessionID, "queued_at": runtime.QueuedAt, "started_at": runtime.StartedAt, "ended_at": runtime.EndedAt, "end_reason": runtime.EndReason, "settings_slot": runtime.SettingsSlot, "config_hash": runtime.ConfigHash, "process": rawValue(runtime.ProcessJSON), "usage": rawValue(runtime.UsageJSON), "resources": rawValue(runtime.ResourceJSON), "error": runtimeErr, "artifacts": artifacts}
 }
 func rawValue(raw json.RawMessage) any {
 	if len(raw) == 0 {

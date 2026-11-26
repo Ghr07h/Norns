@@ -23,7 +23,6 @@ pub struct ServiceInfo {
     pub server_id: Option<String>,
     pub version: String,
     pub api_schema: u64,
-    pub runtime_profile: RuntimeProfile,
     pub protocol_versions: Value,
     pub capacity: Capacity,
     #[serde(default)]
@@ -127,7 +126,6 @@ pub struct SubjectDetail {
     pub id: String,
     pub name: Option<String>,
     pub state: String,
-    pub runtime_profile: RuntimeProfile,
     pub workspace: Workspace,
     pub last_event_seq: u64,
     pub created_at: String,
@@ -238,6 +236,8 @@ pub struct RuntimeArtifacts {
     #[serde(default, skip_serializing_if = "MaybeField::is_missing")]
     pub readable_log_path: MaybeField<String>,
     #[serde(default, skip_serializing_if = "MaybeField::is_missing")]
+    pub memory_samples_path: MaybeField<String>,
+    #[serde(default, skip_serializing_if = "MaybeField::is_missing")]
     pub transcript_path: MaybeField<String>,
     #[serde(default, skip_serializing_if = "MaybeField::is_missing")]
     pub transcript_status: MaybeField<String>,
@@ -248,7 +248,8 @@ pub struct RuntimeDetail {
     pub id: String,
     pub subject_id: String,
     pub state: String,
-    pub agent: String,
+    pub agent: Option<String>,
+    pub runtime_profile: Option<RuntimeProfile>,
     pub session_id: String,
     pub queued_at: Option<String>,
     pub started_at: Option<String>,
@@ -285,4 +286,23 @@ pub struct AcceptedResult {
     pub runtime_id: Option<String>,
     #[serde(default)]
     pub runtime_state: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn accepts_runtime_owned_profiles_and_preserves_memory_artifact() {
+        let subject: SubjectDetail = serde_json::from_value(json!({"id":"s", "name":null,"state":"idle","workspace":{"materialized":true,"directory_name":"s_stamp"},"last_event_seq":0,"created_at":"now","updated_at":"now"})).unwrap();
+        assert_eq!(subject.id, "s");
+        let runtime: RuntimeDetail = serde_json::from_value(json!({"id":"r","subject_id":"s","state":"queued","agent":null,"runtime_profile":null,"session_id":"r","queued_at":null,"started_at":null,"ended_at":null,"end_reason":null,"settings_slot":null,"config_hash":null,"process":null,"usage":null,"resources":null,"error":null,"artifacts":{"memory_samples_path":"/root/.nornsd/memory.jsonl"}})).unwrap();
+        assert!(runtime.agent.is_none());
+        assert!(runtime.runtime_profile.is_none());
+        let encoded = serde_json::to_value(runtime).unwrap();
+        assert_eq!(
+            encoded["artifacts"]["memory_samples_path"],
+            "/root/.nornsd/memory.jsonl"
+        );
+    }
 }

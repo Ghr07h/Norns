@@ -87,7 +87,7 @@ func BuildArgs(l Launch, managed bool) ([]string, error) {
 	if l.ResumeSessionID == l.SessionID {
 		return nil, fmt.Errorf("resume session ID must differ from the new session ID")
 	}
-	reserved := map[string]bool{"--session-id": true, "--resume": true, "--fork-session": true, "--input-format": true, "--output-format": true, "--include-partial-messages": true, "--dangerously-skip-permissions": true, "--setting-sources": true}
+	reserved := map[string]bool{"--session-id": true, "--resume": true, "--fork-session": true, "--input-format": true, "--output-format": true, "--include-partial-messages": true, "--replay-user-messages": true, "--permission-prompt-tool": true, "--dangerously-skip-permissions": true, "--setting-sources": true}
 	for _, arg := range l.Passthrough {
 		key := arg
 		if i := strings.IndexByte(key, '='); i >= 0 {
@@ -101,7 +101,7 @@ func BuildArgs(l Launch, managed bool) ([]string, error) {
 	argv = append(argv, l.Passthrough...)
 	argv = append(argv, "--dangerously-skip-permissions")
 	if managed {
-		argv = append(argv, "--output-format", "stream-json", "--verbose", "--input-format", "stream-json", "--include-partial-messages")
+		argv = append(argv, "--output-format", "stream-json", "--verbose", "--input-format", "stream-json", "--include-partial-messages", "--replay-user-messages")
 	}
 	if l.ResumeSessionID != "" {
 		argv = append(argv, "--resume="+l.ResumeSessionID, "--fork-session")
@@ -126,19 +126,20 @@ type RawHandler func(stream, kind string, payload json.RawMessage) error
 type MessageHandler func(json.RawMessage) error
 
 type Session struct {
-	launch    Launch
-	cmd       *exec.Cmd
-	proc      *process.Managed
-	stdin     io.WriteCloser
-	out       io.ReadCloser
-	errOut    io.ReadCloser
-	raw       RawHandler
-	onMessage MessageHandler
-	writeMu   sync.Mutex
-	mu        sync.Mutex
-	waiters   map[string]chan controlResult
-	done      chan struct{}
-	readErr   error
+	launch     Launch
+	cmd        *exec.Cmd
+	proc       *process.Managed
+	stdin      io.WriteCloser
+	out        io.ReadCloser
+	errOut     io.ReadCloser
+	raw        RawHandler
+	onMessage  MessageHandler
+	writeMu    sync.Mutex
+	mu         sync.Mutex
+	waiters    map[string]chan controlResult
+	done       chan struct{}
+	stderrDone chan struct{}
+	readErr    error
 }
 type controlResult struct {
 	Success bool
@@ -157,19 +158,31 @@ func StartManaged(ctx context.Context, l Launch, raw RawHandler, onMessage Messa
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	// Own the read ends: exec.Cmd.Wait must not close them before we drain the
+	// last result and stderr frames. process.Managed starts Wait immediately.
+	stdout, stdoutWriter, err := os.Pipe()
 	if err != nil {
+		_ = stdin.Close()
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
+	stderr, stderrWriter, err := os.Pipe()
 	if err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = stdoutWriter.Close()
 		return nil, err
 	}
+	cmd.Stdout, cmd.Stderr = stdoutWriter, stderrWriter
 	p, err := process.Start(cmd)
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
 	if err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
 		return nil, err
 	}
-	s := &Session{launch: l, cmd: cmd, proc: p, stdin: stdin, out: stdout, errOut: stderr, raw: raw, onMessage: onMessage, waiters: map[string]chan controlResult{}, done: make(chan struct{})}
+	s := &Session{launch: l, cmd: cmd, proc: p, stdin: stdin, out: stdout, errOut: stderr, raw: raw, onMessage: onMessage, waiters: map[string]chan controlResult{}, done: make(chan struct{}), stderrDone: make(chan struct{})}
 	go s.readStdout()
 	go s.readStderr()
 	return s, nil
@@ -241,8 +254,11 @@ func (s *Session) control(ctx context.Context, subtype string, extra map[string]
 	}
 }
 
-func (s *Session) SendUser(content string) error {
-	return s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}, "parent_tool_use_id": nil, "session_id": s.launch.SessionID})
+func (s *Session) SendUser(id, content string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("user message requires a UUID: %w", err)
+	}
+	return s.write(map[string]any{"type": "user", "uuid": id, "message": map[string]any{"role": "user", "content": content}, "parent_tool_use_id": nil, "session_id": s.launch.SessionID})
 }
 func (s *Session) write(value any) error {
 	s.writeMu.Lock()
@@ -263,6 +279,7 @@ func (s *Session) write(value any) error {
 
 func (s *Session) readStdout() {
 	defer close(s.done)
+	defer s.out.Close()
 	reader := bufio.NewReaderSize(s.out, 64*1024)
 	for {
 		line, err := readFrame(reader, version.MaxAgentFrameBytes)
@@ -284,7 +301,10 @@ func (s *Session) readStdout() {
 					return
 				}
 			}
-			s.handleControl(raw)
+			if controlErr := s.handleControl(raw); controlErr != nil {
+				s.failRead(controlErr)
+				return
+			}
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -295,6 +315,8 @@ func (s *Session) readStdout() {
 	}
 }
 func (s *Session) readStderr() {
+	defer close(s.stderrDone)
+	defer s.errOut.Close()
 	reader := bufio.NewReaderSize(s.errOut, 32*1024)
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -306,6 +328,9 @@ func (s *Session) readStderr() {
 			}
 		}
 		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				s.setReadErr(err)
+			}
 			return
 		}
 	}
@@ -326,17 +351,26 @@ func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 		}
 	}
 }
-func (s *Session) handleControl(raw json.RawMessage) {
+func (s *Session) handleControl(raw json.RawMessage) error {
 	var envelope struct {
-		Type     string `json:"type"`
-		Response struct {
+		Type      string `json:"type"`
+		RequestID string `json:"request_id"`
+		Response  struct {
 			RequestID string `json:"request_id"`
 			Subtype   string `json:"subtype"`
 			Error     string `json:"error"`
 		} `json:"response"`
 	}
-	if json.Unmarshal(raw, &envelope) != nil || envelope.Type != "control_response" || envelope.Response.RequestID == "" {
-		return
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return err
+	}
+	if envelope.Type == "control_request" {
+		// Interactive permissions/questions are not a supported managed feature.
+		// Reply explicitly instead of leaving Claude waiting forever.
+		return s.write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": envelope.RequestID, "error": "nornsd does not support reverse control requests"}})
+	}
+	if envelope.Type != "control_response" || envelope.Response.RequestID == "" {
+		return nil
 	}
 	success := envelope.Response.Subtype == "success"
 	s.mu.Lock()
@@ -348,10 +382,17 @@ func (s *Session) handleControl(raw json.RawMessage) {
 		default:
 		}
 	}
+	return nil
 }
-func (s *Session) CloseInput() error { return s.stdin.Close() }
+func (s *Session) CloseInput() error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return s.stdin.Close()
+}
 func (s *Session) Wait() (process.Result, error) {
 	result, err := s.proc.Wait()
+	<-s.done
+	<-s.stderrDone
 	s.mu.Lock()
 	readErr := s.readErr
 	s.mu.Unlock()

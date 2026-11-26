@@ -17,19 +17,27 @@ func TestStructuredViewGoldenFiles(t *testing.T) {
 		load func() ([]byte, error)
 	}{
 		{"status.yaml", func() ([]byte, error) {
-			content, _, err := service.StatusView(context.Background(), nil, false)
+			content, _, err := service.StatusView(context.Background(), nil, ViewYAML)
 			return content, err
 		}},
 		{"status.json", func() ([]byte, error) {
-			content, _, err := service.StatusView(context.Background(), nil, true)
+			content, _, err := service.StatusView(context.Background(), nil, ViewJSON)
 			return content, err
 		}},
 		{"trace.yaml", func() ([]byte, error) {
-			content, _, err := service.TraceView(context.Background(), explorationID, false)
+			content, _, err := service.TraceView(context.Background(), explorationID, ViewYAML)
 			return content, err
 		}},
 		{"trace.json", func() ([]byte, error) {
-			content, _, err := service.TraceView(context.Background(), explorationID, true)
+			content, _, err := service.TraceView(context.Background(), explorationID, ViewJSON)
+			return content, err
+		}},
+		{"status.md", func() ([]byte, error) {
+			content, _, err := service.StatusView(context.Background(), nil, ViewMarkdown)
+			return content, err
+		}},
+		{"trace.md", func() ([]byte, error) {
+			content, _, err := service.TraceView(context.Background(), explorationID, ViewMarkdown)
 			return content, err
 		}},
 	}
@@ -84,6 +92,10 @@ func goldenViewWorkspace(t *testing.T) (*Service, string) {
 		t.Fatal(err)
 	}
 	explorationID := resultID(t, exploration)
+	if _, err := service.AddCognition(context.Background(), AddCognitionRequest{Title: "User hint", Content: "Check the original evidence", Origin: "user", ExplorationID: &explorationID, Relevant: true}); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := service.AddCognition(context.Background(), AddCognitionRequest{Title: "Finding", Content: "Evidence found", Origin: "exploration", ExplorationID: &explorationID, Relevant: true}); err != nil {
 		t.Fatal(err)
 	}

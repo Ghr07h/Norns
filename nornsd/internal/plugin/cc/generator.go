@@ -27,21 +27,22 @@ type Manifest struct {
 	Files            map[string]string `json:"files"`
 }
 
-type agentFrontMatter struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Tools       toolList `yaml:"tools"`
-	Skills      []string `yaml:"skills"`
-	Model       string   `yaml:"model"`
-	Effort      string   `yaml:"effort"`
-	Color       string   `yaml:"color"`
-}
-
 type toolList []string
 
 func (t *toolList) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind != yaml.ScalarNode {
-		return fmt.Errorf("tools must be a comma-separated scalar")
+	if node.Kind == yaml.SequenceNode {
+		var values []string
+		for _, value := range node.Content {
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
+				return fmt.Errorf("tools must contain strings")
+			}
+			values = append(values, value.Value)
+		}
+		*t = values
+		return nil
+	}
+	if node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
+		return fmt.Errorf("tools must be a comma-separated string or a string list")
 	}
 	parsed, err := parseToolList(node.Value)
 	if err != nil {
@@ -55,23 +56,26 @@ func (t toolList) MarshalYAML() (any, error) {
 	return strings.Join(t, ", "), nil
 }
 
-func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, error) {
+func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, string, error) {
+	if c != nil && (c.CustomAgentsDir != "" || c.CustomSkillsDir != "" || len(c.CustomPluginDirs) > 0) {
+		return "", "", "", fmt.Errorf("AGENT_CUSTOM_* resources are not allowed in Norns mode")
+	}
 	embeddedVersion, err := assets.ProtocolVersion()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if embeddedVersion != version.NornsProtocol {
-		return "", "", fmt.Errorf("embedded Norns protocol %d does not match supported protocol %d", embeddedVersion, version.NornsProtocol)
+		return "", "", "", fmt.Errorf("embedded Norns protocol %d does not match supported protocol %d", embeddedVersion, version.NornsProtocol)
 	}
-	stage := filepath.Join(subjectPath, ".nornsd", "staging", "plugin-"+runtimeID)
+	stage := filepath.Join(root.SubjectDataPath(subjectPath), "staging", "plugin-"+runtimeID)
 	_ = os.RemoveAll(stage)
 	defer os.RemoveAll(stage)
 	if err := copyEmbedded(stage); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if !supportsUgrepGuard(runtime.GOOS) {
 		if err := os.RemoveAll(filepath.Join(stage, "hooks")); err != nil {
-			return "", "", fmt.Errorf("remove unsupported Claude Code hooks: %w", err)
+			return "", "", "", fmt.Errorf("remove unsupported Claude Code hooks: %w", err)
 		}
 	}
 	maxConcurrent := 3
@@ -95,10 +99,10 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 		deciderName := "decider-for-" + domain.Name
 		explorerName := "explorer-for-" + domain.Name
 		if err = generateDomainAgent(stage, "decider.md", deciderName+".md", deciderName, domain.DeciderDescription, domain.DeciderExtraInfo); err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		if err = generateDomainAgent(stage, "explorer.md", explorerName+".md", explorerName, domain.ExplorerDescription, domain.ExplorerExtraInfo); err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		reserved[deciderName+".md"] = true
 		reserved[explorerName+".md"] = true
@@ -113,29 +117,37 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 			}
 			entries, err := os.ReadDir(item.source)
 			if err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
 			for _, entry := range entries {
 				if reserved[entry.Name()] {
-					return "", "", fmt.Errorf("custom Norns resource conflicts with reserved name %s", entry.Name())
+					return "", "", "", fmt.Errorf("custom Norns resource conflicts with reserved name %s", entry.Name())
 				}
 			}
 			if err = root.CopyTreeNoLinks(item.source, filepath.Join(stage, item.target)); err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
 		}
 	}
-	agentIDs, err := coordinatorAgentIDs(stage, c)
+	mainFile := "coordinator.md"
+	mainID := "norns:coordinator"
+	if c != nil && c.MainAgentFile != "" {
+		mainFile, mainID, err = copyMainAgent(stage, c.MainAgentFile)
+		if err != nil {
+			return "", "", "", err
+		}
+	}
+	agentIDs, err := coordinatorAgentIDs(stage, mainID)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	humanInstruction := "执行过程中不要等待人类实时观察或回答问题；可以接收人类主动提供的新信息，但必须按自治流程继续推进。"
 	if allowHuman {
 		humanInstruction = "允许在遇到会实质改变结论且无法通过 Exploration 解决的阻塞问题时向人类提问并等待反馈。"
 	}
 	runtimeConfig := fmt.Sprintf("- 新建 Task 时执行 `norns task open ... --concurrency %d`，并以 %d 作为额定 Exploration 并发数。\n- Exploration 超时问询周期为 %d 秒；按“任务超时与取消”中的规则处理 `duration_seconds` 达到阈值及其整数倍的 running Exploration。\n- %s", maxConcurrent, maxConcurrent, explorationTimeoutSeconds, humanInstruction)
-	if err = rewriteCoordinator(filepath.Join(stage, "agents", "coordinator.md"), agentIDs, runtimeConfig); err != nil {
-		return "", "", err
+	if err = rewriteMainAgent(filepath.Join(stage, "agents", mainFile), agentIDs, runtimeConfig); err != nil {
+		return "", "", "", err
 	}
 	manifest := Manifest{ProtocolVersion: version.NornsProtocol, GeneratorVersion: version.CCPluginVersion, RuntimeID: runtimeID, Files: map[string]string{}}
 	var paths []string
@@ -153,7 +165,7 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 	for _, rel := range paths {
 		b, err := os.ReadFile(filepath.Join(stage, rel))
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		sum := sha256.Sum256(b)
 		manifest.Files[filepath.ToSlash(rel)] = "sha256:" + hex.EncodeToString(sum[:])
@@ -161,32 +173,18 @@ func Publish(subjectPath, runtimeID string, c *config.Config) (string, string, e
 	b, _ := json.MarshalIndent(manifest, "", "  ")
 	b = append(b, '\n')
 	if err := os.WriteFile(filepath.Join(stage, "plugin.manifest.json"), b, 0600); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	artifact := filepath.Join(subjectPath, ".nornsd", "runtimes", runtimeID, "artifacts", "plugin")
+	artifact := filepath.Join(root.RuntimeDataPath(subjectPath, runtimeID), "plugins", "norns-plugin")
 	if err := os.MkdirAll(filepath.Dir(artifact), 0700); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	_ = os.RemoveAll(artifact)
 	if err := os.Rename(stage, artifact); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	current := filepath.Join(subjectPath, ".nornsd", "plugin")
-	published := current + ".stage"
-	_ = os.RemoveAll(published)
-	if err := root.CopyTreeNoLinks(artifact, published); err != nil {
-		return "", "", err
-	}
-	old := current + ".old"
-	_ = os.RemoveAll(old)
-	_ = os.Rename(current, old)
-	if err := os.Rename(published, current); err != nil {
-		_ = os.Rename(old, current)
-		return "", "", err
-	}
-	_ = os.RemoveAll(old)
 	sum := sha256.Sum256(b)
-	return current, "sha256:" + hex.EncodeToString(sum[:]), nil
+	return artifact, "sha256:" + hex.EncodeToString(sum[:]), mainID, nil
 }
 
 func supportsUgrepGuard(goos string) bool {
@@ -202,8 +200,8 @@ func generateDomainAgent(stage, sourceName, targetName, agentName, description, 
 	if err != nil {
 		return err
 	}
-	front.Name = agentName
-	front.Description = description
+	setFrontString(front, "name", agentName)
+	setFrontString(front, "description", description)
 	rendered, err := renderAgentMarkdown(front, body)
 	if err != nil {
 		return err
@@ -220,34 +218,28 @@ func generateDomainAgent(stage, sourceName, targetName, agentName, description, 
 	return os.WriteFile(filepath.Join(stage, "agents", targetName), []byte(rendered), 0600)
 }
 
-func coordinatorAgentIDs(stage string, c *config.Config) ([]string, error) {
+// The source filename is retained, while Claude selects the frontmatter name.
+func copyMainAgent(stage, source string) (string, string, error) {
+	filename, name, err := config.CopyMainAgent(source, filepath.Join(stage, "agents"))
+	if err != nil {
+		return "", "", err
+	}
+	return filename, "norns:" + name, nil
+}
+
+func coordinatorAgentIDs(stage, mainID string) ([]string, error) {
 	seen := map[string]string{}
 	var ids []string
 	if err := appendAgentIDs(&ids, seen, filepath.Join(stage, "agents"), "norns", map[string]bool{"coordinator.md": true}); err != nil {
 		return nil, err
 	}
-	if c == nil {
-		return ids, nil
-	}
-	if err := appendAgentIDs(&ids, seen, c.CustomAgentsDir, "nornsd-custom", nil); err != nil {
-		return nil, err
-	}
-	for _, pluginDir := range c.CustomPluginDirs {
-		agentsDir := filepath.Join(pluginDir, "agents")
-		if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			return nil, fmt.Errorf("inspect custom Plugin agents %s: %w", pluginDir, err)
-		}
-		namespace, err := readPluginName(pluginDir)
-		if err != nil {
-			return nil, err
-		}
-		if err = appendAgentIDs(&ids, seen, agentsDir, namespace, nil); err != nil {
-			return nil, err
+	available := ids[:0]
+	for _, id := range ids {
+		if id != mainID {
+			available = append(available, id)
 		}
 	}
-	return ids, nil
+	return available, nil
 }
 
 func appendAgentIDs(ids *[]string, seen map[string]string, dir, namespace string, excludedFiles map[string]bool) error {
@@ -296,24 +288,6 @@ func appendAgentIDs(ids *[]string, seen map[string]string, dir, namespace string
 	return nil
 }
 
-func readPluginName(pluginDir string) (string, error) {
-	path := filepath.Join(pluginDir, ".claude-plugin", "plugin.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read custom Plugin metadata %s: %w", path, err)
-	}
-	var metadata struct {
-		Name string `json:"name"`
-	}
-	if err = json.Unmarshal(data, &metadata); err != nil {
-		return "", fmt.Errorf("invalid custom Plugin metadata %s: %w", path, err)
-	}
-	if err = validateAgentIdentifierPart(metadata.Name, "Plugin name"); err != nil {
-		return "", fmt.Errorf("invalid custom Plugin metadata %s: %w", path, err)
-	}
-	return metadata.Name, nil
-}
-
 func validateAgentIdentifierPart(value, field string) error {
 	if value == "" || value != strings.TrimSpace(value) || strings.ContainsAny(value, "\t\r\n ,():") {
 		return fmt.Errorf("%s %q cannot be used in an Agent tool allowlist", field, value)
@@ -321,7 +295,7 @@ func validateAgentIdentifierPart(value, field string) error {
 	return nil
 }
 
-func rewriteCoordinator(path string, agentIDs []string, runtimeConfig string) error {
+func rewriteMainAgent(path string, agentIDs []string, runtimeConfig string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -330,9 +304,23 @@ func rewriteCoordinator(path string, agentIDs []string, runtimeConfig string) er
 	if err != nil {
 		return err
 	}
-	front.Tools, err = front.Tools.withAgentAllowlist(agentIDs)
+	var fields struct {
+		Tools toolList `yaml:"tools"`
+	}
+	if err = front.Decode(&fields); err != nil {
+		return fmt.Errorf("invalid main Agent tools: %w", err)
+	}
+	tools, err := fields.Tools.withAgentAllowlist(agentIDs)
 	if err != nil {
-		return fmt.Errorf("invalid Coordinator tools: %w", err)
+		return fmt.Errorf("invalid main Agent tools: %w", err)
+	}
+	toolNode := frontField(front, "tools")
+	if toolNode != nil && toolNode.Kind == yaml.SequenceNode {
+		for i, tool := range tools {
+			toolNode.Content[i].Value = tool
+		}
+	} else {
+		setFrontString(front, "tools", strings.Join(tools, ", "))
 	}
 	body = strings.ReplaceAll(body, "{{NORNS_RUNTIME_CONFIGURATION}}", runtimeConfig)
 	rendered, err := renderAgentMarkdown(front, body)
@@ -399,16 +387,43 @@ func parseToolList(value string) (toolList, error) {
 	return append(tools, tool), nil
 }
 
-func parseAgentMarkdown(data []byte, source string) (agentFrontMatter, string, error) {
+func parseAgentMarkdown(data []byte, source string) (*yaml.Node, string, error) {
 	frontBytes, body, err := splitAgentMarkdown(data, source)
 	if err != nil {
-		return agentFrontMatter{}, "", err
+		return nil, "", err
 	}
-	var front agentFrontMatter
-	if err = yaml.Unmarshal(frontBytes, &front); err != nil {
-		return agentFrontMatter{}, "", fmt.Errorf("invalid Agent %s front matter: %w", source, err)
+	var doc yaml.Node
+	if err = yaml.Unmarshal(frontBytes, &doc); err != nil {
+		return nil, "", fmt.Errorf("invalid Agent %s front matter: %w", source, err)
+	}
+	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, "", fmt.Errorf("invalid Agent %s: front matter must be a YAML mapping", source)
+	}
+	front := doc.Content[0]
+	// Validate duplicate keys and alias resolution without replacing the YAML tree.
+	var values map[string]any
+	if err = front.Decode(&values); err != nil {
+		return nil, "", fmt.Errorf("invalid Agent %s front matter: %w", source, err)
 	}
 	return front, body, nil
+}
+
+func frontField(front *yaml.Node, key string) *yaml.Node {
+	for i := 0; i < len(front.Content); i += 2 {
+		if front.Content[i].Value == key {
+			return front.Content[i+1]
+		}
+	}
+	return nil
+}
+
+func setFrontString(front *yaml.Node, key, value string) {
+	if node := frontField(front, key); node != nil {
+		node.Kind, node.Tag, node.Value = yaml.ScalarNode, "!!str", value
+		node.Content, node.Alias = nil, nil
+		return
+	}
+	front.Content = append(front.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
 }
 
 func parseAgentName(data []byte, source string) (string, error) {
@@ -426,21 +441,30 @@ func parseAgentName(data []byte, source string) (string, error) {
 }
 
 func splitAgentMarkdown(data []byte, source string) ([]byte, string, error) {
-	const prefix = "---\n"
-	const separator = "\n---\n"
-	text := string(data)
-	if !strings.HasPrefix(text, prefix) {
+	text := strings.TrimPrefix(string(data), "\ufeff")
+	first := strings.IndexByte(text, '\n')
+	if first < 0 || strings.TrimSuffix(text[:first], "\r") != "---" {
 		return nil, "", fmt.Errorf("invalid Agent %s: missing front matter", source)
 	}
-	rest := strings.TrimPrefix(text, prefix)
-	index := strings.Index(rest, separator)
-	if index < 0 {
-		return nil, "", fmt.Errorf("invalid Agent %s: unterminated front matter", source)
+	start := first + 1
+	for offset := start; offset < len(text); {
+		end := strings.IndexByte(text[offset:], '\n')
+		next := len(text)
+		if end < 0 {
+			end = len(text)
+		} else {
+			end += offset
+			next = end + 1
+		}
+		if strings.TrimSuffix(text[offset:end], "\r") == "---" {
+			return []byte(text[start:offset]), text[next:], nil
+		}
+		offset = next
 	}
-	return []byte(rest[:index]), rest[index+len(separator):], nil
+	return nil, "", fmt.Errorf("invalid Agent %s: unterminated front matter", source)
 }
 
-func renderAgentMarkdown(front agentFrontMatter, body string) (string, error) {
+func renderAgentMarkdown(front *yaml.Node, body string) (string, error) {
 	frontBytes, err := yaml.Marshal(front)
 	if err != nil {
 		return "", err

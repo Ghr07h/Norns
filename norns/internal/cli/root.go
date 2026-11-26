@@ -14,11 +14,12 @@ import (
 	"github.com/Ghr07h/norns/norns/internal/app"
 	"github.com/Ghr07h/norns/norns/internal/domain"
 	"github.com/Ghr07h/norns/norns/internal/extension"
+	"github.com/Ghr07h/norns/norns/internal/i18n"
 	"github.com/Ghr07h/norns/norns/internal/output"
 	"github.com/Ghr07h/norns/norns/internal/version"
 )
 
-var coreCommands = map[string]bool{"workspace": true, "task": true, "cognition": true, "exploration": true, "view": true, "version": true, "help": true, "completion": true}
+var coreCommands = map[string]bool{"workspace": true, "task": true, "cognition": true, "exploration": true, "view": true, "version": true, "extension": true, "help": true, "completion": true}
 
 const structuredViewInlineLimit = 6 * 1024
 
@@ -26,6 +27,7 @@ type publishedView struct {
 	Path      string `json:"path"`
 	Format    string `json:"format"`
 	SizeBytes int    `json:"size_bytes"`
+	Note      string `json:"note"`
 }
 
 func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -65,15 +67,45 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 func newRoot(service *app.Service, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{Use: "norns", Short: "Norns protocol Workspace CLI", SilenceUsage: true, SilenceErrors: true}
-	root.AddCommand(workspaceCommand(service, stdout), taskCommand(service, stdout), cognitionCommand(service, stdout), explorationCommand(service, stdout), viewCommand(service, stdout), versionCommand(stdout))
+	root.AddCommand(workspaceCommand(service, stdout), taskCommand(service, stdout), cognitionCommand(service, stdout), explorationCommand(service, stdout), viewCommand(service, stdout), versionCommand(stdout), extensionCommand(stdout))
 	root.CompletionOptions.DisableDefaultCmd = true
 	return root
+}
+
+func extensionCommand(out io.Writer) *cobra.Command {
+	cmd := &cobra.Command{Use: "extension", Short: "Inspect external command extensions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
+	cmd.AddCommand(&cobra.Command{Use: "list", Short: "List discoverable extension names and executable paths", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
+		found, err := extension.List()
+		if err != nil {
+			return err
+		}
+		available := make([]extension.Info, 0, len(found))
+		for _, item := range found {
+			if !coreCommands[item.Name] {
+				available = append(available, item)
+			}
+		}
+		var warnings []output.Warning
+		if err := extension.Enrich(available); err != nil {
+			warnings = append(warnings, output.Warning{Code: "EXTENSION_METADATA_IGNORED", Message: "Extension metadata could not be read or validated; displaying names and paths only", Details: map[string]any{}})
+		}
+		return output.WriteSuccess(out, available, warnings, "Extensions listed")
+	}})
+	return cmd
 }
 
 func workspaceCommand(s *app.Service, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{Use: "workspace"}
 	cmd.AddCommand(
+		&cobra.Command{Use: "check", Short: "Validate the current Workspace and summarize its Tasks", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			r, e := s.CheckWorkspace(cmd.Context())
+			return emit(out, r, e)
+		}},
 		&cobra.Command{Use: "init", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { r, e := s.Init(cmd.Context()); return emit(out, r, e) }},
+		&cobra.Command{Use: "free", Short: "Cancel unfinished work and release Workspace Runtime occupancy", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			r, e := s.FreeWorkspace(cmd.Context())
+			return emit(out, r, e)
+		}},
 		&cobra.Command{Use: "reset", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { r, e := s.Reset(cmd.Context()); return emit(out, r, e) }},
 	)
 	return cmd
@@ -81,6 +113,12 @@ func workspaceCommand(s *app.Service, out io.Writer) *cobra.Command {
 
 func taskCommand(s *app.Service, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{Use: "task"}
+	var status string
+	list := &cobra.Command{Use: "list", Short: "List Tasks without generating a View", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r, e := s.ListTasks(cmd.Context(), status)
+		return emit(out, r, e)
+	}}
+	list.Flags().StringVar(&status, "status", "", "filter by Task status: open or closed (default: all)")
 	var purpose, info string
 	var concurrency int
 	var infoSet bool
@@ -116,31 +154,43 @@ func taskCommand(s *app.Service, out io.Writer) *cobra.Command {
 		return emit(out, r, e)
 	}}
 	reopen.Flags().StringVar(&taskID, "task-id", "", "Task ID")
-	cmd.AddCommand(open, closeCmd, reopen)
+	cmd.AddCommand(list, open, closeCmd, reopen)
 	return cmd
 }
 
 func cognitionCommand(s *app.Service, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{Use: "cognition"}
-	var title, content, origin, explorationID string
+	var title, content, origin, explorationID, meta string
 	var relevant bool
 	add := &cobra.Command{Use: "add", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		var exp *string
 		if cmd.Flags().Changed("exploration") {
 			exp = &explorationID
 		}
-		r, e := s.AddCognition(cmd.Context(), app.AddCognitionRequest{Title: title, Content: content, Origin: origin, ExplorationID: exp, Relevant: relevant})
+		var metadata *string
+		if cmd.Flags().Changed("meta") {
+			metadata = &meta
+		}
+		r, e := s.AddCognition(cmd.Context(), app.AddCognitionRequest{Title: title, Content: content, Origin: origin, ExplorationID: exp, Relevant: relevant, Meta: metadata})
 		return emit(out, r, e)
 	}}
 	add.Flags().StringVar(&title, "cognition-title", "", "Cognition title")
 	add.Flags().StringVar(&content, "cognition-content", "", "Cognition content")
+	add.Flags().StringVar(&meta, "meta", "", "domain metadata as a JSON object with string values")
 	add.Flags().StringVar(&origin, "origin", "", "Cognition origin")
 	add.Flags().StringVar(&explorationID, "exploration", "", "origin Exploration ID")
 	add.Flags().BoolVar(&relevant, "task-purpose-relevant", false, "mark directly relevant to Task purpose")
 	for _, f := range []string{"cognition-title", "cognition-content", "origin"} {
 		_ = add.MarkFlagRequired(f)
 	}
-	cmd.AddCommand(add)
+	var cognitionID string
+	get := &cobra.Command{Use: "get", Short: "Get a Cognition by ID", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r, e := s.GetCognition(cmd.Context(), cognitionID)
+		return emit(out, r, e)
+	}}
+	get.Flags().StringVar(&cognitionID, "cognition", "", "Cognition ID")
+	_ = get.MarkFlagRequired("cognition")
+	cmd.AddCommand(add, get)
 	return cmd
 }
 
@@ -164,13 +214,13 @@ func explorationCommand(s *app.Service, out io.Writer) *cobra.Command {
 	}}
 	retry.Flags().StringVar(&id, "exploration", "", "finished Exploration ID")
 	_ = retry.MarkFlagRequired("exploration")
-	var assignID, executor, outputRef string
+	var assignID, explorer, outputRef string
 	assign := &cobra.Command{Use: "assign", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		r, e := s.AssignExploration(cmd.Context(), assignID, executor, outputRef)
+		r, e := s.AssignExploration(cmd.Context(), assignID, explorer, outputRef)
 		return emit(out, r, e)
 	}}
 	assign.Flags().StringVar(&assignID, "exploration", "", "todo Exploration ID")
-	assign.Flags().StringVar(&executor, "explorer", "", "executor ID")
+	assign.Flags().StringVar(&explorer, "explorer", "", "Explorer ID")
 	assign.Flags().StringVar(&outputRef, "output", "", "opaque output reference")
 	for _, f := range []string{"exploration", "explorer", "output"} {
 		_ = assign.MarkFlagRequired(f)
@@ -200,42 +250,55 @@ func explorationCommand(s *app.Service, out io.Writer) *cobra.Command {
 		}
 		return output.WriteSuccess(out, v, nil, "running Explorations")
 	}}
-	cmd.AddCommand(add, retry, assign, finish, todo, running)
+	var getID string
+	get := &cobra.Command{Use: "get", Short: "Get an Exploration by ID", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r, e := s.GetExploration(cmd.Context(), getID)
+		return emit(out, r, e)
+	}}
+	get.Flags().StringVar(&getID, "exploration", "", "Exploration ID")
+	_ = get.MarkFlagRequired("exploration")
+	cmd.AddCommand(add, get, retry, assign, finish, todo, running)
 	return cmd
 }
 
 func viewCommand(s *app.Service, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{Use: "view"}
 	var statusTask string
-	var statusJSON bool
+	var statusJSON, statusMarkdown bool
 	var statusReference bool
 	status := &cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		var id *string
 		if cmd.Flags().Changed("task-id") {
 			id = &statusTask
 		}
-		b, path, e := s.StatusView(cmd.Context(), id, statusJSON)
+		format := structuredViewFormat(statusJSON, statusMarkdown)
+		b, path, e := s.StatusView(cmd.Context(), id, format)
 		if e != nil {
 			return e
 		}
-		return emitStructuredView(out, b, path, statusJSON, statusReference)
+		return emitStructuredView(out, b, path, format, statusReference)
 	}}
 	status.Flags().StringVar(&statusTask, "task-id", "", "Task context")
 	status.Flags().BoolVar(&statusJSON, "json", false, "emit JSON")
+	status.Flags().BoolVar(&statusMarkdown, "md", false, "emit Markdown")
+	status.MarkFlagsMutuallyExclusive("json", "md")
 	status.Flags().BoolVar(&statusReference, "output-reference", false, "emit the published View reference")
 	_ = status.Flags().MarkHidden("output-reference")
 	var traceID string
-	var traceJSON bool
+	var traceJSON, traceMarkdown bool
 	var traceReference bool
 	trace := &cobra.Command{Use: "trace", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		b, path, e := s.TraceView(cmd.Context(), traceID, traceJSON)
+		format := structuredViewFormat(traceJSON, traceMarkdown)
+		b, path, e := s.TraceView(cmd.Context(), traceID, format)
 		if e != nil {
 			return e
 		}
-		return emitStructuredView(out, b, path, traceJSON, traceReference)
+		return emitStructuredView(out, b, path, format, traceReference)
 	}}
 	trace.Flags().StringVar(&traceID, "exploration", "", "Exploration ID")
 	trace.Flags().BoolVar(&traceJSON, "json", false, "emit JSON")
+	trace.Flags().BoolVar(&traceMarkdown, "md", false, "emit Markdown")
+	trace.MarkFlagsMutuallyExclusive("json", "md")
 	trace.Flags().BoolVar(&traceReference, "output-reference", false, "emit the published View reference")
 	_ = trace.Flags().MarkHidden("output-reference")
 	_ = trace.MarkFlagRequired("exploration")
@@ -251,16 +314,26 @@ func viewCommand(s *app.Service, out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func emitStructuredView(out io.Writer, content []byte, path string, asJSON, forceReference bool) error {
+func structuredViewFormat(asJSON, asMarkdown bool) app.ViewFormat {
+	if asMarkdown {
+		return app.ViewMarkdown
+	}
+	if asJSON {
+		return app.ViewJSON
+	}
+	return app.ViewYAML
+}
+
+func emitStructuredView(out io.Writer, content []byte, path string, format app.ViewFormat, forceReference bool) error {
 	if !forceReference && len(content) <= structuredViewInlineLimit {
 		_, err := out.Write(content)
 		return err
 	}
-	format := "yaml"
-	if asJSON {
-		format = "json"
+	note := "The complete View has been written to the file at path; a file reference was requested."
+	if len(content) > structuredViewInlineLimit {
+		note = "The View exceeds the inline output limit. The complete content has been written to the file at path instead of being returned directly."
 	}
-	return output.WriteSuccess(out, publishedView{Path: path, Format: format, SizeBytes: len(content)}, nil, "View written to file")
+	return output.WriteSuccess(out, publishedView{Path: path, Format: string(format), SizeBytes: len(content), Note: i18n.Message(note)}, nil, "View written to file")
 }
 
 func versionCommand(out io.Writer) *cobra.Command {
@@ -293,7 +366,7 @@ func normalizeCLIError(err error) error {
 	if errors.As(err, &de) {
 		return err
 	}
-	if strings.Contains(err.Error(), "required flag") || strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "unknown command") || strings.Contains(err.Error(), "arg(s)") {
+	if strings.Contains(err.Error(), "required flag") || strings.Contains(err.Error(), "unknown flag") || strings.Contains(err.Error(), "unknown command") || strings.Contains(err.Error(), "arg(s)") || strings.Contains(err.Error(), "none of the others can be") {
 		return domain.NewError("INVALID_ARGUMENT", err.Error())
 	}
 	return err

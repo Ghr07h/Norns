@@ -64,17 +64,12 @@ func (p RuntimeProfile) Equal(other RuntimeProfile) bool {
 }
 
 type Subject struct {
-	ID             string
-	Name           *string
-	State          SubjectState
-	DirectoryName  string
-	WorkspaceState string
-	WorkspaceError json.RawMessage
-	Profile        RuntimeProfile
-	// SessionID and SessionInitialized are retained for v1 workspace and
-	// database compatibility. New Claude sessions are identified by Runtime ID.
-	SessionID           string
-	SessionInitialized  bool
+	ID                  string
+	Name                *string
+	State               SubjectState
+	DirectoryName       string
+	WorkspaceState      string
+	WorkspaceError      json.RawMessage
 	CurrentRuntimeID    *string
 	LastEventSeq        uint64
 	LastRawSeq          uint64
@@ -90,29 +85,32 @@ type Instruction struct {
 }
 
 type Runtime struct {
-	ID             string
-	SubjectID      string
-	State          RuntimeState
-	QueueSequence  *int64
-	SettingsSlot   *int
-	ConfigHash     *string
-	SessionMode    string
-	InflightTurns  int
-	Closing        bool
-	CloseDeadline  *time.Time
-	QueuedAt       *time.Time
-	StartedAt      *time.Time
-	EndedAt        *time.Time
-	StateChangedAt time.Time
-	EndReason      *string
-	ErrorCode      *string
-	ErrorJSON      json.RawMessage
-	ProcessJSON    json.RawMessage
-	UsageJSON      json.RawMessage
-	ResourceJSON   json.RawMessage
-	TranscriptJSON json.RawMessage
-	CreatedAt      time.Time
-	Instructions   []Instruction
+	Profile         RuntimeProfile
+	ConfigOverride  json.RawMessage
+	EffectiveConfig json.RawMessage
+	ID              string
+	SubjectID       string
+	State           RuntimeState
+	QueueSequence   *int64
+	SettingsSlot    *int
+	ConfigHash      *string
+	SessionMode     string
+	InflightInputs  int
+	Closing         bool
+	CloseDeadline   *time.Time
+	QueuedAt        *time.Time
+	StartedAt       *time.Time
+	EndedAt         *time.Time
+	StateChangedAt  time.Time
+	EndReason       *string
+	ErrorCode       *string
+	ErrorJSON       json.RawMessage
+	ProcessJSON     json.RawMessage
+	UsageJSON       json.RawMessage
+	ResourceJSON    json.RawMessage
+	TranscriptJSON  json.RawMessage
+	CreatedAt       time.Time
+	Instructions    []Instruction
 }
 
 type Event struct {

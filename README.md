@@ -24,7 +24,7 @@ Norns 协议原语：
 
 - Subject（目标实体）： 任务域（Task Domain）中待处理的抽象概念或具象化实例。
 - Task（任务意图）： 施加于目标实体的操作规约与预期达成的终态目标。
-- Cognition（先验表征）： 系统已建构的关于目标实体的先验知识集与状态参数。
+- Cognition（认知信息）： 关于目标实体的断言认知（Task 初始信息、用户输入）和派生认知（探索发现）。
 - Exploration（启发式探索）： 旨在扩充实体信息边界的主动式数据采集与知识发现机制。
 
 ## 安装和使用
@@ -73,7 +73,7 @@ plugin/cc/       Claude Code 的 Norns Plugin 模板
 nornsd/          Agent Runtime 的交互式终端与批量任务管理服务
 well/            Nornsd Server 桌面客户端
 domain/          可选领域知识包与模板示例
-container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自包含 Benchmark 及其 CC 对照组的容器构建文件
+container/       通用 Nornsd Server、RedTeam 领域服务与自包含 Benchmark 的容器构建文件
 ```
 
 ## 致谢
@@ -87,6 +87,9 @@ container/       通用 Nornsd Server、RedTeam 领域的 Nornsd Server 与自�
 - [PentestGPT](https://github.com/GreyDGL/PentestGPT)
 - [PentestGPT v2](https://github.com/sickwell/PentestGPT-v2)
 - [T3MP3ST](https://github.com/elder-plinius/T3MP3ST)
+- [sapper-v2](https://github.com/N1nEmAn/sapper-v2)
+- [heimdall-agent](https://github.com/QiantangCredit/heimdall-agent)
+- [StrikeAgent_AtkBrain-Flash](https://github.com/Yean-Sec/StrikeAgent_AtkBrain-Flash)
 
 ## 免责声明
 

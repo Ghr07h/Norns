@@ -1,22 +1,22 @@
 {
-  "protocol": 2,
+  "protocol": 3,
   "norns": {
-    "version": "0.2.1",
-    "support_protocol": 2,
-    "database_schema": 9
+    "version": "0.3.2",
+    "support_protocol": 3,
+    "database_schema": 13
   },
   "nornsd": {
-    "version": "0.2.1",
-    "support_protocol": 2,
-    "database_schema": 4,
-    "api_schema": 6,
-    "agent_config_schema": 3,
+    "version": "0.3.2",
+    "support_protocol": 3,
+    "database_schema": 6,
+    "api_schema": 8,
+    "agent_config_schema": 5,
     "plugins": {
-      "cc": 4
+      "cc": 5
     }
   },
   "well": {
-    "version": "0.2.1",
-    "support_api_schema": 6
+    "version": "0.3.2",
+    "support_api_schema": 8
   }
 }

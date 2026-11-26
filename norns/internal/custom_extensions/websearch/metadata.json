@@ -1,0 +1,7 @@
+{
+  "name": "websearch",
+  "version": "0.1.0",
+  "description": "搜索网页并返回标题、链接和摘要。默认使用百度；传入 --proxy 参数后使用 Google。",
+  "requirements": [],
+  "release_files": []
+}

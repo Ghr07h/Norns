@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start one nornsd and the single-model FIFO benchmark with shared concurrency."""
+"""Start one nornsd and the single-model FIFO benchmark with three Runtime slots."""
 from __future__ import annotations
 
 import json
@@ -14,23 +14,24 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-# yaml 仅在写 agent.yaml 时需要，延后导入，便于无 PyYAML 环境下导入本模块做单测。
+# yaml 仅在写 nornsd.yaml 时需要，延后导入，便于无 PyYAML 环境下导入本模块做单测。
 yaml = None  # type: ignore
 
 # Runtime paths and defaults. Keep these together so the image contract is easy to inspect.
-TEMPLATE_PATH = Path("/norns/config/agent.example.yaml")
-CONFIG_PATH = Path("/norns/config/agent.yaml")
+TEMPLATE_PATH = Path("/norns/config/nornsd.example.yaml")
+CONFIG_PATH = Path("/norns/config/nornsd.yaml")
 WORKSPACE = Path("/workspace")
 TOKEN_PATH = WORKSPACE / ".nornsd-token"
 LEGACY_PASSWORD_PATH = WORKSPACE / ".nornsd-password"
 CLAUDE_EXEC = Path("/norns/engine/cc/node_modules/.bin/claude")
 NORNS_BIN = Path("/norns/bin/norns")
+TSEC_BIN = NORNS_BIN.with_name("norns-tsec")
 NORNSD_BIN = Path("/norns/bin/nornsd")
 BENCHMARK_BIN = Path("/norns/bin/benchmark.py")
-REDTEAM_DOMAIN_DIR = "/norns/domain/redteam/norns_domain_agents"
-REDTEAM_SKILLS_DIR = "/norns/domain/redteam/skills"
+REDTEAM_DOMAIN_DIR = "/norns/domain/redteam/extend_agents"
+REDTEAM_SKILLS_DIR = "/norns/domain/redteam/custom_skills"
 
-DEFAULT_SERVER_CONCURRENCY = 3
+SERVER_CONCURRENCY = 3
 DEFAULT_SERVER_HOST = "0.0.0.0"
 DEFAULT_SERVER_PORT = 28081
 DEFAULT_MAX_CONCURRENT_EXPLORATIONS = 3
@@ -42,29 +43,53 @@ _benchmark_proc: subprocess.Popen | None = None
 _received_signal: int | None = None
 
 REQUIRED_ENV = (
-    "LLM_URL", "LLM_KEY", "LLM_MODEL",
+    "AGENT_LLM_URL", "AGENT_LLM_KEY", "AGENT_LLM_MODEL",
     "BENCHMARK_BASE_URL", "BENCHMARK_TOKEN",
 )
 
 STRING_FIELDS = (
-    "LLM_URL", "LLM_KEY", "LLM_MODEL", "LLM_FAST_MODEL",
-    "NORNS_SERVER_HOST", "NORNS_SERVER_TOKEN",
-    "NORNS_CUSTOM_DOMAIN_DIR", "NORNS_CUSTOM_SKILLS_DIR", "NORNS_CUSTOM_AGENTS_DIR",
-    "CUSTOM_AGENTS_DIR", "CUSTOM_SKILLS_DIR",
+    "AGENT_MAINAGENT_FILE", "AGENT_REUSE_RUNTIME_DIR",
+    "AGENT_LLM_URL", "AGENT_LLM_KEY", "AGENT_LLM_MODEL", "AGENT_LLM_FAST_MODEL",
+    "SERVICE_HOST", "SERVICE_TOKEN",
+    "AGENT_NORNS_EXTENDS_AGENTS_DIR", "AGENT_NORNS_CUSTOM_SKILLS_DIR", "AGENT_NORNS_CUSTOM_AGENTS_DIR",
+    "AGENT_CUSTOM_AGENTS_DIR", "AGENT_CUSTOM_SKILLS_DIR",
 )
 INTEGER_FIELDS = (
-    "NORNS_SERVER_PORT",
-    "NORNS_MAX_CONCURRENT_EXPLORATIONS",
-    "NORNS_EXPLORATION_TIMEOUT",
+    "SERVICE_PORT",
+    "AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS",
+    "AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS",
 )
 BOOLEAN_FIELDS = (
-    "NORNS_ENABLE",
-    "NORNS_ALLOW_HUMAN_INTERVENTION",
+    "AGENT_NORNS_ENABLE",
+    "AGENT_NORNS_ALLOW_HUMAN_INTERVENTION",
 )
-DIRECTORY_FIELDS = (
-    "NORNS_CUSTOM_DOMAIN_DIR", "NORNS_CUSTOM_SKILLS_DIR", "NORNS_CUSTOM_AGENTS_DIR",
-    "CUSTOM_AGENTS_DIR", "CUSTOM_SKILLS_DIR",
-)
+
+
+def validate_resources(config: dict) -> None:
+    norns_resources = (
+        "AGENT_NORNS_EXTENDS_AGENTS_DIR", "AGENT_NORNS_CUSTOM_AGENTS_DIR",
+        "AGENT_NORNS_CUSTOM_SKILLS_DIR",
+    )
+    custom_resources = ("AGENT_CUSTOM_AGENTS_DIR", "AGENT_CUSTOM_SKILLS_DIR", "AGENT_CUSTOM_PLUGIN_DIRS")
+    if config.get("AGENT_REUSE_RUNTIME_DIR"):
+        if any(config.get(name) for name in (*norns_resources, *custom_resources, "AGENT_MAINAGENT_FILE")):
+            raise ValueError("AGENT_REUSE_RUNTIME_DIR cannot be combined with other plugin resources or AGENT_MAINAGENT_FILE")
+    elif config["AGENT_NORNS_ENABLE"]:
+        if any(config.get(name) for name in custom_resources):
+            raise ValueError("AGENT_CUSTOM_* resources require AGENT_NORNS_ENABLE=false")
+    elif any(config.get(name) for name in norns_resources):
+        raise ValueError("AGENT_NORNS_* resources require AGENT_NORNS_ENABLE=true")
+
+    for name in (*norns_resources, "AGENT_CUSTOM_AGENTS_DIR", "AGENT_CUSTOM_SKILLS_DIR", "AGENT_REUSE_RUNTIME_DIR"):
+        value = config.get(name, "")
+        if value and (not Path(value).is_absolute() or not Path(value).is_dir()):
+            raise ValueError(f"{name} must name an existing absolute directory: {value}")
+    for value in config.get("AGENT_CUSTOM_PLUGIN_DIRS", []):
+        if not Path(value).is_absolute() or not Path(value).is_dir():
+            raise ValueError(f"AGENT_CUSTOM_PLUGIN_DIRS must contain existing absolute directories: {value}")
+    value = config.get("AGENT_MAINAGENT_FILE", "")
+    if value and (not Path(value).is_absolute() or not Path(value).is_file()):
+        raise ValueError(f"AGENT_MAINAGENT_FILE must name an existing absolute file: {value}")
 
 
 def log(message: str) -> None:
@@ -94,13 +119,6 @@ def parse_positive_integer(name: str, value: str) -> int:
     return parsed
 
 
-def benchmark_concurrency() -> int:
-    return parse_positive_integer(
-        "BENCHMARK_CONCURRENCY",
-        os.environ.get("BENCHMARK_CONCURRENCY") or str(DEFAULT_SERVER_CONCURRENCY),
-    )
-
-
 def parse_string_list(name: str, value: str) -> list[str]:
     global yaml
     if not value.strip():
@@ -125,7 +143,7 @@ def write_token_file(token: str) -> None:
 
 def persisted_token() -> str:
     """Load or create the token shared by nornsd and benchmark.py."""
-    configured = os.environ.get("NORNS_SERVER_TOKEN", "").strip()
+    configured = os.environ.get("SERVICE_TOKEN", "").strip()
     if configured:
         write_token_file(configured)
         return configured
@@ -144,13 +162,13 @@ def persisted_token() -> str:
 
 
 def parse_models() -> list[str]:
-    raw = os.environ.get("LLM_MODEL", "")
+    raw = os.environ.get("AGENT_LLM_MODEL", "")
     models = [item.strip() for item in raw.split(",") if item.strip()]
     if not models:
-        warn("未通过 LLM_MODEL 传入模型")
+        warn("未通过 AGENT_LLM_MODEL 传入模型")
         raise SystemExit(2)
     if len(models) != 1:
-        warn("LLM_MODEL 必须且只能包含一个模型名称")
+        warn("AGENT_LLM_MODEL 必须且只能包含一个模型名称")
         raise SystemExit(2)
     return models
 
@@ -169,20 +187,28 @@ def write_agent_config(model: str, cfg_path: Path, token: str) -> dict:
         raise SystemExit(f"{TEMPLATE_PATH} 必须是 YAML mapping")
 
     config.update({
-        "NORNS_ENABLE": DEFAULT_NORNS_ENABLE,
-        "NORNS_SERVER_HOST": DEFAULT_SERVER_HOST,
-        "NORNS_SERVER_PORT": DEFAULT_SERVER_PORT,
-        "NORNS_SERVER_TOKEN": token,
-        "NORNS_MAX_CONCURRENT_EXPLORATIONS": DEFAULT_MAX_CONCURRENT_EXPLORATIONS,
-        "NORNS_EXPLORATION_TIMEOUT": DEFAULT_EXPLORATION_TIMEOUT,
-        "NORNS_ALLOW_HUMAN_INTERVENTION": DEFAULT_ALLOW_HUMAN_INTERVENTION,
-        "NORNS_CUSTOM_DOMAIN_DIR": REDTEAM_DOMAIN_DIR,
-        "NORNS_CUSTOM_SKILLS_DIR": REDTEAM_SKILLS_DIR,
-        "NORNS_CUSTOM_AGENTS_DIR": "",
-        "CUSTOM_AGENTS_DIR": "",
-        "CUSTOM_SKILLS_DIR": "",
-        "CUSTOM_PLUGIN_DIRS": [],
+        "SERVICE_NORNSD_ROOT_DIR": str(WORKSPACE),
+        "SERVICE_CONCURRENCY": SERVER_CONCURRENCY,
+        "AGENT_NORNS_ENABLE": DEFAULT_NORNS_ENABLE,
+        "SERVICE_HOST": DEFAULT_SERVER_HOST,
+        "SERVICE_PORT": DEFAULT_SERVER_PORT,
+        "SERVICE_TOKEN": token,
+        "AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS": DEFAULT_MAX_CONCURRENT_EXPLORATIONS,
+        "AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS": DEFAULT_EXPLORATION_TIMEOUT,
+        "AGENT_NORNS_ALLOW_HUMAN_INTERVENTION": DEFAULT_ALLOW_HUMAN_INTERVENTION,
+        "AGENT_NORNS_EXTENDS_AGENTS_DIR": REDTEAM_DOMAIN_DIR,
+        "AGENT_NORNS_CUSTOM_SKILLS_DIR": REDTEAM_SKILLS_DIR,
+        "AGENT_NORNS_CUSTOM_AGENTS_DIR": "",
+        "AGENT_CUSTOM_AGENTS_DIR": "",
+        "AGENT_CUSTOM_SKILLS_DIR": "",
+        "AGENT_CUSTOM_PLUGIN_DIRS": [],
     })
+    # Image defaults must not introduce plugin resources in plain or reuse mode.
+    enabled = parse_boolean("AGENT_NORNS_ENABLE", os.environ.get("AGENT_NORNS_ENABLE", str(DEFAULT_NORNS_ENABLE)))
+    if not enabled or os.environ.get("AGENT_REUSE_RUNTIME_DIR"):
+        config["AGENT_NORNS_EXTENDS_AGENTS_DIR"] = ""
+        config["AGENT_NORNS_CUSTOM_SKILLS_DIR"] = ""
+
     for name in STRING_FIELDS:
         if name in os.environ:
             config[name] = os.environ[name]
@@ -193,13 +219,15 @@ def write_agent_config(model: str, cfg_path: Path, token: str) -> dict:
         if name in os.environ:
             config[name] = parse_boolean(name, os.environ[name])
 
-    if "CUSTOM_PLUGIN_DIRS" in os.environ:
-        config["CUSTOM_PLUGIN_DIRS"] = parse_string_list(
-            "CUSTOM_PLUGIN_DIRS", os.environ["CUSTOM_PLUGIN_DIRS"])
-    config["LLM_MODEL"] = model
-    config["LLM_FAST_MODEL"] = os.environ.get("LLM_FAST_MODEL", "").strip() or model
-    config["NORNS_SERVER_TOKEN"] = token
+    if "AGENT_CUSTOM_PLUGIN_DIRS" in os.environ:
+        config["AGENT_CUSTOM_PLUGIN_DIRS"] = parse_string_list(
+            "AGENT_CUSTOM_PLUGIN_DIRS", os.environ["AGENT_CUSTOM_PLUGIN_DIRS"])
+    config["AGENT_LLM_MODEL"] = model
+    config["AGENT_LLM_FAST_MODEL"] = os.environ.get("AGENT_LLM_FAST_MODEL", "").strip() or model
+    config["SERVICE_TOKEN"] = token
     config["AGENT_EXEC"] = [str(CLAUDE_EXEC)]
+    config["AGENT_MAINAGENT_FILE"] = config.get("AGENT_MAINAGENT_FILE", "")
+    config["AGENT_REUSE_RUNTIME_DIR"] = config.get("AGENT_REUSE_RUNTIME_DIR", "")
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = cfg_path.with_suffix(".yaml.tmp")
@@ -212,20 +240,14 @@ def write_agent_config(model: str, cfg_path: Path, token: str) -> dict:
 
 
 def validate_runtime(config: dict) -> None:
-    for name, path in (("claude", CLAUDE_EXEC), ("norns", NORNS_BIN), ("nornsd", NORNSD_BIN)):
+    for name, path in (("claude", CLAUDE_EXEC), ("norns", NORNS_BIN), ("nornsd", NORNSD_BIN), ("norns-tsec", TSEC_BIN)):
         if not path.is_file() or not os.access(path, os.X_OK):
             raise ValueError(f"{name} 不可执行: {path}")
-    for name in DIRECTORY_FIELDS:
-        value = str(config.get(name, "")).strip()
-        if value and not Path(value).is_dir():
-            raise ValueError(f"{name} 目录不存在: {value}")
-    for value in config.get("CUSTOM_PLUGIN_DIRS", []):
-        if not Path(value).is_dir():
-            raise ValueError(f"CUSTOM_PLUGIN_DIRS 目录不存在: {value}")
+    validate_resources(config)
 
 
 def wait_healthy(proc: subprocess.Popen, base: str, deadline: float, token: str) -> tuple[bool, str]:
-    # --host 0.0.0.0(非 loopback)+ --token 让 nornsd 对所有端点(含 /api/health)强制
+    # SERVICE_HOST=0.0.0.0 与 SERVICE_TOKEN 让 nornsd 对所有端点(含 /api/health)强制
     # Bearer 鉴权(那条 "serving a Bearer token over plaintext HTTP on a non-loopback
     # address" warning 即此)。不带 Authorization 头则 health 恒 401 → wait_healthy 死等
     # 到 ENTRYPOINT_HEALTH_WAIT 超时。故探活必须带
@@ -251,11 +273,9 @@ def start_nornsd(workspace: Path, settings: Path, port: int, token: str) -> subp
     del port, token
     argv = [
         str(NORNSD_BIN), "server",
-        "--workspace-root", str(workspace),
-        "--settings", str(settings),
-        "--concurrency", str(benchmark_concurrency()),
+        "--configs", str(settings),
     ]
-    # nornsd 的 slog 会把每条 http request(benchmark 轮询事件、抽 flag、提交、健康探活)
+    # nornsd 的 slog 会把每条 http request(benchmark 轮询事件、状态、健康探活)
     # 全行打到 stderr,量极大;若直接接回 terminal,会淹没 entrypoint/benchmark 自己的输出
     # (用户看不到调度日志)。故把 nornsd 的 stdout+stderr 重定向到工作区下的
     # nornsd.log,terminal 只留 entrypoint/benchmark 的输出;nornsd 异常时再 tail 它的
@@ -298,7 +318,7 @@ def _tail_log(path: Path | None, n: int = 20) -> list[str]:
     """读取 nornsd 日志末尾 n 行。
 
     nornsd 起不来/不健康时,把它的日志末尾打到 stderr,定位"为什么没起来":
-    PATH 缺失、端口占用、agent.yaml 解析失败等都在这里(本会话两次定位靠的就是它)。
+    PATH 缺失、端口占用、nornsd.yaml 解析失败等都在这里。
     """
     if path is None:
         return []
@@ -339,21 +359,12 @@ def run_benchmark(specs: list, token: str, initial: float, retry: float,
     env = dict(os.environ)
     env["BENCHMARK_NORNSD_BASE_URLS"] = ",".join(spec["base_url"] for spec in specs)
     env["BENCHMARK_NORNSD_TOKEN"] = token
-    env["LLM_MODEL"] = ",".join(spec["model"] for spec in specs)
+    env["AGENT_LLM_MODEL"] = ",".join(spec["model"] for spec in specs)
     env["BENCHMARK_INITIAL_LIMIT_MINUTES"] = str(initial)
     env["BENCHMARK_RETRY_LIMIT_MINUTES"] = str(retry)
-    env.pop("BENCHMARK_LIMIT_INCREMENT_MINUTES", None)
-    env.pop("BENCHMARK_MAX_CHALLENGE_TIMEOUT_MINUTES", None)
     env["BENCHMARK_RUN_ID"] = run_id
-    env["BENCHMARK_CONCURRENCY"] = str(benchmark_concurrency())
-    # 旧设计(外层轮×内层模型 + 3 并发池)相关变量必须清除，避免 benchmark.py 误读。
-    env.pop("BENCHMARK_MODEL_LABEL", None)
-    env.pop("BENCHMARK_PER_CHALLENGE_TIMEOUT", None)
-    env.pop("BENCHMARK_MAX_PASSES", None)
-    env.pop("NORNSD_BASE_URL", None)
-    env.pop("NORNSD_TOKEN", None)
     log(f"运行 benchmark.py: 初始单题限时={initial}min "
-        f"后续每轮={retry}min model={env['LLM_MODEL']}")
+        f"后续每轮={retry}min model={env['AGENT_LLM_MODEL']}")
     global _benchmark_proc
     proc = subprocess.Popen([sys.executable, str(BENCHMARK_BIN)], env=env)
     _benchmark_proc = proc
@@ -397,8 +408,8 @@ def build_specs(models: list, token: str) -> list:
         validate_runtime(config)
         specs.append({
             "model": model, "index": n, "workspace": workspace,
-            "config": cfg_path, "port": port,
-            "base_url": f"http://127.0.0.1:{config['NORNS_SERVER_PORT']}",
+            "config": cfg_path, "port": config["SERVICE_PORT"],
+            "base_url": f"http://127.0.0.1:{config['SERVICE_PORT']}",
         })
     return specs
 
@@ -419,11 +430,6 @@ def main() -> int:
         return 2
 
     models = parse_models()
-    try:
-        concurrency = benchmark_concurrency()
-    except ValueError as error:
-        warn(str(error))
-        return 2
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
     initial = _env_float_or("BENCHMARK_INITIAL_LIMIT_MINUTES", 30.0)
@@ -443,7 +449,7 @@ def main() -> int:
         return 1
 
     log(f"模型: {models[0]}; 端口 {DEFAULT_SERVER_PORT}; "
-        f"nornsd concurrency={concurrency}; "
+        f"nornsd concurrency={SERVER_CONCURRENCY}; "
         f"单题限时初始={initial}min 后续每轮={retry}min; 共享 token 已就绪")
 
     started: list = []  # (spec, proc)

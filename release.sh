@@ -5,9 +5,12 @@ set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 usage() {
-  echo "Usage: ./release.sh [norns|nornsd|well|all] [--all-platforms]"
-  echo "Without a product, builds norns (including plugins) and nornsd."
+  echo "Usage: ./release.sh [norns|nornsd|well|all] [--all-platforms] [--with-ext NAME]..."
+  echo "Without a product, builds norns and nornsd, without command extensions."
+  echo "Repeat --with-ext NAME to include selected norns extensions (for example, websearch)."
   echo "Well builds only for the current platform; run npm ci in well first."
+  echo "./release.sh --gitrelease builds six Go ZIPs and a Well DMG in release/gitrelease (macOS ARM64 host)."
+  echo "--gitrelease accepts repeated --with-ext NAME; other product/platform options are ignored."
 }
 
 fail() {
@@ -24,27 +27,48 @@ ensure_directory() {
 
 selection=""
 all_platforms=()
+extensions=()
 help=false
-for argument in "$@"; do
+gitrelease=false
+while [[ $# -gt 0 ]]; do
+  argument=$1
+  shift
   case "$argument" in
     norns|nornsd|well|all)
       [[ -z "$selection" ]] || fail "select only one product or all"
       selection=$argument
       ;;
     --all-platforms) all_platforms=(--all-platforms) ;;
+    --gitrelease) gitrelease=true ;;
+    --with-ext)
+      [[ $# -gt 0 && -n "$1" && "$1" != -* ]] || fail "--with-ext requires an extension name"
+      extensions+=("$1")
+      shift
+      ;;
     --help|-h) help=true ;;
     *) fail "unknown argument: $argument" ;;
   esac
 done
 
-if [[ ${#all_platforms[@]} -gt 0 && ( "$selection" == well || "$selection" == all ) ]]; then
-  fail "--all-platforms supports only norns and nornsd; build Well on each target platform"
-fi
 if [[ "$help" == true ]]; then
   usage
   exit 0
 fi
+if [[ "$gitrelease" == true ]]; then
+  command -v node >/dev/null 2>&1 || fail "GitHub release builds require Node.js"
+  gitrelease_flags=()
+  for extension_name in ${extensions[@]+"${extensions[@]}"}; do
+    gitrelease_flags+=(--with-ext "$extension_name")
+  done
+  exec node "$script_dir/scripts/gitrelease.mjs" ${gitrelease_flags[@]+"${gitrelease_flags[@]}"}
+fi
 
+if [[ ${#all_platforms[@]} -gt 0 && ( "$selection" == well || "$selection" == all ) ]]; then
+  fail "--all-platforms supports only norns and nornsd; build Well on each target platform"
+fi
+if [[ ${#extensions[@]} -gt 0 && ( "$selection" == nornsd || "$selection" == well ) ]]; then
+  fail "--with-ext requires a build that includes norns"
+fi
 case "$selection" in
   "") products=(norns nornsd) ;;
   all) products=(norns nornsd well) ;;
@@ -52,6 +76,13 @@ case "$selection" in
 esac
 
 cd "$script_dir"
+extension_flags=()
+for extension_name in ${extensions[@]+"${extensions[@]}"}; do
+  [[ "$extension_name" =~ ^[a-z][a-z0-9-]*$ ]] || fail "invalid extension name: $extension_name"
+  extension_entry="norns/internal/custom_extensions/$extension_name/cmd/norns-$extension_name/main.go"
+  [[ -f "$extension_entry" ]] || fail "unknown extension $extension_name: expected $extension_entry"
+  extension_flags+=(--with-ext "$extension_name")
+done
 if [[ "$selection" != well ]]; then
   command -v go >/dev/null 2>&1 || fail "Go 1.25 or newer is required"
   go_version=$(go env GOVERSION)
@@ -88,7 +119,7 @@ for platform in "${platforms[@]}"; do
   ensure_directory "$script_dir/release/$platform"
 done
 
-staging=$(mktemp -d "$script_dir/.release.tmp.XXXXXX")
+staging=$(mktemp -d "$script_dir/release/.release.tmp.XXXXXX")
 trap 'rm -rf -- "$staging"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -98,6 +129,8 @@ export BUILD_TIME="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 for product in "${products[@]}"; do
   if [[ "$product" == well ]]; then
     (cd well && npm run release -- --output "$staging/artifacts")
+  elif [[ "$product" == norns ]]; then
+    (cd norns && go run ./scripts/release.go ${all_platforms[@]+"${all_platforms[@]}"} ${extension_flags[@]+"${extension_flags[@]}"} --output "$staging/artifacts")
   else
     (cd "$product" && go run ./scripts/release.go ${all_platforms[@]+"${all_platforms[@]}"} --output "$staging/artifacts")
   fi
@@ -107,23 +140,26 @@ for platform in "${platforms[@]}"; do
   ensure_directory "$script_dir/release/$platform"
   [[ -d "$staging/artifacts/$platform" ]] || fail "missing staged artifacts for $platform"
 done
+if [[ "$selection" != nornsd && "$selection" != well ]]; then
+  (cd norns && go run ./scripts/release.go --publish-from "$staging/artifacts" --output "$script_dir/release")
+fi
 for platform in "${platforms[@]}"; do
   destination="$script_dir/release/$platform"
   for product in "${products[@]}"; do
     case "$product" in
-      norns) rm -rf -- "$destination/norns" "$destination/norns.exe" "$destination"/norns-* ;;
-      nornsd) rm -rf -- "$destination/nornsd" "$destination/nornsd.exe" "$destination/agent.example.yaml" ;;
+      nornsd) rm -rf -- "$destination/nornsd" "$destination/nornsd.exe" "$destination/nornsd.example.yaml" "$destination/agent.example.yaml" ;;
       well) rm -rf -- "$destination/well" ;;
     esac
   done
   for artifact in "$staging/artifacts/$platform"/*; do
+    [[ -e "$artifact" || -L "$artifact" ]] || continue
     mv -- "$artifact" "$destination/"
   done
 done
 
 (
   cd release
-  find . -type f ! -name SHA256SUMS ! -name .gitkeep -print | LC_ALL=C sort |
+  find . -type d -name ".release.tmp.*" -prune -o -type f ! -name SHA256SUMS ! -name .gitkeep -print | LC_ALL=C sort |
     while IFS= read -r artifact; do "${checksum[@]}" "$artifact"; done
 ) > "$staging/SHA256SUMS"
 mv -- "$staging/SHA256SUMS" "$script_dir/release/SHA256SUMS"

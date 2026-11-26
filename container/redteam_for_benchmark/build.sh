@@ -12,10 +12,10 @@
 #   --image IMAGE            Python 基础镜像，默认 python:3.13.15-slim。
 #   --tag IMAGE               输出镜像 tag，默认 nornsd-redteam-benchmark:latest。
 #   --proxy host:port        国外资源下载使用的构建期代理。
-#   --use-mirror             使用阿里云 APT/PyPI 和 npmmirror，默认关闭。
+#   --use-mirror             使用阿里云 APT/PyPI/Maven 和 npmmirror，默认关闭。
 #   --use-ecs-mirror         使用阿里云 ECS 内网 APT/PyPI，默认关闭，并启用 --use-mirror。
 #
-# 前置：项目根目录已执行 ./release.sh --all-platforms 生成 release/linux-<arch> 二进制(镜像构建需要)。
+# 前置：项目根目录已执行 ./release.sh --all-platforms --with-ext tsec 生成 release/linux-<arch> 二进制。
 
 set -euo pipefail
 
@@ -67,10 +67,10 @@ case "$(uname -m)" in
 esac
 release_dir="$project_root/release/linux-$release_arch"
 
-for binary in norns nornsd; do
+for binary in norns nornsd norns-tsec; do
   path="$release_dir/$binary"
   [ -f "$path" ] || {
-    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh --all-platforms" >&2
+    echo "错误: 缺少 $path，请先在项目根目录执行 ./release.sh --all-platforms --with-ext tsec" >&2
     exit 1
   }
   if command -v file >/dev/null 2>&1 && ! file "$path" | grep -q "ELF 64-bit.*$expected_arch"; then
@@ -91,19 +91,21 @@ if [ -n "$proxy" ]; then
   http_proxy_url="http://$proxy"
   all_proxy_url="socks5://$proxy"
 fi
-no_proxy_list="localhost,127.0.0.1,::1,mirrors.aliyun.com,mirrors.cloud.aliyuncs.com,registry.npmmirror.com,npmmirror.com,cdn.npmmirror.com"
+no_proxy_list="localhost,127.0.0.1,::1,mirrors.aliyun.com,mirrors.cloud.aliyuncs.com,maven.aliyun.com,registry.npmmirror.com,npmmirror.com,cdn.npmmirror.com"
 
 npm_registry=""
 node_dist_url="https://nodejs.org/dist"
 pip_index_url=""
 pip_trusted_host=""
 apt_source_block=""
+maven_mirror_url=""
 if [ "$use_mirror" = 1 ]; then
   npm_registry="https://registry.npmmirror.com"
   node_dist_url="https://npmmirror.com/mirrors/node"
   pip_index_url="https://mirrors.aliyun.com/pypi/simple/"
   pip_trusted_host="mirrors.aliyun.com"
   apt_mirror_base="https://mirrors.aliyun.com"
+  maven_mirror_url="https://maven.aliyun.com/repository/public"
   if [ "$use_ecs_mirror" = 1 ]; then
     apt_mirror_base="http://mirrors.cloud.aliyuncs.com"
     pip_index_url="http://mirrors.cloud.aliyuncs.com/pypi/simple/"
@@ -121,6 +123,7 @@ build_args=(
   --build-arg "PIP_INDEX_URL=$pip_index_url"
   --build-arg "PIP_TRUSTED_HOST=$pip_trusted_host"
   --build-arg "APT_SOURCE_BLOCK=$apt_source_block"
+  --build-arg "MAVEN_MIRROR_URL=$maven_mirror_url"
 )
 if [ -n "$proxy" ]; then
   build_args+=(
@@ -141,6 +144,7 @@ echo "  proxy   : ${proxy:-<none>}"
 echo "  mirror  : $([ "$use_mirror" = 1 ] && echo yes || echo no)"
 echo "  apt     : ${apt_mirror_base:-image default}"
 echo "  pypi    : ${pip_index_url:-pip default}"
+echo "  maven   : ${maven_mirror_url:-maven central}"
 
 case "$backend" in
   apple)

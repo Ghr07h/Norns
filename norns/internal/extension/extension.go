@@ -22,30 +22,44 @@ func Find(name string) (string, error) {
 	if !IsValidName(name) {
 		return "", domain.NewError("INVALID_ARGUMENT", "invalid command name")
 	}
+	directory, err := executableDirectory()
+	if err != nil {
+		return "", err
+	}
+	return findInDirectory(directory, name)
+}
+
+func findInDirectory(directory, name string) (string, error) {
+	if !IsValidName(name) {
+		return "", domain.NewError("INVALID_ARGUMENT", "invalid command name")
+	}
 	base := "norns-" + name
 	if runtime.GOOS == "windows" {
 		base += ".exe"
 	}
-	dirs := []string{}
-	if executable, err := os.Executable(); err == nil {
-		dirs = append(dirs, filepath.Dir(executable))
-	}
-	if configured := os.Getenv("NORNS_PLUGIN_PATH"); configured != "" {
-		dirs = append(dirs, filepath.SplitList(configured)...)
-	}
-	for _, dir := range dirs {
-		candidate := filepath.Join(dir, base)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
-			return candidate, nil
-		}
-	}
-	path, err := exec.LookPath(base)
-	if err == nil {
-		return path, nil
+	candidate := filepath.Join(directory, base)
+	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
+		return candidate, nil
 	}
 	e := domain.NewError("EXTENSION_NOT_FOUND", "Norns extension not found: "+name)
 	e.Details["executable"] = base
 	return "", e
+}
+
+func executableDirectory() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", domain.Wrap("IO_ERROR", "cannot locate Norns executable", err)
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		return "", domain.Wrap("IO_ERROR", "cannot resolve Norns executable", err)
+	}
+	executable, err = filepath.Abs(executable)
+	if err != nil {
+		return "", domain.Wrap("IO_ERROR", "cannot resolve Norns executable path", err)
+	}
+	return filepath.Dir(executable), nil
 }
 
 func Run(path string, args []string, stdin io.Reader, stdout, stderr io.Writer, workspace string) error {

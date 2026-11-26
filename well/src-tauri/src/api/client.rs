@@ -84,6 +84,7 @@ impl<'a> ApiClient<'a> {
             .data)
     }
 
+    #[cfg(test)]
     pub async fn get_view<T: DeserializeOwned>(
         &self,
         segments: &[&str],
@@ -153,6 +154,56 @@ impl<'a> ApiClient<'a> {
         let data = serde_json::from_slice(&body).map_err(|error| {
             ClientError::protocol(format!("invalid nornsd JSON response: {error}"))
         })?;
+        Ok(ViewResponse { data, filename })
+    }
+
+    pub async fn text_view(
+        &self,
+        segments: &[&str],
+        query: &[(&str, String)],
+        format: &str,
+    ) -> Result<ViewResponse<String>, ClientError> {
+        let expected = match format {
+            "md" => "text/markdown",
+            "yaml" => "application/yaml",
+            "json" => "application/json",
+            _ => return Err(ClientError::protocol("format must be md, yaml or json")),
+        };
+        let response = self
+            .client
+            .get(self.url(segments, query)?)
+            .bearer_auth(self.password)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(ClientError::from_reqwest)?;
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let filename = response
+            .headers()
+            .get("x-norns-view-filename")
+            .and_then(|v| v.to_str().ok())
+            .and_then(safe_view_filename);
+        let body = read_limited(response, JSON_LIMIT).await?;
+        if !status.is_success() {
+            return Err(ClientError::api(status.as_u16(), &body));
+        }
+        if content_type.split(';').next().unwrap_or("").trim() != expected {
+            return Err(ClientError::protocol(
+                "Norns View returned an unexpected Content-Type",
+            ));
+        }
+        let data = String::from_utf8(body)
+            .map_err(|_| ClientError::protocol("Norns View is not valid UTF-8"))?;
+        if format == "json" {
+            serde_json::from_str::<serde_json::Value>(&data)
+                .map_err(|e| ClientError::protocol(format!("invalid Norns JSON: {e}")))?;
+        }
         Ok(ViewResponse { data, filename })
     }
 
@@ -269,6 +320,52 @@ mod tests {
             "capacity": { "concurrency": 2, "using": 0, "queuing": 0 },
             "capabilities": []
         })
+    }
+
+    #[tokio::test]
+    async fn reads_all_three_view_formats_and_rejects_mismatched_mime() {
+        let server = MockServer::start_async().await;
+        for (format, mime, body) in [
+            ("md", "text/markdown", "# Status View\n"),
+            ("yaml", "application/yaml", "task: {}\n"),
+            ("json", "application/json", "{\"task\":{}}"),
+        ] {
+            let mock = server
+                .mock_async(|when, then| {
+                    when.method(GET)
+                        .path("/api/status")
+                        .query_param("format", format)
+                        .header("authorization", "Bearer test");
+                    then.status(200)
+                        .header("content-type", mime)
+                        .header("x-norns-view-filename", format!("status-test.{format}"))
+                        .body(body);
+                })
+                .await;
+            let client = reqwest::Client::new();
+            let base = server.base_url();
+            let api = ApiClient::new(&client, &base, "test");
+            let view = api
+                .text_view(&["status"], &[("format", format.into())], format)
+                .await
+                .unwrap();
+            assert_eq!(view.data, body);
+            assert_eq!(view.filename, Some(format!("status-test.{format}")));
+            mock.assert_async().await;
+            mock.delete_async().await;
+        }
+        server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200)
+                    .header("content-type", "text/html")
+                    .body("<html/>");
+            })
+            .await;
+        let client = reqwest::Client::new();
+        let base = server.base_url();
+        let api = ApiClient::new(&client, &base, "test");
+        assert!(api.text_view(&["status"], &[], "md").await.is_err());
     }
 
     #[tokio::test]

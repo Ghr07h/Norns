@@ -1,4 +1,4 @@
-export type NornsViewKind = "status" | "trace" | "visual";
+export type NornsViewKind = "status" | "trace" | "visual" | "cognition" | "exploration";
 
 export interface NornsViewCacheEntry {
   parameter: string;
@@ -9,8 +9,8 @@ export interface NornsViewCacheEntry {
 
 const cache = new Map<string, NornsViewCacheEntry>();
 
-export function nornsViewCacheKey(serverId: string, subjectId: string, kind: NornsViewKind): string {
-  return JSON.stringify([serverId, subjectId, kind]);
+export function nornsViewCacheKey(serverId: string, subjectId: string, kind: NornsViewKind, format = "md"): string {
+  return JSON.stringify([serverId, subjectId, kind, format]);
 }
 
 export function readNornsViewCache(key: string): NornsViewCacheEntry | undefined {

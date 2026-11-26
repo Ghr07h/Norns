@@ -43,7 +43,11 @@ func fixture(testingContext *testing.T) string {
 	writeFixture(testingContext, filepath.Join(root, product, "internal/version/versions_generated.go"), "package version\n")
 	writeFixture(testingContext, filepath.Join(root, product, "cmd", product, "main.go"), "package main\n")
 	if product == "norns" {
-		writeFixture(testingContext, filepath.Join(root, product, "cmd/norns-websearch/main.go"), "package main\n")
+		for _, name := range []string{"websearch", "lookup"} {
+			writeFixture(testingContext, filepath.Join(root, product, "internal/custom_extensions", name, "cmd", "norns-"+name, "main.go"), "package main\n")
+			writeFixture(testingContext, filepath.Join(root, product, "internal/custom_extensions", name, "metadata.json"), fmt.Sprintf(`{"name":%q,"version":"0.1.0","description":"Test extension","requirements":[]}`, name))
+		}
+		writeFixture(testingContext, filepath.Join(root, product, "cmd/norns-legacy/main.go"), "package main\n")
 		writeFixture(testingContext, filepath.Join(root, product, "cmd/unrelated/main.go"), "package main\n")
 	}
 	return root
@@ -80,13 +84,16 @@ func TestLocalBuild(testingContext *testing.T) {
 	if err := build(root, options{}, fakeRunner(testingContext, &calls)); err != nil {
 		testingContext.Fatal(err)
 	}
-	wantCalls := 2
+	wantCalls := 1
 	if len(calls) != wantCalls {
 		testingContext.Fatalf("commands = %d, want %d", len(calls), wantCalls)
 	}
 	checksums, err := os.ReadFile(filepath.Join(root, "release/SHA256SUMS"))
 	if err != nil || len(checksums) == 0 {
 		testingContext.Fatalf("missing checksums: %v", err)
+	}
+	if strings.Contains(string(checksums), "norns-websearch") || strings.Contains(string(checksums), "norns-legacy") {
+		testingContext.Fatalf("default build included extensions: %s", checksums)
 	}
 	for _, other := range []string{"norns", "nornsd", "well"} {
 		if other == product {
@@ -99,13 +106,13 @@ func TestLocalBuild(testingContext *testing.T) {
 }
 
 func TestOptionsAndRootDiscovery(testingContext *testing.T) {
-	for _, arguments := range [][]string{{"unknown"}, {"--unknown"}, {"norns"}, {"nornsd"}, {"--output"}, {"--output", "--all-platforms"}} {
+	for _, arguments := range [][]string{{"unknown"}, {"--unknown"}, {"norns"}, {"nornsd"}, {"--output"}, {"--output", "--all-platforms"}, {"--with-ext"}, {"--with-ext", "--all-platforms"}, {"--with-ext", ""}, {"--with-ext", "../websearch"}, {"--with-ext", "Websearch"}} {
 		if _, err := parseOptions(arguments); err == nil {
 			testingContext.Fatalf("accepted %v", arguments)
 		}
 	}
-	selected, err := parseOptions([]string{"--all-platforms", "--output", "custom"})
-	if err != nil || !selected.allPlatforms || selected.output != "custom" {
+	selected, err := parseOptions([]string{"--all-platforms", "--with-ext", "websearch", "--output", "custom", "--with-ext", "lookup"})
+	if err != nil || !selected.allPlatforms || selected.output != "custom" || !slices.Equal(selected.extensions, []string{"websearch", "lookup"}) {
 		testingContext.Fatalf("options: %#v %v", selected, err)
 	}
 	if selected, err := parseOptions([]string{"--help"}); err != nil || !selected.help {
@@ -134,11 +141,7 @@ func TestAllGoPlatforms(testingContext *testing.T) {
 		testingContext.Fatal(err)
 	}
 	executables := []string{product}
-	wantCalls := 7
-	if product == "norns" {
-		executables = append(executables, "norns-websearch")
-		wantCalls = 12
-	}
+	wantCalls := 6
 	if len(calls) != wantCalls {
 		testingContext.Fatalf("commands = %d, want %d", len(calls), wantCalls)
 	}
@@ -151,6 +154,63 @@ func TestAllGoPlatforms(testingContext *testing.T) {
 				testingContext.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestSelectedExtensions(testingContext *testing.T) {
+	for _, allPlatforms := range []bool{false, true} {
+		for _, names := range [][]string{{"websearch"}, {"lookup", "websearch", "lookup"}} {
+			testingContext.Run(fmt.Sprint(allPlatforms)+"/"+strings.Join(names, ","), func(testingContext *testing.T) {
+				root := fixture(testingContext)
+				var calls []invocation
+				if err := build(root, options{allPlatforms: allPlatforms, extensions: names}, fakeRunner(testingContext, &calls)); err != nil {
+					testingContext.Fatal(err)
+				}
+				packages := []string{"./cmd/norns"}
+				for _, name := range names {
+					pkg := "./internal/custom_extensions/" + name + "/cmd/norns-" + name
+					if !slices.Contains(packages, pkg) {
+						packages = append(packages, pkg)
+					}
+				}
+				platformCount := 1
+				if allPlatforms {
+					platformCount = 6
+				}
+				if len(calls) != platformCount*len(packages) {
+					testingContext.Fatalf("unexpected build commands: %#v", calls)
+				}
+				for index, call := range calls {
+					if pkg := call.arguments[len(call.arguments)-1]; pkg != packages[index%len(packages)] {
+						testingContext.Fatalf("built %q, want %q", pkg, packages[index%len(packages)])
+					}
+					output := call.arguments[slices.Index(call.arguments, "-o")+1]
+					published := filepath.Join(root, "release", filepath.Base(filepath.Dir(output)), filepath.Base(output))
+					if _, err := os.Stat(published); err != nil {
+						testingContext.Fatalf("selected artifact not published: %s: %v", published, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestInvalidExtensionPreservesRelease(testingContext *testing.T) {
+	for _, name := range []string{"missing", "../websearch", "Websearch", ""} {
+		testingContext.Run(name, func(testingContext *testing.T) {
+			root := fixture(testingContext)
+			filename := filepath.Join(root, "release", target{runtime.GOOS, runtime.GOARCH}.directory(), product)
+			writeFixture(testingContext, filename, "preserved")
+			if err := build(root, options{extensions: []string{name}}, func(string, []string, string, ...string) error {
+				testingContext.Fatal("invalid extension ran a build")
+				return nil
+			}); err == nil {
+				testingContext.Fatal("invalid extension accepted")
+			}
+			if contents, err := os.ReadFile(filename); err != nil || string(contents) != "preserved" {
+				testingContext.Fatalf("release changed: %q %v", contents, err)
+			}
+		})
 	}
 }
 
@@ -333,7 +393,7 @@ func TestFailedBuildDoesNotReplaceRelease(testingContext *testing.T) {
 	if err != nil || string(contents) != "preserved" {
 		testingContext.Fatalf("release replaced on failure: %s %v", contents, err)
 	}
-	staging, err := filepath.Glob(filepath.Join(root, ".release.tmp.*"))
+	staging, err := filepath.Glob(filepath.Join(root, "release", ".release.tmp.*"))
 	if err != nil || len(staging) != 0 {
 		testingContext.Fatalf("staging leaked: %v %v", staging, err)
 	}
@@ -360,6 +420,87 @@ func TestRejectSymlinkRelease(testingContext *testing.T) {
 			return nil
 		}); err == nil {
 			testingContext.Fatal("accepted symlink release directory")
+		}
+	}
+}
+
+func TestStagingInsideOutputExcludedFromChecksums(t *testing.T) {
+	root := fixture(t)
+	output := filepath.Join(t.TempDir(), "custom release")
+	stale := filepath.Join(output, ".release.tmp.stale", "partial")
+	writeFixture(t, stale, "unfinished build")
+	var calls []invocation
+	run := fakeRunner(t, &calls)
+	err := build(root, options{output: output}, func(directory string, environment []string, name string, arguments ...string) error {
+		stages, err := filepath.Glob(filepath.Join(output, ".release.tmp.*"))
+		if err != nil || len(stages) != 2 {
+			t.Fatalf("expected current and stale staging in output: %v %v", stages, err)
+		}
+		roots, err := filepath.Glob(filepath.Join(root, ".release.tmp.*"))
+		if err != nil || len(roots) != 0 {
+			t.Fatalf("staging created at repository root: %v %v", roots, err)
+		}
+		return run(directory, environment, name, arguments...)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stages, err := filepath.Glob(filepath.Join(output, ".release.tmp.*"))
+	if err != nil || len(stages) != 1 || stages[0] != filepath.Dir(stale) {
+		t.Fatalf("current staging not cleaned: %v %v", stages, err)
+	}
+	contents, err := os.ReadFile(filepath.Join(output, "SHA256SUMS"))
+	if err != nil || len(contents) == 0 || strings.Contains(string(contents), ".release.tmp.") {
+		t.Fatalf("invalid checksums: %s %v", contents, err)
+	}
+	if contents, err := os.ReadFile(stale); err != nil || string(contents) != "unfinished build" {
+		t.Fatalf("unrelated stale staging changed: %s %v", contents, err)
+	}
+}
+
+func TestSelectedTargets(t *testing.T) {
+	root := fixture(t)
+	selected, err := parseOptions([]string{"--target", "darwin/arm64", "--target", "windows/amd64", "--target", "linux/amd64", "--target", "darwin/arm64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected.targets) != 3 {
+		t.Fatalf("targets = %v", selected.targets)
+	}
+	var calls []invocation
+	if err := build(root, selected, fakeRunner(t, &calls)); err != nil {
+		t.Fatal(err)
+	}
+	for _, platform := range []string{"darwin-arm64", "windows-x64", "linux-x64"} {
+		executable := product
+		if strings.HasPrefix(platform, "windows-") {
+			executable += ".exe"
+		}
+		if _, err := os.Stat(filepath.Join(root, "release", platform, executable)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, platform := range []string{"darwin-x64", "windows-arm64", "linux-arm64"} {
+		if _, err := os.Stat(filepath.Join(root, "release", platform)); !os.IsNotExist(err) {
+			t.Fatalf("unexpected target %s: %v", platform, err)
+		}
+	}
+	builds := 0
+	for _, call := range calls {
+		if call.arguments[0] != "build" {
+			continue
+		}
+		builds++
+		if !slices.Contains(call.arguments, "-trimpath") || !strings.Contains(strings.Join(call.arguments, " "), "-s -w") {
+			t.Fatalf("missing release privacy flags: %v", call.arguments)
+		}
+	}
+	if builds != 3 {
+		t.Fatalf("build count = %d", builds)
+	}
+	for _, arguments := range [][]string{{"--target"}, {"--target", "linux/386"}, {"--target", "freebsd/amd64"}, {"--target", "../arm64"}, {"--target", "linux/amd64", "--all-platforms"}} {
+		if _, err := parseOptions(arguments); err == nil {
+			t.Fatalf("accepted %v", arguments)
 		}
 	}
 }

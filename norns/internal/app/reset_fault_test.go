@@ -279,7 +279,7 @@ func execDatabase(t *testing.T, path, statement string) {
 
 func assertRecoveredTaskCount(t *testing.T, service *Service, want int) {
 	t.Helper()
-	view, _, err := service.StatusView(context.Background(), nil, true)
+	view, _, err := service.StatusView(context.Background(), nil, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}

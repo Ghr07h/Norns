@@ -98,7 +98,7 @@ func TestBuildArgsAddsMultiplePluginsAndNornsRootAgent(t *testing.T) {
 	}
 	want := []string{
 		"cfuse", "--cc", "--dangerously-skip-permissions",
-		"--output-format", "stream-json", "--verbose", "--input-format", "stream-json", "--include-partial-messages",
+		"--output-format", "stream-json", "--verbose", "--input-format", "stream-json", "--include-partial-messages", "--replay-user-messages",
 		"--session-id=runtime-1", "--setting-sources=",
 		"--plugin-dir", "/tmp/custom", "--plugin-dir", "/tmp/norns",
 		"--agent", "norns:coordinator",

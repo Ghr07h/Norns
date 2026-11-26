@@ -283,21 +283,24 @@ func payloadJSON(value any) string {
 	return string(b)
 }
 
-func (s *Store) CreateSubject(ctx context.Context, subject domain.Subject, instruction *string, runtimeID string, now time.Time) error {
+func (s *Store) CreateSubject(ctx context.Context, subject domain.Subject, instruction *string, runtimeID string, now time.Time, override ...json.RawMessage) error {
 	return s.withWrite(ctx, func(q dbtx) error {
 		state, workspaceState := string(domain.SubjectIdle), domain.WorkspaceMaterializing
 		var current any
 		if instruction != nil {
 			state, workspaceState, current = string(domain.SubjectQueuing), domain.WorkspacePlanned, runtimeID
 		}
-		_, err := q.ExecContext(ctx, `INSERT INTO subjects(id,name,state,directory_name,workspace_state,profile_json,session_id,session_initialized,current_runtime_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, subject.ID, subject.Name, state, subject.DirectoryName, workspaceState, profileJSON(subject.Profile), subject.SessionID, boolInt(subject.SessionInitialized), current, formatTime(now), formatTime(now))
+		_, err := q.ExecContext(ctx, `INSERT INTO subjects(id,name,state,directory_name,workspace_state,current_runtime_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, subject.ID, subject.Name, state, subject.DirectoryName, workspaceState, current, formatTime(now), formatTime(now))
 		if err != nil {
 			return mapSQLError(err)
 		}
 		if instruction == nil {
 			return nil
 		}
-		return insertQueuedRuntime(ctx, q, subject.ID, runtimeID, *instruction, "", now)
+		if err := insertQueuedRuntime(ctx, q, subject.ID, runtimeID, *instruction, "", now); err != nil {
+			return err
+		}
+		return saveOverride(ctx, q, runtimeID, override)
 	})
 }
 
@@ -413,17 +416,16 @@ func (s *Store) GetSubject(ctx context.Context, id string) (domain.Subject, erro
 	return getSubject(ctx, s.db, id)
 }
 
-const subjectColumns = `id,name,state,directory_name,workspace_state,workspace_error,profile_json,session_id,session_initialized,current_runtime_id,last_event_seq,last_raw_seq,last_projected_raw_seq,created_at,updated_at`
+const subjectColumns = `id,name,state,directory_name,workspace_state,workspace_error,current_runtime_id,last_event_seq,last_raw_seq,last_projected_raw_seq,created_at,updated_at`
 
 type subjectRow struct {
 	value                       domain.Subject
 	name, workspaceErr, current sql.NullString
-	profile, created, updated   string
-	initialized                 int
+	created, updated            string
 }
 
 func (r *subjectRow) destinations() []any {
-	return []any{&r.value.ID, &r.name, &r.value.State, &r.value.DirectoryName, &r.value.WorkspaceState, &r.workspaceErr, &r.profile, &r.value.SessionID, &r.initialized, &r.current, &r.value.LastEventSeq, &r.value.LastRawSeq, &r.value.LastProjectedRawSeq, &r.created, &r.updated}
+	return []any{&r.value.ID, &r.name, &r.value.State, &r.value.DirectoryName, &r.value.WorkspaceState, &r.workspaceErr, &r.current, &r.value.LastEventSeq, &r.value.LastRawSeq, &r.value.LastProjectedRawSeq, &r.created, &r.updated}
 }
 
 func (r *subjectRow) subject() (domain.Subject, error) {
@@ -436,10 +438,6 @@ func (r *subjectRow) subject() (domain.Subject, error) {
 	}
 	if r.current.Valid {
 		out.CurrentRuntimeID = &r.current.String
-	}
-	out.SessionInitialized = r.initialized != 0
-	if err := json.Unmarshal([]byte(r.profile), &out.Profile); err != nil {
-		return out, err
 	}
 	out.CreatedAt, _ = parseTime(r.created)
 	out.UpdatedAt, _ = parseTime(r.updated)
@@ -569,21 +567,15 @@ func latestRuntimeSessionID(ctx context.Context, q dbtx, subject domain.Subject)
 	if runtime.SessionMode == "new" {
 		return runtime.ID, nil
 	}
-	if subject.SessionID != "" {
-		return subject.SessionID, nil
-	}
 	return "", domain.NewError("RUNTIME_SESSION_NOT_FOUND", "latest runtime session identity is unavailable", http.StatusConflict)
 }
 
-func (s *Store) SubmitInstruction(ctx context.Context, subjectID, runtimeID, content string, profile domain.RuntimeProfile, resumeSession bool, now time.Time) (domain.Runtime, error) {
+func (s *Store) SubmitInstruction(ctx context.Context, subjectID, runtimeID, content string, resumeSession bool, now time.Time, override ...json.RawMessage) (domain.Runtime, error) {
 	var result domain.Runtime
 	err := s.withWrite(ctx, func(q dbtx) error {
 		subject, err := getSubject(ctx, q, subjectID)
 		if err != nil {
 			return err
-		}
-		if !subject.Profile.Equal(profile) {
-			return domain.NewError("RUNTIME_PROFILE_MISMATCH", "subject runtime profile does not match server", http.StatusConflict)
 		}
 		if subject.WorkspaceState == domain.WorkspaceUnavailable {
 			return domain.NewError("WORKSPACE_UNAVAILABLE", "subject workspace is unavailable", http.StatusConflict)
@@ -605,8 +597,14 @@ func (s *Store) SubmitInstruction(ctx context.Context, subjectID, runtimeID, con
 			if err = insertQueuedRuntime(ctx, q, subjectID, runtimeID, content, resumeSessionID, now); err != nil {
 				return err
 			}
+			if err = saveOverride(ctx, q, runtimeID, override); err != nil {
+				return err
+			}
 			result, err = getRuntime(ctx, q, subjectID, runtimeID, true)
 			return err
+		}
+		if len(override) > 0 && len(override[0]) > 2 && string(override[0]) != "null" {
+			return domain.NewError("RUNTIME_CONFIG_CONFLICT", "config is only accepted when creating a new Runtime", http.StatusConflict)
 		}
 		if subject.CurrentRuntimeID == nil {
 			return domain.NewError("INTERNAL_ERROR", "subject state is inconsistent", http.StatusInternalServerError)
@@ -644,18 +642,19 @@ func (s *Store) GetRuntime(ctx context.Context, subjectID, runtimeID string, pen
 	return getRuntime(ctx, s.db, subjectID, runtimeID, pending)
 }
 
-const runtimeColumns = `r.id,r.subject_id,r.state,r.queue_sequence,r.settings_slot,r.config_hash,r.session_mode,r.inflight_turns,r.closing,r.close_deadline,r.queued_at,r.started_at,r.ended_at,r.state_changed_at,r.end_reason,r.error_code,r.error_json,r.process_json,r.usage_json,r.resource_json,r.transcript_json,r.created_at`
+const runtimeColumns = `r.id,r.subject_id,r.state,r.queue_sequence,r.settings_slot,r.config_hash,r.profile_json,r.config_override_json,r.effective_config_json,r.session_mode,r.inflight_inputs,r.closing,r.close_deadline,r.queued_at,r.started_at,r.ended_at,r.state_changed_at,r.end_reason,r.error_code,r.error_json,r.process_json,r.usage_json,r.resource_json,r.transcript_json,r.created_at`
 
 type runtimeRow struct {
 	value                                                                                                       domain.Runtime
 	queue, slot                                                                                                 sql.NullInt64
 	hash, deadline, queued, started, ended, reason, errCode, errJSON, processJSON, usageJSON, resourceJSON, log sql.NullString
 	closing                                                                                                     int
+	profileJSON, overrideJSON, effectiveJSON                                                                    sql.NullString
 	changed, created                                                                                            string
 }
 
 func (r *runtimeRow) destinations() []any {
-	return []any{&r.value.ID, &r.value.SubjectID, &r.value.State, &r.queue, &r.slot, &r.hash, &r.value.SessionMode, &r.value.InflightTurns, &r.closing, &r.deadline, &r.queued, &r.started, &r.ended, &r.changed, &r.reason, &r.errCode, &r.errJSON, &r.processJSON, &r.usageJSON, &r.resourceJSON, &r.log, &r.created}
+	return []any{&r.value.ID, &r.value.SubjectID, &r.value.State, &r.queue, &r.slot, &r.hash, &r.profileJSON, &r.overrideJSON, &r.effectiveJSON, &r.value.SessionMode, &r.value.InflightInputs, &r.closing, &r.deadline, &r.queued, &r.started, &r.ended, &r.changed, &r.reason, &r.errCode, &r.errJSON, &r.processJSON, &r.usageJSON, &r.resourceJSON, &r.log, &r.created}
 }
 
 func (r *runtimeRow) runtime() domain.Runtime {
@@ -670,6 +669,13 @@ func (r *runtimeRow) runtime() domain.Runtime {
 	}
 	if r.hash.Valid {
 		out.ConfigHash = &r.hash.String
+	}
+	if r.profileJSON.Valid {
+		_ = json.Unmarshal([]byte(r.profileJSON.String), &out.Profile)
+	}
+	out.ConfigOverride = json.RawMessage(r.overrideJSON.String)
+	if r.effectiveJSON.Valid {
+		out.EffectiveConfig = json.RawMessage(r.effectiveJSON.String)
 	}
 	out.Closing = r.closing != 0
 	setTimePtr := func(value sql.NullString, dst **time.Time) {
@@ -834,7 +840,13 @@ func (s *Store) DispatchPending(ctx context.Context, subjectID, runtimeID string
 	var items []domain.Instruction
 	var group int64
 	err := s.withWrite(ctx, func(q dbtx) error {
-		var err error
+		r, err := getRuntime(ctx, q, subjectID, runtimeID, false)
+		if err != nil {
+			return err
+		}
+		if r.State.Terminal() {
+			return nil
+		}
 		items, err = listPending(ctx, q, runtimeID)
 		if err != nil {
 			return err
@@ -849,7 +861,7 @@ func (s *Store) DispatchPending(ctx context.Context, subjectID, runtimeID string
 			return err
 		}
 		for _, item := range items {
-			if _, err = q.ExecContext(ctx, `UPDATE runtime_instructions SET dispatch_group=?,dispatch_committed_at=? WHERE runtime_id=? AND sequence=? AND dispatch_committed_at IS NULL`, group, formatTime(now), runtimeID, item.Sequence); err != nil {
+			if _, err = q.ExecContext(ctx, `UPDATE runtime_instructions SET dispatch_group=?,input_uuid=?,dispatch_committed_at=? WHERE runtime_id=? AND sequence=? AND dispatch_committed_at IS NULL`, group, domain.InputUUID(runtimeID, group), formatTime(now), runtimeID, item.Sequence); err != nil {
 				return err
 			}
 		}
@@ -888,11 +900,11 @@ func (s *Store) ConfirmDispatch(ctx context.Context, subjectID, runtimeID string
 		if n == 0 {
 			return domain.NewError("INTERNAL_ERROR", "dispatch group was not found", http.StatusInternalServerError)
 		}
-		if _, err = q.ExecContext(ctx, `UPDATE runtimes SET state='running',inflight_turns=inflight_turns+1,state_changed_at=? WHERE subject_id=? AND id=?`, formatTime(now), subjectID, runtimeID); err != nil {
+		if _, err = q.ExecContext(ctx, `UPDATE runtimes SET state='running',inflight_inputs=inflight_inputs+1,state_changed_at=? WHERE subject_id=? AND id=? AND state IN ('running','waiting')`, formatTime(now), subjectID, runtimeID); err != nil {
 			return err
 		}
 		for _, item := range dispatched {
-			if _, err = appendEvent(ctx, q, subjectID, &runtimeID, "instruction.dispatched", "user", map[string]any{"dispatch_group": group, "sequence": item.sequence, "content": item.content}, now, nil, nil); err != nil {
+			if _, err = appendEvent(ctx, q, subjectID, &runtimeID, "instruction.dispatched", "user", map[string]any{"dispatch_group": group, "input_uuid": domain.InputUUID(runtimeID, group), "sequence": item.sequence, "content": item.content}, now, nil, nil); err != nil {
 				return err
 			}
 		}
@@ -903,7 +915,7 @@ func (s *Store) ConfirmDispatch(ctx context.Context, subjectID, runtimeID string
 func (s *Store) MarkUncertainDeliveries(ctx context.Context, subjectID, runtimeID string, now time.Time) (int, error) {
 	count := 0
 	err := s.withWrite(ctx, func(q dbtx) error {
-		rows, err := q.QueryContext(ctx, `SELECT sequence FROM runtime_instructions WHERE runtime_id=? AND dispatch_committed_at IS NOT NULL AND write_confirmed_at IS NULL ORDER BY sequence`, runtimeID)
+		rows, err := q.QueryContext(ctx, `SELECT sequence FROM runtime_instructions WHERE runtime_id=? AND dispatch_committed_at IS NOT NULL AND (write_confirmed_at IS NULL OR accepted_at IS NULL) ORDER BY sequence`, runtimeID)
 		if err != nil {
 			return err
 		}
@@ -923,7 +935,7 @@ func (s *Store) MarkUncertainDeliveries(ctx context.Context, subjectID, runtimeI
 			return nil
 		}
 		detail := map[string]any{"code": "DELIVERY_UNCERTAIN", "detected_at": now.UTC()}
-		if _, err = q.ExecContext(ctx, `UPDATE runtime_instructions SET delivery_error_json=? WHERE runtime_id=? AND dispatch_committed_at IS NOT NULL AND write_confirmed_at IS NULL`, payloadJSON(detail), runtimeID); err != nil {
+		if _, err = q.ExecContext(ctx, `UPDATE runtime_instructions SET delivery_error_json=? WHERE runtime_id=? AND dispatch_committed_at IS NOT NULL AND (write_confirmed_at IS NULL OR accepted_at IS NULL)`, payloadJSON(detail), runtimeID); err != nil {
 			return err
 		}
 		if _, err = appendEvent(ctx, q, subjectID, &runtimeID, "diagnostic", "runtime", map[string]any{"code": "DELIVERY_UNCERTAIN", "instruction_sequences": sequences}, now, nil, nil); err != nil {
@@ -933,40 +945,6 @@ func (s *Store) MarkUncertainDeliveries(ctx context.Context, subjectID, runtimeI
 		return nil
 	})
 	return count, err
-}
-
-func (s *Store) CompleteTurn(ctx context.Context, subjectID, runtimeID string, usage any, now time.Time) (domain.Runtime, error) {
-	var out domain.Runtime
-	err := s.withWrite(ctx, func(q dbtx) error {
-		r, err := getRuntime(ctx, q, subjectID, runtimeID, false)
-		if err != nil {
-			return err
-		}
-		if r.State.Terminal() {
-			out = r
-			return nil
-		}
-		if r.InflightTurns < 1 {
-			return domain.NewError("AGENT_PROTOCOL_ERROR", "received result without an in-flight turn", http.StatusInternalServerError)
-		}
-		state := domain.RuntimeRunning
-		if r.InflightTurns == 1 {
-			var pending int
-			if err = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM runtime_instructions WHERE runtime_id=? AND dispatch_committed_at IS NULL`, runtimeID).Scan(&pending); err != nil {
-				return err
-			}
-			if pending == 0 {
-				state = domain.RuntimeWaiting
-			}
-		}
-		_, err = q.ExecContext(ctx, `UPDATE runtimes SET state=?,inflight_turns=inflight_turns-1,state_changed_at=?,usage_json=? WHERE id=?`, state, formatTime(now), nullableJSON(usage), runtimeID)
-		if err != nil {
-			return err
-		}
-		out, err = getRuntime(ctx, q, subjectID, runtimeID, true)
-		return err
-	})
-	return out, err
 }
 
 func (s *Store) SetRuntimeTerminal(ctx context.Context, subjectID, runtimeID string, state domain.RuntimeState, reason, errorCode string, now time.Time, clear bool) error {

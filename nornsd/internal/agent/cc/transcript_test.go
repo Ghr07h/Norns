@@ -1,6 +1,7 @@
 package cc
 
 import (
+	"github.com/Ghr07h/norns/nornsd/internal/root"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,7 +41,7 @@ func TestArchiveTranscriptUsesDefaultClaudeProject(t *testing.T) {
 		t.Fatalf("archive session ID=%q, want %q", result.SessionID, sessionID)
 	}
 	for _, relative := range []string{sessionID + ".jsonl", filepath.Join(sessionID, "subagent.jsonl")} {
-		if _, err = os.Stat(filepath.Join(subjectPath, ".nornsd", "runtimes", "runtime-1", relative)); err != nil {
+		if _, err = os.Stat(filepath.Join(root.RuntimeDataPath(subjectPath, "runtime-1"), "transcripts", relative)); err != nil {
 			t.Fatalf("archived %s: %v", relative, err)
 		}
 	}

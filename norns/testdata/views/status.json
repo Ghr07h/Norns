@@ -6,33 +6,41 @@
   "graph": {
     "cognitions": [
       {
-        "id": "cog_00000001-0000-4000-8000-000000000001",
+        "id": "cog_1",
         "content": "Subject information",
-        "created_at": "2026-10-12T08:30:00Z"
+        "created_at": "2026-10-12T08:30:00Z",
+        "origin_ref": "task_00000001-0000-4000-8000-000000000001"
       },
       {
-        "id": "cog_00000003-0000-4000-8000-000000000003",
+        "id": "cog_4",
         "content": "Evidence found",
         "created_at": "2026-10-12T08:30:00Z",
-        "origin_ref": "exp_00000001-0000-4000-8000-000000000001",
+        "origin_ref": "exp_1",
         "task_purpose_relevant": true
       }
     ],
     "explorations": [
       {
-        "id": "exp_00000001-0000-4000-8000-000000000001",
+        "id": "exp_1",
         "content": "Inspect evidence",
         "status": "running",
-        "source_cognitions": [
-          "cog_00000001-0000-4000-8000-000000000001",
-          "cog_00000002-0000-4000-8000-000000000002"
+        "sources": [
+          "cog_1",
+          "cog_2"
+        ],
+        "hints": [
+          {
+            "id": "cog_3",
+            "content": "Check the original evidence",
+            "created_at": "2026-10-12T08:30:00Z"
+          }
         ]
       }
     ]
   },
-  "global_cognitions": [
+  "global_hints": [
     {
-      "id": "cog_00000002-0000-4000-8000-000000000002",
+      "id": "cog_2",
       "content": "Shared context",
       "created_at": "2026-10-12T08:30:00Z"
     }
@@ -40,10 +48,13 @@
   "todo_explorations": [],
   "running_explorations": [
     {
-      "id": "exp_00000001-0000-4000-8000-000000000001",
+      "id": "exp_1",
       "title": "Inspect",
       "duration_seconds": 0
     }
+  ],
+  "recent_top10_derived_cognitions": [
+    "cog_4"
   ],
   "generated_at": "2026-10-12T08:30:00Z"
 }

@@ -15,11 +15,13 @@ command -v zip >/dev/null 2>&1 || {
 required_files=(
   "release/linux-arm64/norns"
   "release/linux-arm64/nornsd"
+  "release/linux-arm64/norns-tsec"
   "release/linux-x64/norns"
   "release/linux-x64/nornsd"
-  "nornsd/configs/nornsd/agent.example.yaml"
-  "domain/redteam/norns_domain_agents/meta.json"
-  "domain/redteam/skills"
+  "release/linux-x64/norns-tsec"
+  "nornsd/configs/nornsd/nornsd.example.yaml"
+  "domain/redteam/extend_agents/meta.json"
+  "domain/redteam/custom_skills"
   "container/redteam_for_benchmark/Dockerfile"
   "container/redteam_for_benchmark/Dockerfile.dockerignore"
   "container/redteam_for_benchmark/build.sh"
@@ -31,7 +33,7 @@ required_files=(
 for relative_path in "${required_files[@]}"; do
   [ -e "$project_root/$relative_path" ] || {
     echo "错误: 缺少 $project_root/$relative_path" >&2
-    echo "请先在项目根目录执行 ./release.sh --all-platforms 生成 Linux release。" >&2
+    echo "请先在项目根目录执行 ./release.sh --all-platforms --with-ext tsec 生成 Linux release。" >&2
     exit 1
   }
 done
@@ -44,7 +46,7 @@ cd "$project_root"
 zip -X -q -r "$tmp_archive" \
   release/linux-arm64 \
   release/linux-x64 \
-  nornsd/configs/nornsd/agent.example.yaml \
+  nornsd/configs/nornsd/nornsd.example.yaml \
   domain/redteam \
   container/redteam_for_benchmark/Dockerfile \
   container/redteam_for_benchmark/Dockerfile.dockerignore \

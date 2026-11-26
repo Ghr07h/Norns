@@ -76,139 +76,108 @@ func versionCommand(out io.Writer) *cobra.Command {
 }
 
 type serverOptions struct {
-	host     string
-	port     int
-	token    string
-	useNorns bool
-}
-
-func (options serverOptions) withConfig(cfg config.Config) serverOptions {
-	if cfg.Has("NORNS_SERVER_HOST") {
-		options.host = cfg.NornsServerHost
-	}
-	if cfg.Has("NORNS_SERVER_PORT") {
-		options.port = cfg.NornsServerPort
-	}
-	if cfg.Has("NORNS_SERVER_TOKEN") {
-		options.token = cfg.NornsServerToken
-	}
-	if cfg.Has("NORNS_ENABLE") {
-		options.useNorns = cfg.NornsEnable
-	}
-	return options
+	host  string
+	port  int
+	token string
 }
 
 func serverCommand(stdout, stderr io.Writer) *cobra.Command {
-	var agent, host, token, workspace string
-	var port, concurrency int
-	var useNorns bool
-	var settings []string
+	var files []string
 	cmd := &cobra.Command{Use: "server", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if agent != "cc" {
-			return domain.NewError("AGENT_NOT_IMPLEMENTED", "only the cc agent is implemented", http.StatusBadRequest)
+		if len(files) == 0 {
+			return domain.NewError("INVALID_SETTING", "--configs is required", http.StatusBadRequest)
 		}
-		if concurrency < 1 {
-			return domain.NewError("INVALID_REQUEST", "--concurrency must be positive", http.StatusBadRequest)
-		}
-		if len(settings) != 0 && len(settings) != 1 && len(settings) != concurrency {
-			return domain.NewError("INVALID_SETTING", "--settings count must be 0, 1, or equal to concurrency", http.StatusBadRequest)
-		}
-		options := serverOptions{host: host, port: port, token: token, useNorns: useNorns}
-		loaded := make([]*config.Config, concurrency+1)
-		unique := map[string]struct {
-			argv   []string
-			strict bool
-		}{}
-		for slot := 1; slot <= concurrency; slot++ {
-			if len(settings) == 0 {
-				unique["claude\x00true"] = struct {
-					argv   []string
-					strict bool
-				}{[]string{"claude"}, true}
-				continue
+		templates := make([]config.Config, len(files))
+		for i, file := range files {
+			cfg, err := config.LoadPartial(file)
+			if err != nil {
+				return domain.Wrap("INVALID_SETTING", "cannot load nornsd config", http.StatusBadRequest, err)
 			}
-			index := 0
-			if len(settings) == concurrency {
-				index = slot - 1
+			if i > 0 {
+				cfg.UseService(templates[0])
 			}
-			cfg, loadErr := config.Load(settings[index])
-			if loadErr != nil {
-				return domain.Wrap("INVALID_SETTING", "cannot load agent setting", http.StatusBadRequest, loadErr)
+			cfg, err = config.Normalize(cfg)
+			if err != nil {
+				return domain.Wrap("INVALID_SETTING", "invalid nornsd config", http.StatusBadRequest, err)
 			}
-			loaded[slot] = &cfg
-			if slot == 1 {
-				options = options.withConfig(cfg)
-			}
-			strict := ccagent.RequiresExactVersion(cfg.AgentExec, cfg.AgentExecExplicit())
-			key := strings.Join(cfg.AgentExec, "\x00") + strconv.FormatBool(strict)
-			unique[key] = struct {
-				argv   []string
-				strict bool
-			}{cfg.AgentExec, strict}
+			templates[i] = cfg
 		}
-		if strings.TrimSpace(options.host) == "" {
-			return domain.NewError("INVALID_REQUEST", "server host must not be empty", http.StatusBadRequest)
+		first := templates[0]
+		if first.ServiceRoot == "" || !filepath.IsAbs(first.ServiceRoot) {
+			return domain.NewError("INVALID_SETTING", "SERVICE_NORNSD_ROOT_DIR must be an absolute path", http.StatusBadRequest)
 		}
-		if options.port < 1 || options.port > 65535 {
-			return domain.NewError("INVALID_REQUEST", "server port must be between 1 and 65535", http.StatusBadRequest)
+		if strings.TrimSpace(first.NornsServerToken) == "" {
+			return domain.NewError("INVALID_SETTING", "SERVICE_TOKEN is required", http.StatusBadRequest)
 		}
-		if strings.TrimSpace(options.token) == "" || strings.ContainsAny(options.token, " \t\r\n") {
-			return domain.NewError("INVALID_REQUEST", "server token is required and must not contain whitespace", http.StatusBadRequest)
+		concurrency := first.ServiceConcurrency
+		if len(templates) != 1 && len(templates) != concurrency {
+			return domain.NewError("INVALID_SETTING", "--configs count must be one or equal to SERVICE_CONCURRENCY", http.StatusBadRequest)
 		}
+		options := serverOptions{host: first.NornsServerHost, port: first.NornsServerPort, token: first.NornsServerToken}
 		var owner *root.Owner
-		if err := runServerStartupPhase(stderr, "opening workspace and checking database", serverStartupProgressInterval, func() error {
+		err := runServerStartupPhase(stderr, "opening workspace and checking database", serverStartupProgressInterval, func() error {
 			var acquireErr error
-			owner, acquireErr = root.Acquire(cmd.Context(), workspace, "server", time.Now().UTC())
+			owner, acquireErr = root.Acquire(cmd.Context(), first.ServiceRoot, "server", time.Now().UTC())
 			return acquireErr
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 		defer owner.Close()
-		for _, probe := range unique {
-			ctx, cancel := context.WithTimeout(cmd.Context(), version.ControlTimeout)
-			probeErr := ccagent.Preflight(ctx, probe.argv, probe.strict)
-			cancel()
-			if probeErr != nil {
-				return domain.Wrap("AGENT_UNAVAILABLE", "Claude Code preflight failed", http.StatusServiceUnavailable, probeErr)
-			}
-		}
 		var norns *nornsadapter.Adapter
-		if options.useNorns {
-			adapter, discoverErr := nornsadapter.Discover("")
-			if discoverErr != nil {
-				return domain.Wrap("NORNS_UNAVAILABLE", "norns CLI is unavailable", http.StatusServiceUnavailable, discoverErr)
-			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), version.ControlTimeout)
-			preflightErr := adapter.Preflight(ctx)
-			cancel()
-			if preflightErr != nil {
-				return domain.Wrap("NORNS_UNAVAILABLE", "norns CLI preflight failed", http.StatusServiceUnavailable, preflightErr)
-			}
+		if adapter, discoverErr := nornsadapter.Discover(""); discoverErr == nil {
 			norns = &adapter
 		}
-		address := net.JoinHostPort(options.host, strconv.Itoa(options.port))
-		listener, err := net.Listen("tcp", address)
-		if err != nil {
-			return domain.Wrap("SERVICE_UNAVAILABLE", "cannot bind server listener", http.StatusServiceUnavailable, err)
+		loaded := make([]*config.Config, concurrency+1)
+		for slot := 1; slot <= concurrency; slot++ {
+			index := 0
+			if len(templates) > 1 {
+				index = slot - 1
+			}
+			loaded[slot] = &templates[index]
+			cfg := loaded[slot]
+			probeCtx, cancel := context.WithTimeout(cmd.Context(), version.ControlTimeout)
+			err = ccagent.Preflight(probeCtx, cfg.AgentExec, ccagent.RequiresExactVersion(cfg.AgentExec, cfg.AgentExecExplicit()))
+			cancel()
+			if err != nil {
+				return domain.Wrap("AGENT_UNAVAILABLE", "Claude Code preflight failed", http.StatusServiceUnavailable, err)
+			}
+			if cfg.NornsEnable {
+				if norns == nil {
+					return domain.NewError("NORNS_UNAVAILABLE", "norns CLI is unavailable", http.StatusServiceUnavailable)
+				}
+				probeCtx, cancel := context.WithTimeout(cmd.Context(), version.ControlTimeout)
+				err = norns.Preflight(probeCtx)
+				cancel()
+				if err != nil {
+					return err
+				}
+			}
 		}
-		defer listener.Close()
 		memory, err := process.PhysicalMemory()
 		if err != nil {
-			return domain.Wrap("RESOURCE_MONITOR_FAILED", "cannot determine physical memory", http.StatusInternalServerError, err)
-		}
-		profile := runtimeProfile(options.useNorns)
-		logger := slog.New(slog.NewJSONHandler(stderr, nil))
-		manager := runtimemanager.NewManager(cmd.Context(), runtimemanager.Options{Owner: owner, Profile: profile, Concurrency: concurrency, SlotConfigs: loaded, Norns: norns, MemoryLimit: memory / 2, OnError: func(err error) { logger.Error("runtime manager", "error", err) }})
-		if err = runServerStartupPhase(stderr, "recovering subjects and runtimes", serverStartupProgressInterval, func() error {
-			return manager.Recover(cmd.Context())
-		}); err != nil {
 			return err
 		}
+		logger := slog.New(slog.NewJSONHandler(stderr, nil))
+		manager := runtimemanager.NewManager(cmd.Context(), runtimemanager.Options{Owner: owner, Concurrency: concurrency, SlotConfigs: loaded, Norns: norns, MemoryLimit: memory / 2, OnError: func(err error) { logger.Error("runtime manager", "error", err) }, OnQueueExport: func(path string, count int) { logger.Info("queued runtimes exported", "path", path, "count", count) }})
+		// Export the old queue with the previous template copies before replacing them.
+		if err = runServerStartupPhase(stderr, "exporting queued runtimes and recovering subjects", serverStartupProgressInterval, func() error { return manager.Recover(cmd.Context()) }); err != nil {
+			return err
+		}
+		if err = config.SaveTemplates(owner.Control, templates); err != nil {
+			return err
+		}
+		listener, err := net.Listen("tcp", net.JoinHostPort(options.host, strconv.Itoa(options.port)))
+		if err != nil {
+			return err
+		}
+		defer listener.Close()
 		manager.Start()
 		defer manager.Close()
-		service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Profile: profile, Norns: norns}
+		service := &app.Service{Owner: owner, Store: owner.Store, Manager: manager, Norns: norns}
 		api := httpapi.New(httpapi.Config{Service: service, Token: options.token, Concurrency: concurrency, Logger: logger})
 		server := &http.Server{Handler: api, ReadHeaderTimeout: version.RequestTimeout}
+
 		if !isLoopbackHost(options.host) {
 			_, _ = fmt.Fprintln(stderr, "warning: nornsd is serving a Bearer token over plaintext HTTP on a non-loopback address; use a trusted network or TLS reverse proxy")
 		}
@@ -243,20 +212,14 @@ func serverCommand(stdout, stderr io.Writer) *cobra.Command {
 			manager.Drain(true)
 			<-waitDone
 		}
-		return nil
+		exportCtx, exportCancel := context.WithTimeout(context.Background(), version.GracefulStopTimeout)
+		defer exportCancel()
+		return manager.ExportQueued(exportCtx, "server shutdown")
 	}}
-	cmd.Flags().StringVar(&agent, "agent", "cc", "Agent type")
-	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "listen host")
-	cmd.Flags().IntVar(&port, "port", 28081, "listen port")
-	cmd.Flags().StringVar(&token, "token", "", "Bearer token")
-	cmd.Flags().StringVar(&workspace, "workspace-root", ".", "nornsd root")
-	cmd.Flags().BoolVar(&useNorns, "norns", false, "enable Norns")
-	cmd.Flags().StringArrayVar(&settings, "settings", nil, "agent.yaml for a concurrency slot")
-	cmd.Flags().IntVar(&concurrency, "concurrency", 1, "stable runtime slots")
+	cmd.Flags().StringArrayVar(&files, "configs", nil, "nornsd.yaml Runtime templates (repeat for each concurrency slot)")
 	return cmd
 }
 
-const bareSetting = "__nornsd_bare_setting__"
 const interactiveSubjectName = "交互式对话 Subject"
 
 var errLaunchCancelled = errors.New("interactive Runtime launch cancelled")
@@ -269,44 +232,47 @@ func newInteractiveSubject(now time.Time, useNorns bool) domain.Subject {
 		Name:           &name,
 		DirectoryName:  root.DirectoryName(now, id),
 		WorkspaceState: domain.WorkspaceMaterializing,
-		Profile:        runtimeProfile(useNorns),
-		SessionID:      id,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
 }
 
 func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
-	var cc, cx, pi, useNorns, resumeSession bool
+	var resumeSession bool
 	var resumeSubject, setting string
 	cmd := &cobra.Command{Use: "agent -- [AGENT_ARGS...]", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 && cmd.ArgsLenAtDash() < 0 {
 			return domain.NewError("INVALID_REQUEST", "Agent arguments must follow --", http.StatusBadRequest)
 		}
-		selected := 0
-		for _, v := range []bool{cc, cx, pi} {
-			if v {
-				selected++
-			}
-		}
-		if selected > 1 {
-			return domain.NewError("INVALID_REQUEST", "--cc, --cx and --pi are mutually exclusive", http.StatusBadRequest)
-		}
 		if resumeSession && resumeSubject == "" {
 			return domain.NewError("INVALID_REQUEST", "--resume-session requires --resume-subject", http.StatusBadRequest)
 		}
-		if cx || pi {
-			return domain.NewError("AGENT_NOT_IMPLEMENTED", "selected agent is not implemented", http.StatusBadRequest)
+		if setting == "" {
+			return domain.NewError("INVALID_SETTING", "--config is required", http.StatusBadRequest)
 		}
-		cwd, err := os.Getwd()
+		loaded, err := config.Load(setting)
 		if err != nil {
-			return err
+			return domain.Wrap("INVALID_SETTING", "invalid nornsd config", http.StatusBadRequest, err)
 		}
-		owner, err := root.Acquire(cmd.Context(), cwd, "agent", time.Now().UTC())
+		cfg := &loaded
+		useNorns := cfg.NornsEnable
+		if cfg.ServiceRoot == "" {
+			return domain.NewError("INVALID_SETTING", "SERVICE_NORNSD_ROOT_DIR is required", http.StatusBadRequest)
+		}
+		owner, err := root.Acquire(cmd.Context(), cfg.ServiceRoot, "agent", time.Now().UTC())
 		if err != nil {
 			return err
 		}
 		defer owner.Close()
+		recovery := runtimemanager.NewManager(cmd.Context(), runtimemanager.Options{Owner: owner, Concurrency: 1, OnQueueExport: func(path string, count int) {
+			_, _ = fmt.Fprintf(stderr, "nornsd: exported %d queued runtimes to %s\n", count, path)
+		}})
+		if err = recovery.Recover(cmd.Context()); err != nil {
+			return err
+		}
+		if err = config.SaveTemplates(owner.Control, []config.Config{loaded}); err != nil {
+			return err
+		}
 		var subject domain.Subject
 		resuming := resumeSubject != ""
 		if resuming {
@@ -319,28 +285,6 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			}
 			if subject.State != domain.SubjectIdle {
 				return domain.NewError("SUBJECT_RUNTIME_ACTIVE", "subject already has an active runtime", http.StatusConflict)
-			}
-		}
-		var cfg *config.Config
-		var settingSources []string
-		if cmd.Flags().Changed("setting") {
-			loaded, sources, loadErr := loadAgentSetting(setting, resuming, subject, owner)
-			if loadErr != nil {
-				return loadErr
-			}
-			cfg = &loaded
-			settingSources = sources
-		}
-		if cfg != nil && cfg.Has("NORNS_ENABLE") {
-			useNorns = cfg.NornsEnable
-		}
-		if resuming {
-			requested := subject.Profile
-			if cmd.Flags().Changed("norns") || cfg != nil && cfg.Has("NORNS_ENABLE") {
-				requested = runtimeProfile(useNorns)
-			}
-			if cmd.Flags().Changed("cc") && subject.Profile.Agent != "cc" || !requested.Equal(subject.Profile) {
-				return domain.NewError("RUNTIME_PROFILE_MISMATCH", "requested profile does not match subject", http.StatusConflict)
 			}
 		}
 		execArgs := []string{"claude"}
@@ -357,7 +301,7 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		}
 		var norns *nornsadapter.Adapter
 		hadOpenNornsTask := false
-		if (!resuming && useNorns) || (resuming && subject.Profile.Has("norns")) {
+		if useNorns {
 			adapter, discoverErr := nornsadapter.Discover("")
 			if discoverErr != nil {
 				return domain.Wrap("NORNS_UNAVAILABLE", "norns CLI is unavailable", http.StatusServiceUnavailable, discoverErr)
@@ -369,11 +313,6 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 				return domain.Wrap("NORNS_UNAVAILABLE", "norns CLI preflight failed", http.StatusServiceUnavailable, err)
 			}
 			norns = &adapter
-		}
-		if setting == bareSetting {
-			if err = waitForAutoSettingLaunch(cmd.Context(), stderr, settingSources); err != nil {
-				return err
-			}
 		}
 		if !resuming {
 			now := time.Now().UTC()
@@ -394,40 +333,34 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			return err
 		}
 		runtimeID := uuid.NewString()
-		settingsPath, configHash, err := config.Publish(subject.Profile.Agent, path, runtimeID, cfg)
-		if err != nil {
-			return err
-		}
-		customPluginPath, customPluginHash, err := config.PublishCustom(path, runtimeID, cfg)
-		if err != nil {
-			return err
-		}
-		pluginPaths := make([]string, 0, 2)
-		if cfg != nil {
-			pluginPaths = append(pluginPaths, cfg.CustomPluginDirs...)
-		}
-		if customPluginPath != "" {
-			pluginPaths = append(pluginPaths, customPluginPath)
-		}
-		pluginHash := ""
-		rootAgent := ""
-		if subject.Profile.Has("norns") {
-			publication, publishErr := plugin.Publish(subject.Profile.Agent, path, runtimeID, cfg)
-			err = publishErr
-			if err != nil {
-				return err
-			}
-			pluginPaths = append(pluginPaths, publication.Path)
-			pluginHash = publication.Hash
-			rootAgent = publication.RootAgent
-		}
 		runtime, resumeSessionID, err := owner.Store.CreateDirectRuntimeWithSession(cmd.Context(), subject.ID, runtimeID, resumeSession, time.Now().UTC())
 		if err != nil {
 			return err
 		}
+		runtime.Profile = cfg.Profile()
+		if err = owner.Store.SaveRuntimeConfig(cmd.Context(), runtime.ID, runtime.Profile, cfg); err != nil {
+			return err
+		}
+		defer func() {
+			current, getErr := owner.Store.GetRuntime(context.Background(), subject.ID, runtimeID, false)
+			if getErr == nil && !current.State.Terminal() {
+				_ = owner.Store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, runtimeID, domain.RuntimeError, "runtime preparation failed", "RUNTIME_PREPARATION_FAILED", nil, time.Now().UTC(), true)
+			}
+		}()
+
+		settingsPath, configHash, err := config.Publish(cfg.AgentType, path, runtimeID, cfg)
+		if err != nil {
+			return err
+		}
+		preparedPlugins, err := plugin.Prepare(cfg.AgentType, path, runtimeID, cfg)
+		if err != nil {
+			return err
+		}
+		pluginPaths, rootAgent := preparedPlugins.Paths, preparedPlugins.RootAgent
+
 		launch := ccagent.Launch{Exec: execArgs, Passthrough: args, SessionID: runtimeID, ResumeSessionID: resumeSessionID, SettingsPath: settingsPath, PluginPaths: pluginPaths, RootAgent: rootAgent, Dir: path}
 		createdAt := time.Now().UTC()
-		snapshot, publishErr := runtimeartifact.Publish(path, runtimeartifact.Input{Subject: subject, Runtime: runtime, Launch: launch, Managed: false, Config: cfg, ConfigHash: configHash, PluginHash: pluginHash, CustomPluginHash: customPluginHash, CreatedAt: createdAt})
+		snapshot, publishErr := runtimeartifact.Publish(path, runtimeartifact.Input{Subject: subject, Runtime: runtime, Launch: launch, Managed: false, Config: cfg, ConfigHash: configHash, CreatedAt: createdAt})
 		if publishErr != nil {
 			_ = owner.Store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, runtimeID, domain.RuntimeError, "runtime snapshot failed", "RUNTIME_SNAPSHOT_FAILED", map[string]any{"message": publishErr.Error()}, time.Now().UTC(), true)
 			return publishErr
@@ -454,6 +387,8 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		forwarded := make(chan os.Signal, 2)
 		signal.Notify(forwarded, os.Interrupt, syscall.SIGTERM)
 		var userInterrupted atomic.Bool
+		signalDone := make(chan struct{})
+		signalStarted := false
 		var directIdentity process.Identity
 		result, agentErr := ccagent.RunInteractiveWithStart(cmd.Context(), launch, stdin, stdout, stderr, func(p *process.Managed) error {
 			identity, identityErr := p.Identity()
@@ -468,7 +403,9 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			if err := owner.Store.UpdateRuntimeLaunch(context.Background(), subject.ID, runtimeID, configHash, processInfo, time.Now().UTC()); err != nil {
 				return err
 			}
+			signalStarted = true
 			go func() {
+				defer close(signalDone)
 				count := 0
 				for range forwarded {
 					userInterrupted.Store(true)
@@ -488,6 +425,9 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		})
 		signal.Stop(forwarded)
 		close(forwarded)
+		if signalStarted {
+			<-signalDone
+		}
 		exitPayload, _ := json.Marshal(map[string]any{"phase": "exited", "exit_code": result.ExitCode, "wait_error": agentErr != nil})
 		var finalErr error = agentErr
 		if _, recordErr := logger.Record(context.Background(), "runtime", "lifecycle", exitPayload, time.Now().UTC()); recordErr != nil && finalErr == nil {
@@ -525,10 +465,11 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			}
 			errorDetails = details
 		}
-		_ = owner.Store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, runtimeID, state, reason, code, errorDetails, time.Now().UTC(), true)
+		_ = owner.Store.SetRuntimeTerminalWithDetails(context.Background(), subject.ID, runtimeID, state, reason, code, errorDetails, time.Now().UTC(), false)
 		_, _ = logger.Event(context.Background(), "runtime.finished", "runtime", eventlog.RuntimeFinishedPayload(state, result.ExitCode, reason, code), time.Now().UTC())
+		_ = owner.Store.FinalizeRuntime(context.Background(), subject.ID, runtimeID, time.Now().UTC())
 		if norns != nil {
-			_, _ = fmt.Fprintln(stderr, "提示：Subject 的 .nornsd/ 目录包含运行配置和 Agent transcript，可能包含访问凭据或敏感内容，请谨慎分享。")
+			_, _ = fmt.Fprintln(stderr, "Runtime 配置与 transcript 已保存在 Root 的 .nornsd/subjects/ 中。")
 		}
 		if agentFailed && !userInterrupted.Load() {
 			if agentErr == nil {
@@ -538,101 +479,12 @@ func agentCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		}
 		return finalErr
 	}}
-	cmd.Flags().BoolVar(&cc, "cc", false, "use Claude Code")
-	cmd.Flags().BoolVar(&cx, "cx", false, "use Codex (not implemented)")
-	cmd.Flags().BoolVar(&pi, "pi", false, "use Pi (not implemented)")
 	cmd.Flags().BoolVar(&resumeSession, "resume-session", false, "fork the latest Runtime session into the new Runtime (requires --resume-subject)")
 	cmd.Flags().StringVar(&resumeSubject, "resume-subject", "", "reuse a Subject UUID and create a new Runtime")
-	cmd.Flags().BoolVar(&useNorns, "norns", false, "enable Norns")
-	cmd.Flags().StringVar(&setting, "setting", "", "generate Agent settings")
-	cmd.Flags().Lookup("setting").NoOptDefVal = bareSetting
+	cmd.Flags().StringVar(&setting, "config", "", "required nornsd.yaml configuration")
 	return cmd
 }
 
-func loadAgentSetting(value string, resuming bool, subject domain.Subject, owner *root.Owner) (config.Config, []string, error) {
-	if value != bareSetting {
-		cfg, err := config.Load(value)
-		if err != nil {
-			return cfg, nil, domain.Wrap("INVALID_SETTING", "cannot load agent setting", http.StatusBadRequest, err)
-		}
-		path, pathErr := filepath.Abs(value)
-		if pathErr != nil {
-			return cfg, nil, pathErr
-		}
-		return cfg, []string{path}, nil
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return config.Config{}, nil, err
-	}
-	paths := []string{filepath.Join(filepath.Dir(exe), "agent.yaml")}
-	if resuming {
-		subjectPath, _ := owner.SubjectPath(subject.DirectoryName)
-		paths = append(paths, filepath.Join(subjectPath, ".nornsd", "config", "agent.yaml"))
-	}
-	var merged config.Config
-	var sources []string
-	found := false
-	for _, path := range paths {
-		if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
-			continue
-		}
-		layer, loadErr := config.LoadPartial(path)
-		if loadErr != nil {
-			return merged, nil, domain.Wrap("INVALID_SETTING", "cannot load agent setting", http.StatusBadRequest, loadErr)
-		}
-		absolute, pathErr := filepath.Abs(path)
-		if pathErr != nil {
-			return merged, nil, pathErr
-		}
-		sources = append(sources, absolute)
-		if !found {
-			merged = layer
-			found = true
-		} else {
-			merged = config.Merge(merged, layer)
-		}
-	}
-	if !found {
-		return merged, nil, domain.NewError("SETTING_NOT_FOUND", "no default agent.yaml was found", http.StatusBadRequest)
-	}
-	merged, err = config.Normalize(merged)
-	if err != nil {
-		return merged, nil, domain.Wrap("INVALID_SETTING", "invalid merged agent setting", http.StatusBadRequest, err)
-	}
-	return merged, sources, nil
-}
-
-func waitForAutoSettingLaunch(ctx context.Context, stderr io.Writer, sources []string) error {
-	_, _ = fmt.Fprintln(stderr, "nornsd: 已自动发现并读取以下 Runtime 配置（后者覆盖前者）：")
-	for i, source := range sources {
-		_, _ = fmt.Fprintf(stderr, "  %d. %s\n", i+1, source)
-	}
-	_, _ = fmt.Fprintln(stderr, "nornsd: 3 秒后启动 Claude Code，按 Ctrl+C 取消。")
-
-	timer := time.NewTimer(3 * time.Second)
-	defer timer.Stop()
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	defer signal.Stop(interrupt)
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		_, _ = fmt.Fprintln(stderr, "nornsd: 已取消启动。")
-		return errLaunchCancelled
-	case <-interrupt:
-		_, _ = fmt.Fprintln(stderr, "nornsd: 已取消启动。")
-		return errLaunchCancelled
-	}
-}
-func runtimeProfile(useNorns bool) domain.RuntimeProfile {
-	capabilities := []string{}
-	if useNorns {
-		capabilities = []string{"norns"}
-	}
-	return domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion, Capabilities: capabilities}
-}
 func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true

@@ -17,9 +17,9 @@ required_paths=(
   "release/linux-arm64/nornsd"
   "release/linux-x64/norns"
   "release/linux-x64/nornsd"
-  "nornsd/configs/nornsd/agent.example.yaml"
-  "domain/redteam/norns_domain_agents/meta.json"
-  "domain/redteam/skills"
+  "nornsd/configs/nornsd/nornsd.example.yaml"
+  "domain/redteam/extend_agents/meta.json"
+  "domain/redteam/custom_skills"
   "container/redteam/Dockerfile"
   "container/redteam/Dockerfile.dockerignore"
   "container/redteam/build.sh"
@@ -43,7 +43,7 @@ cd "$project_root"
 zip -X -q -r "$tmp_archive" \
   release/linux-arm64 \
   release/linux-x64 \
-  nornsd/configs/nornsd/agent.example.yaml \
+  nornsd/configs/nornsd/nornsd.example.yaml \
   domain/redteam \
   container/redteam/Dockerfile \
   container/redteam/Dockerfile.dockerignore \

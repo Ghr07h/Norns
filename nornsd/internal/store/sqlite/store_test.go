@@ -22,18 +22,18 @@ func TestInstructionFIFOAcrossDispatchesAndPendingLimit(t *testing.T) {
 	}
 	defer store.Close()
 	sid, rid := uuid.NewString(), uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: sid, DirectoryName: now.Format("20060102T150405Z") + "_" + sid, Profile: profile, SessionID: sid}
+
+	subject := domain.Subject{ID: sid, DirectoryName: sid + "_" + now.Format("20060102T150405Z")}
 	first := "instruction-1"
 	if err = store.CreateSubject(ctx, subject, &first, rid, now); err != nil {
 		t.Fatal(err)
 	}
 	for i := 2; i <= version.MaxPendingCount; i++ {
-		if _, err = store.SubmitInstruction(ctx, sid, uuid.NewString(), "instruction", profile, false, now.Add(time.Duration(i)*time.Millisecond)); err != nil {
+		if _, err = store.SubmitInstruction(ctx, sid, uuid.NewString(), "instruction", false, now.Add(time.Duration(i)*time.Millisecond)); err != nil {
 			t.Fatalf("submit %d: %v", i, err)
 		}
 	}
-	if _, err = store.SubmitInstruction(ctx, sid, uuid.NewString(), "overflow", profile, false, now); err == nil || domain.AsError(err).Code != "RUNTIME_INSTRUCTION_REJECTED" {
+	if _, err = store.SubmitInstruction(ctx, sid, uuid.NewString(), "overflow", false, now); err == nil || domain.AsError(err).Code != "RUNTIME_INSTRUCTION_REJECTED" {
 		t.Fatalf("expected pending limit, got %v", err)
 	}
 	_, runtime, found, err := store.ClaimNext(ctx, 1, now)
@@ -47,10 +47,13 @@ func TestInstructionFIFOAcrossDispatchesAndPendingLimit(t *testing.T) {
 	if err = store.ConfirmDispatch(ctx, sid, rid, group, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.CompleteTurn(ctx, sid, rid, nil, now); err != nil {
+	if err = store.AcceptInput(ctx, sid, rid, domain.InputUUID(rid, group), now); err != nil {
 		t.Fatal(err)
 	}
-	later, err := store.SubmitInstruction(ctx, sid, uuid.NewString(), "later", profile, false, now.Add(time.Second))
+	if _, err = store.CompleteResult(ctx, sid, rid, json.RawMessage(`{"type":"result","uuid":"result-1","is_error":false}`), 1, now); err != nil {
+		t.Fatal(err)
+	}
+	later, err := store.SubmitInstruction(ctx, sid, uuid.NewString(), "later", false, now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +89,8 @@ func TestUnconfirmedDispatchBecomesDeliveryUncertain(t *testing.T) {
 	}
 	defer store.Close()
 	sid, rid := uuid.NewString(), uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: sid, DirectoryName: now.Format("20060102T150405Z") + "_" + sid, Profile: profile, SessionID: sid}
+
+	subject := domain.Subject{ID: sid, DirectoryName: sid + "_" + now.Format("20060102T150405Z")}
 	instruction := "uncertain"
 	if err = store.CreateSubject(ctx, subject, &instruction, rid, now); err != nil {
 		t.Fatal(err)
@@ -131,8 +134,8 @@ func TestNewRuntimeNeverResumesSubjectSession(t *testing.T) {
 	}
 	defer store.Close()
 	subjectID := uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: subjectID, DirectoryName: now.Format("20060102T150405Z") + "_" + subjectID, Profile: profile, SessionID: subjectID, SessionInitialized: true}
+
+	subject := domain.Subject{ID: subjectID, DirectoryName: subjectID + "_" + now.Format("20060102T150405Z")}
 	if err = store.CreateSubject(ctx, subject, nil, "", now); err != nil {
 		t.Fatal(err)
 	}
@@ -155,8 +158,8 @@ func TestResumeSessionForksLatestRuntimeSession(t *testing.T) {
 	}
 	defer store.Close()
 	subjectID := uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: subjectID, DirectoryName: now.Format("20060102T150405Z") + "_" + subjectID, Profile: profile, SessionID: subjectID}
+
+	subject := domain.Subject{ID: subjectID, DirectoryName: subjectID + "_" + now.Format("20060102T150405Z")}
 	if err = store.CreateSubject(ctx, subject, nil, "", now); err != nil {
 		t.Fatal(err)
 	}
@@ -205,8 +208,8 @@ func TestRuntimeErrorPersistsDetails(t *testing.T) {
 	defer store.Close()
 	subjectID := uuid.NewString()
 	runtimeID := uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: subjectID, DirectoryName: now.Format("20060102T150405Z") + "_" + subjectID, Profile: profile, SessionID: subjectID}
+
+	subject := domain.Subject{ID: subjectID, DirectoryName: subjectID + "_" + now.Format("20060102T150405Z")}
 	if err = store.CreateSubject(ctx, subject, nil, "", now); err != nil {
 		t.Fatal(err)
 	}
@@ -240,8 +243,8 @@ func TestRuntimeErrorDefaultsDetailsToEndReason(t *testing.T) {
 	defer store.Close()
 	subjectID := uuid.NewString()
 	runtimeID := uuid.NewString()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
-	subject := domain.Subject{ID: subjectID, DirectoryName: now.Format("20060102T150405Z") + "_" + subjectID, Profile: profile, SessionID: subjectID}
+
+	subject := domain.Subject{ID: subjectID, DirectoryName: subjectID + "_" + now.Format("20060102T150405Z")}
 	if err = store.CreateSubject(ctx, subject, nil, "", now); err != nil {
 		t.Fatal(err)
 	}
@@ -269,18 +272,18 @@ func TestHTTPReadProjections(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	profile := domain.RuntimeProfile{Agent: "cc", AgentVersion: version.ClaudeCodeVersion}
+
 	firstID, secondID := uuid.NewString(), uuid.NewString()
 	firstRuntimeID, secondRuntimeID := uuid.NewString(), uuid.NewString()
 	firstName, secondName := "first", "second"
-	first := domain.Subject{ID: firstID, Name: &firstName, DirectoryName: now.Format("20060102T150405Z") + "_" + firstID, Profile: profile, SessionID: firstID}
+	first := domain.Subject{ID: firstID, Name: &firstName, DirectoryName: now.Format("20060102T150405Z") + "_" + firstID}
 	secondTime := now.Add(time.Second)
-	second := domain.Subject{ID: secondID, Name: &secondName, DirectoryName: secondTime.Format("20060102T150405Z") + "_" + secondID, Profile: profile, SessionID: secondID}
+	second := domain.Subject{ID: secondID, Name: &secondName, DirectoryName: secondTime.Format("20060102T150405Z") + "_" + secondID}
 	instruction := "first instruction"
 	if err = store.CreateSubject(ctx, first, &instruction, firstRuntimeID, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.SubmitInstruction(ctx, firstID, uuid.NewString(), "second instruction", profile, false, now); err != nil {
+	if _, err = store.SubmitInstruction(ctx, firstID, uuid.NewString(), "second instruction", false, now); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.CreateSubject(ctx, second, &instruction, secondRuntimeID, secondTime); err != nil {
@@ -316,7 +319,7 @@ func TestHTTPReadProjections(t *testing.T) {
 		t.Fatalf("current runtime: runtime=%#v position=%v err=%v", current, position, err)
 	}
 	allSubjects, total, err := store.ListSubjects(ctx, nil, 10, "", "")
-	if err != nil || total != 2 || len(allSubjects) != 2 || allSubjects[0].ID != secondID || allSubjects[0].Profile.Agent != profile.Agent {
+	if err != nil || total != 2 || len(allSubjects) != 2 || allSubjects[0].ID != secondID {
 		t.Fatalf("full subjects: total=%d subjects=%#v err=%v", total, allSubjects, err)
 	}
 	currentRuntimes, err := store.CurrentRuntimes(ctx)

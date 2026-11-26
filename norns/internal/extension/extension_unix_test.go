@@ -31,12 +31,12 @@ printf '%s\n' "$NORNS_PROTOCOL_VERSION|$NORNS_SCHEMA_VERSION|$NORNS_WORKSPACE|$P
 	}
 	t.Setenv("NORNS_PLUGIN_PATH", pluginDir)
 	t.Setenv("PATH", pathDir)
-	found, err := Find("websearch")
+	found, err := findInDirectory(pluginDir, "websearch")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found != plugin {
-		t.Fatalf("plugin path did not take precedence over PATH: %s", found)
+		t.Fatalf("sibling extension was not selected: %s", found)
 	}
 	var stdout, stderr bytes.Buffer
 	if err := Run(found, []string{"--query", "sqlite wal"}, strings.NewReader(""), &stdout, &stderr, workspace); err != nil {
@@ -63,6 +63,31 @@ func TestFindExtensionErrors(t *testing.T) {
 	}
 	if _, err := Find("missing"); errorCode(err) != "EXTENSION_NOT_FOUND" {
 		t.Fatalf("missing extension returned %v", err)
+	}
+}
+
+func TestListSkipsNonExecutableFilesAndBrokenSymlinks(t *testing.T) {
+	directory := t.TempDir()
+	pathDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "norns-list-fallback"), []byte("not executable"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fallback := writeExtensionFixture(t, pathDir, "list-fallback")
+	if err := os.WriteFile(filepath.Join(directory, "norns-list-unavailable"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(directory, "missing"), filepath.Join(directory, "norns-list-broken")); err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(directory, "norns-list-linked")
+	if err := os.Symlink(fallback, linked); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NORNS_PLUGIN_PATH", directory)
+	t.Setenv("PATH", pathDir)
+	items, err := listDirectory(directory)
+	if err != nil || len(items) != 1 || items[0] != (Info{Name: "list-linked", Path: linked}) {
+		t.Fatalf("items=%+v err=%v", items, err)
 	}
 }
 

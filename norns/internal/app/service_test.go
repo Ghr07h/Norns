@@ -37,8 +37,6 @@ func (c *testClock) Advance(d time.Duration) {
 type testIDs struct {
 	mu    sync.Mutex
 	task  int
-	cog   int
-	exp   int
 	token int
 }
 
@@ -49,9 +47,7 @@ func (g *testIDs) next(prefix string, counter *int) (string, error) {
 	return fmt.Sprintf("%s_%08x-0000-4000-8000-%012x", prefix, *counter, *counter), nil
 }
 
-func (g *testIDs) TaskID() (string, error)        { return g.next("task", &g.task) }
-func (g *testIDs) CognitionID() (string, error)   { return g.next("cog", &g.cog) }
-func (g *testIDs) ExplorationID() (string, error) { return g.next("exp", &g.exp) }
+func (g *testIDs) TaskID() (string, error) { return g.next("task", &g.task) }
 func (g *testIDs) Token() (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -120,7 +116,7 @@ func TestProtocolWorkflowAndViews(t *testing.T) {
 	}
 	outputID := resultID(t, output)
 
-	traceBytes, tracePath, err := service.TraceView(ctx, explorationID, true)
+	traceBytes, tracePath, err := service.TraceView(ctx, explorationID, ViewJSON)
 	if err != nil {
 		t.Fatalf("trace for an Exploration with outputs failed: %v", err)
 	}
@@ -134,7 +130,7 @@ func TestProtocolWorkflowAndViews(t *testing.T) {
 	if err := json.Unmarshal(traceBytes, &trace); err != nil {
 		t.Fatal(err)
 	}
-	if trace.Current.ID != explorationID || trace.OriginTask.Purpose != "Investigate" {
+	if trace.Current.ID != explorationID || trace.ParentTask.Purpose != "Investigate" {
 		t.Fatalf("unexpected Trace context: %#v", trace)
 	}
 	if !containsCognition(trace.Related.Cognitions, outputID) {
@@ -146,7 +142,7 @@ func TestProtocolWorkflowAndViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock.Advance(3 * time.Second)
-	statusBytes, _, err := service.StatusView(ctx, nil, true)
+	statusBytes, _, err := service.StatusView(ctx, nil, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +162,7 @@ func TestProtocolWorkflowAndViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	retryID := resultID(t, retry)
-	traceBytes, _, err = service.TraceView(ctx, retryID, true)
+	traceBytes, _, err = service.TraceView(ctx, retryID, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +201,7 @@ func TestProtocolWorkflowAndViews(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(service.Paths.Root, filepath.FromSlash(archive), "norns.sqlite")); err != nil {
 		t.Fatalf("reset archive is incomplete: %v", err)
 	}
-	empty, _, err := service.StatusView(ctx, nil, false)
+	empty, _, err := service.StatusView(ctx, nil, ViewYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,23 +284,23 @@ func TestStructuredViewFieldOrderAndConditionalOmission(t *testing.T) {
 	}
 	explorationID := resultID(t, exploration)
 
-	status, _, err := service.StatusView(ctx, nil, false)
+	status, _, err := service.StatusView(ctx, nil, ViewYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
 	statusText := string(status)
-	assertOrdered(t, statusText, "task:", "graph:", "global_cognitions:", "todo_explorations:", "running_explorations:", "generated_at:")
+	assertOrdered(t, statusText, "task:", "graph:", "global_hints:", "todo_explorations:", "running_explorations:", "generated_at:")
 	if strings.Contains(statusText, "null") || strings.Contains(statusText, "task_purpose_relevant: false") || !strings.Contains(statusText, `content: "yes"`) {
 		t.Fatalf("Status conditional fields or YAML string scalars are invalid:\n%s", statusText)
 	}
 
-	trace, _, err := service.TraceView(ctx, explorationID, false)
+	trace, _, err := service.TraceView(ctx, explorationID, ViewYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
 	traceText := string(trace)
-	assertOrdered(t, traceText, "current_exploration:", "origin_task:", "related_subgraph:", "global_cognitions:", "generated_at:")
-	for _, forbidden := range []string{"todo_explorations:", "running_explorations:", "task_purpose_relevant:", "null"} {
+	assertOrdered(t, traceText, "current_exploration:", "parent_task:", "related_subgraph:", "global_hints:", "running_explorations:", "generated_at:")
+	for _, forbidden := range []string{"todo_explorations:", "task_purpose_relevant:", "null"} {
 		if strings.Contains(traceText, forbidden) {
 			t.Fatalf("Trace contains forbidden field %q:\n%s", forbidden, traceText)
 		}
@@ -478,7 +474,7 @@ func TestVisualViewIsSelfContainedAndEscapesUserContent(t *testing.T) {
 	if !strings.Contains(text, `<html lang="en">`) || !strings.Contains(text, `"language":"en"`) {
 		t.Fatalf("Visual did not preserve the requested language: %s", text[:min(len(text), 500)])
 	}
-	for _, required := range []string{`id="norns-data"`, `"kind":"source"`, `"language":"en"`, `runtime_occupied`, `rendered_content`, `Norns Visual Snapshot`, `data-i18n="brand"`, `messages.zh.brand='Norns 可视化快照'`, `id="exploration-task-filter"`, `id="search-toggle"`, `id="viewport"`, `id="task-list"`, `id="exploration-list"`, `id="zoom-value"`, `id="fullscreen"`, `nodeElements=new Map()`, `marker-end`, `Task-Related`, `Output Cognitions`, `tasksTitle:'任务记录'`, `graphTitle:'图记录'`, `explorationsTitle:'探索记录'`, `unachievable:'无法达成'`, `outcomeBadge(task.outcome)`, `function explorationStateLabel`, `outcomeName(item.outcome)`, `String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id)`, `function closeExplorationPanel`, `closeExplorationPanel()`, `foreignObject`, `cognition-bronze`, `node-status-ring`, `graphNodeHeight`, `alignGraphRank`, `edge.kind==='extends'`, `rowGap=72`, `planGraphCurves`, `planSameColumnLanes`, `graphColumnShift`, `graphRoutes`, `graphCurvePath`, `kind:'gutter'`, `kind:'same-column'`, `nodePortX(from,'out')`, `nodePortX(to,'in')`, `y:from.y+from.height/2`, `graphColumnGap=300,graphArrowGap=8`, `const bend=Math.max(48,(end.x-start.x)*.3)`, `position.x-graphArrowGap`, `graphGutterBow(end.x-start.x)`, `curvePadding=36+Math.max`, `shoulder=Math.min(graphColumnGap-40,graphColumnGap*.55+lane*8)`, `node-selection-outline`, `.node.selected.cognition .node-shape`, `vector-effect:non-scaling-stroke`, `selected.parentNode.append(selected)`, `refX:'10'`, `stroke-width:1.55`, `arrow-relation`, `stroke:#a5aeaa`} {
+	for _, required := range []string{`id="norns-data"`, `"kind":"source"`, `"language":"en"`, `runtime_occupied`, `rendered_content`, `Norns Visual Snapshot`, `data-i18n="brand"`, `messages.zh.brand='Norns 可视化快照'`, `id="exploration-task-filter"`, `id="search-toggle"`, `id="viewport"`, `id="task-list"`, `id="exploration-list"`, `id="zoom-value"`, `id="fullscreen"`, `nodeElements=new Map()`, `marker-end`, `Task-Related`, `Output Cognitions`, `tasksTitle:'任务记录'`, `graphTitle:'图记录'`, `explorationsTitle:'探索记录'`, `unachievable:'无法达成'`, `outcomeBadge(task.outcome)`, `function explorationStateLabel`, `outcomeName(item.outcome)`, `String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id)`, `function closeExplorationPanel`, `closeExplorationPanel()`, `foreignObject`, `cognition-bronze`, `node-status-ring`, `graphNodeHeight`, `alignGraphRank`, `rowGap=72`, `planGraphCurves`, `planSameColumnLanes`, `graphColumnShift`, `graphRoutes`, `graphCurvePath`, `kind:'gutter'`, `kind:'same-column'`, `nodePortX(from,'out')`, `nodePortX(to,'in')`, `y:from.y+from.height/2`, `graphColumnGap=300,graphArrowGap=8`, `const bend=Math.max(48,(end.x-start.x)*.3)`, `position.x-graphArrowGap`, `graphGutterBow(end.x-start.x)`, `curvePadding=36+Math.max`, `shoulder=Math.min(graphColumnGap-40,graphColumnGap*.55+lane*8)`, `node-selection-outline`, `.node.selected.cognition .node-shape`, `vector-effect:non-scaling-stroke`, `selected.parentNode.append(selected)`, `refX:'10'`, `stroke-width:1.55`, `arrow-relation`, `stroke:#a5aeaa`} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Visual omitted %q", required)
 		}
@@ -650,7 +646,7 @@ func TestResetRecoveryPreparedRollsBack(t *testing.T) {
 	if _, err := os.Stat(service.Paths.ResetLog); !os.IsNotExist(err) {
 		t.Fatalf("prepared reset journal still exists: %v", err)
 	}
-	view, _, err := service.StatusView(ctx, nil, true)
+	view, _, err := service.StatusView(ctx, nil, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,7 +676,7 @@ func TestResetRecoveryOldRenamedRollsForward(t *testing.T) {
 	if _, err := service.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	view, _, err := service.StatusView(ctx, nil, true)
+	view, _, err := service.StatusView(ctx, nil, ViewJSON)
 	if err != nil {
 		t.Fatal(err)
 	}

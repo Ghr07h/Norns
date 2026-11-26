@@ -80,6 +80,7 @@ pub struct CreateSubjectInput {
     pub connection: ConnectionInput,
     pub name: Option<String>,
     pub instruction: Option<String>,
+    pub config: Option<Value>,
 }
 
 #[tauri::command]
@@ -87,12 +88,13 @@ pub async fn create_subject(
     state: State<'_, AppState>,
     input: CreateSubjectInput,
 ) -> Result<CreateSubjectResult, ClientError> {
+    validate_runtime_config(input.config.as_ref())?;
     if let Some(instruction) = &input.instruction {
         validate_instruction(instruction)?;
     }
     let body = json!({
         "name": input.name,
-        "runtime": input.instruction.map(|instruction| json!({"instruction": instruction})),
+        "runtime": input.instruction.map(|instruction| json!({"instruction": instruction, "config": input.config})),
     });
     api(&state, &input.connection)
         .post(&["subjects"], &body)
@@ -104,6 +106,9 @@ pub struct InstructionInput {
     pub connection: ConnectionInput,
     pub subject_id: String,
     pub instruction: String,
+    pub config: Option<Value>,
+    #[serde(default)]
+    pub resume_session: bool,
 }
 
 #[tauri::command]
@@ -111,11 +116,12 @@ pub async fn submit_instruction(
     state: State<'_, AppState>,
     input: InstructionInput,
 ) -> Result<AcceptedResult, ClientError> {
+    validate_runtime_config(input.config.as_ref())?;
     validate_instruction(&input.instruction)?;
     api(&state, &input.connection)
         .post(
             &["subjects", &input.subject_id, "runtime"],
-            &json!({"instruction": input.instruction}),
+            &json!({"instruction": input.instruction, "config": input.config, "resume_session": input.resume_session}),
         )
         .await
 }
@@ -256,19 +262,22 @@ pub struct StatusInput {
     pub connection: ConnectionInput,
     pub subject_id: String,
     pub task_id: Option<String>,
+    pub format: Option<String>,
 }
 
 #[tauri::command]
 pub async fn get_norns_status(
     state: State<'_, AppState>,
     input: StatusInput,
-) -> Result<ViewResponse<Value>, ClientError> {
-    let mut query = Vec::new();
+) -> Result<ViewResponse<String>, ClientError> {
+    let format = view_format(input.format)?;
+    let mut query = vec![("format", format.clone())];
     push_optional(&mut query, "task_id", input.task_id);
     api(&state, &input.connection)
-        .get_view(
+        .text_view(
             &["subjects", &input.subject_id, "norns", "views", "status"],
             &query,
+            &format,
         )
         .await
 }
@@ -278,6 +287,7 @@ pub struct TraceInput {
     pub connection: ConnectionInput,
     pub subject_id: String,
     pub exploration_id: String,
+    pub format: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -291,14 +301,19 @@ pub struct VisualInput {
 pub async fn get_norns_trace(
     state: State<'_, AppState>,
     input: TraceInput,
-) -> Result<ViewResponse<Value>, ClientError> {
+) -> Result<ViewResponse<String>, ClientError> {
+    let format = view_format(input.format)?;
     if input.exploration_id.trim().is_empty() {
         return Err(ClientError::protocol("exploration_id is required"));
     }
     api(&state, &input.connection)
-        .get_view(
+        .text_view(
             &["subjects", &input.subject_id, "norns", "views", "trace"],
-            &[("exploration_id", input.exploration_id)],
+            &[
+                ("exploration_id", input.exploration_id),
+                ("format", format.clone()),
+            ],
+            &format,
         )
         .await
 }
@@ -363,4 +378,69 @@ mod tests {
         assert!(validate_visual_language("en").is_ok());
         assert!(validate_visual_language("de").is_err());
     }
+}
+
+fn view_format(value: Option<String>) -> Result<String, ClientError> {
+    let value = value.unwrap_or_else(|| "md".into());
+    if !["md", "yaml", "json"].contains(&value.as_str()) {
+        return Err(ClientError::protocol("format must be md, yaml or json"));
+    }
+    Ok(value)
+}
+
+#[derive(Deserialize)]
+pub struct EntityInput {
+    pub connection: ConnectionInput,
+    pub subject_id: String,
+    pub id: String,
+    pub kind: String,
+}
+#[tauri::command]
+pub async fn get_norns_entity(
+    state: State<'_, AppState>,
+    input: EntityInput,
+) -> Result<Value, ClientError> {
+    let collection = match input.kind.as_str() {
+        "cognition" => "cognitions",
+        "exploration" => "explorations",
+        _ => {
+            return Err(ClientError::protocol(
+                "entity kind must be cognition or exploration",
+            ))
+        }
+    };
+    if input.id.trim().is_empty() {
+        return Err(ClientError::protocol("entity ID is required"));
+    }
+    api(&state, &input.connection)
+        .get(
+            &[
+                "subjects",
+                &input.subject_id,
+                "norns",
+                collection,
+                &input.id,
+            ],
+            &[],
+        )
+        .await
+}
+
+fn validate_runtime_config(value: Option<&Value>) -> Result<(), ClientError> {
+    if let Some(value) = value {
+        let Some(values) = value.as_object() else {
+            return Err(ClientError::protocol(
+                "config must be an AGENT_* JSON object",
+            ));
+        };
+        if values
+            .iter()
+            .any(|(key, value)| !key.starts_with("AGENT_") || value.is_null())
+        {
+            return Err(ClientError::protocol(
+                "config accepts only non-null AGENT_* fields",
+            ));
+        }
+    }
+    Ok(())
 }

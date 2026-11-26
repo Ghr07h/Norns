@@ -10,7 +10,7 @@ function event(seq: string, type: string, payload: Record<string, unknown>): Pub
 describe("EventsPanel event metadata", () => {
   it("labels main and domain subagents", () => {
     expect(eventAgentLabel(event("1", "agent.text", { agent: { role: "main", name: "Coordinator" } }), "zh-CN")).toBe("主智能体 · Coordinator");
-    expect(eventAgentLabel(event("2", "agent.text", { agent: { role: "sub", name: "Explorer-For-Math" } }), "zh-CN")).toBe("子智能体 · Explorer-For-Math");
+    expect(eventAgentLabel(event("2", "agent.text", { agent: { role: "sub", name: "Explorer-For-Math" } }), "zh-CN")).toBe("子智能体 · Explorer-For-Math · 实例未知");
     expect(eventAgentLabel(event("3", "agent.text", { agent: { role: "main", name: "Coordinator" } }), "en-US")).toBe("Main agent · Coordinator");
   });
 

@@ -1,12 +1,59 @@
 import { createHash } from "node:crypto";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readWellVersions } from "./prepare-versions.mjs";
 
 const wellDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const usage = "Usage: npm run release -- [--output directory]\nBuilds Well for the current platform and writes to ../release by default.";
+
+function sourcePathMappings(directory, environment) {
+  const home = environment.HOME || environment.USERPROFILE || homedir();
+  const sources = [
+    [home, "/build/home"],
+    [environment.TMPDIR || environment.TEMP || tmpdir(), "/build/tmp"],
+    [environment.CARGO_HOME || join(home, ".cargo"), "/cargo"],
+    [environment.RUSTUP_HOME || join(home, ".rustup"), "/rustup"],
+    [resolve(directory, ".."), "/workspace/norns"],
+  ];
+  const mappings = new Map();
+  for (const [source, destination] of sources) {
+    const absolute = resolve(source);
+    const aliases = [absolute];
+    try { aliases.push(realpathSync(absolute)); } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    for (const alias of aliases) {
+      mappings.set(alias, destination);
+      if (alias.includes("\\")) mappings.set(alias.replaceAll("\\", "/"), destination);
+    }
+  }
+  // rustc gives later mappings precedence; keep the most specific paths last.
+  return [...mappings].sort(([left], [right]) => left.length - right.length);
+}
+
+export function releaseEnvironment(directory, environment) {
+  const flags = environment.CARGO_ENCODED_RUSTFLAGS !== undefined
+    ? environment.CARGO_ENCODED_RUSTFLAGS.split("\x1f").filter(Boolean)
+    : (environment.RUSTFLAGS || "").split(/\s+/).filter(Boolean);
+  for (const [source, destination] of sourcePathMappings(directory, environment)) {
+    flags.push(`--remap-path-prefix=${source}=${destination}`);
+  }
+  const result = { ...environment, CARGO_ENCODED_RUSTFLAGS: flags.join("\x1f") };
+  delete result.RUSTFLAGS;
+  return result;
+}
+
+export function verifySourcePaths(filename, directory, environment) {
+  const contents = readFileSync(filename);
+  for (const [source] of sourcePathMappings(directory, environment)) {
+    if (contents.includes(Buffer.from(source))) {
+      throw new Error("Well executable contains a local build path; refusing to publish");
+    }
+  }
+}
 
 export function parseOptions(argumentsList) {
   const options = {};
@@ -70,6 +117,7 @@ function checksums(directory, prefix = ".") {
   const lines = [];
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
     const relative = `${prefix}/${entry.name}`;
+    if (entry.isDirectory() && entry.name.startsWith(".release.tmp.")) continue;
     if (entry.isDirectory()) lines.push(...checksums(join(directory, entry.name), relative));
     else if (entry.isFile() && entry.name !== "SHA256SUMS" && entry.name !== ".gitkeep") {
       lines.push(`${createHash("sha256").update(readFileSync(join(directory, entry.name))).digest("hex")}  ${relative}\n`);
@@ -84,14 +132,15 @@ export function buildWell({ directory = wellDirectory, output = resolve(director
   const platform = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
   ensureDirectory(output);
   ensureDirectory(join(output, platform));
-  const staging = mkdtempSync(resolve(directory, "../.release.tmp."));
+  const staging = mkdtempSync(join(output, ".release.tmp."));
   try {
     const profile = resolve(directory, "src-tauri", environment.CARGO_TARGET_DIR || "target", "release");
     rmSync(join(profile, "bundle"), { recursive: true, force: true });
-    run(directory, environment);
+    run(directory, releaseEnvironment(directory, environment));
+    const executable = process.platform === "win32" ? "well.exe" : "well";
+    verifySourcePaths(join(profile, executable), directory, environment);
     const artifact = join(staging, "well");
     collectBundles(join(profile, "bundle"), join(artifact, "bundle"));
-    const executable = process.platform === "win32" ? "well.exe" : "well";
     cpSync(join(profile, executable), join(artifact, executable));
     ensureDirectory(output);
     ensureDirectory(join(output, platform));

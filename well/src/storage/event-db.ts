@@ -110,6 +110,23 @@ export async function readLatestCachedEvents(serverId: string, subjectId: string
   return rows.reverse().map(publicEvent);
 }
 
+export async function readCachedRuntimeAgentEvents(serverId: string, subjectId: string, runtimeId: string): Promise<PublicEvent[]> {
+  const range = scopeRange(serverId, subjectId);
+  const rows = await eventDb.events.where("[serverId+subjectId+seqSortKey]").between(range.lower, range.upper, true, true)
+    .and((row) => row.runtime_id === runtimeId && row.type.startsWith("agent.")).toArray();
+  return rows.map(publicEvent);
+}
+
+export async function readCachedEventContext(serverId: string, subjectId: string, project: (event: PublicEvent) => PublicEvent | null): Promise<PublicEvent[]> {
+  const range = scopeRange(serverId, subjectId);
+  const events: PublicEvent[] = [];
+  await eventDb.events.where("[serverId+subjectId+seqSortKey]").between(range.lower, range.upper, true, true).each((row) => {
+    const context = project(publicEvent(row));
+    if (context) events.push(context);
+  });
+  return events;
+}
+
 export async function readCachedEventsBefore(serverId: string, subjectId: string, before: string, limit: number): Promise<PublicEvent[]> {
   const range = scopeRange(serverId, subjectId);
   const upper = [serverId, subjectId, seqSortKey(before)] as [string, string, string];

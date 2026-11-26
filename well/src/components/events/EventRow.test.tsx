@@ -77,3 +77,19 @@ describe("EventRow", () => {
     expect(screen.getByText("Read 20 lines")).toBeInTheDocument();
   });
 });
+
+it("shows the actual worker instance in output headers, tool callers and Agent results", async () => {
+  const { buildAgentIndex } = await import("./agent-identity");
+  const worker = { role: "sub", name: "Worker", instance_id: "tool:call-worker", tool_use_id: "call-worker" };
+  const result = event("agent.tool_result", "agent", { agent: { role: "main", name: "Coordinator" }, spawned_agent: { ...worker, agent_id: "worker-actual-id" }, tool_call_id: "call-worker", content: "done" });
+  const output = event("agent.text", "agent", { agent: worker, text: "worker output" });
+  const index = buildAgentIndex([output, result]);
+  const { rerender } = render(<EventRow event={output} agentIndex={index} highlighted={false} onJump={vi.fn()} />);
+  expect(screen.getByText("子智能体 · Worker · worker-actual-id")).toBeInTheDocument();
+  rerender(<EventRow event={result} agentIndex={index} highlighted={false} onJump={vi.fn()} />);
+  expect(screen.getByText("主智能体 · Coordinator")).toBeInTheDocument();
+  expect(screen.getByText("关联子智能体")).toBeInTheDocument();
+  expect(screen.getByText("子智能体 · Worker · worker-actual-id")).toBeInTheDocument();
+  rerender(<EventRow event={event("agent.tool_result", "agent", { agent: worker, content: "read result" })} agentIndex={index} highlighted={false} onJump={vi.fn()} />);
+  expect(screen.getByText("sub · Worker · worker-actual-id")).toBeInTheDocument();
+});

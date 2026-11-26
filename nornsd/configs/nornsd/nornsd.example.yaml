@@ -1,0 +1,102 @@
+# Nornsd 配置文件
+
+## 说明
+## 最小化配置范围：SERVICE_TOKEN、SERVICE_NORNSD_ROOT_DIR、AGENT_LLM_URL、AGENT_LLM_KEY、AGENT_LLM_MODEL。
+## 领域能力上：Norns 模式使用 AGENT_NORNS_EXTENDS_AGENTS_DIR / AGENT_NORNS_CUSTOM_*；普通模式使用 AGENT_CUSTOM_*；也可直接复用历史 RUNTIME 的运行插件目录 AGENT_REUSE_RUNTIME_DIR。三类能力配置互斥。
+## Nornsd Service 读取多个配置文件时，Service 配置仅首份生效，Agent 配置按槽位生效
+
+## Service 配置
+
+### 服务监听配置
+SERVICE_HOST: "0.0.0.0"
+SERVICE_PORT: 28081
+
+### nornsd server 认证 Token；请替换为高强度随机值。
+SERVICE_TOKEN: "replace-with-a-long-random-token"
+
+### nornsd server 的 nornsd root dir
+SERVICE_NORNSD_ROOT_DIR: "/absolute/path/to/nornsd-root"
+
+### nornsd server 的并发 subject/runtime 数量
+SERVICE_CONCURRENCY: 1
+
+## Agent 配置
+
+### Agent 推理服务配置
+
+#### LLM API 基础地址。
+AGENT_LLM_URL: "https://example.com/anthropic/"
+
+#### LLM API 访问密钥。
+AGENT_LLM_KEY: "replace-with-secret"
+
+##### Agent 使用的主模型。
+AGENT_LLM_MODEL: "model-name"
+
+##### 快速模型；留空时复用 AGENT_LLM_MODEL。
+AGENT_LLM_FAST_MODEL: ""
+
+### Runtime 实现配置
+
+#### 调用 Agent，使用枚举值 cc
+AGENT_TYPE: "cc"
+
+##### Agent 可执行命令及固定参数；首项必须为绝对路径；省略或 [] 时从 PATH 查找 claude，多段命令及参数使用列表格式添加。
+AGENT_EXEC: []
+  # - "/absolute/path/to/claude"
+  # - "--debug"
+
+#### 除非了解修改 Main Agent 的影响，否则不要改动此配置。
+#### 非空时指定 Agent Markdown 文件的绝对路径；使用 frontmatter.name 选择启动 Agent。
+#### Norns 模式：复制到 norns-plugin/agents/ 作为 Coordinator，替换 Agent 白名单和 {{NORNS_RUNTIME_CONFIGURATION}}；普通模式：原样复制到 custom-plugin/agents/，不注入 Norns 配置。
+AGENT_MAINAGENT_FILE: ""
+
+### Norns 行为配置
+
+#### 是否启用 Norns 模式
+AGENT_NORNS_ENABLE: true
+
+#### 启用 Norns 模式后的行为配置
+
+##### Norns Task 的额定 Exploration 并发数。
+AGENT_NORNS_MAX_CONCURRENT_EXPLORATIONS: 3
+
+##### running Exploration 的超时问询周期，单位为秒。
+AGENT_NORNS_EXPLORATION_TIMEOUT_SECONDS: 1200
+
+##### 是否允许 Coordinator 在必要时向人类提问并等待实时回答；建议交互式 agent 开启，server 关闭。
+AGENT_NORNS_ALLOW_HUMAN_INTERVENTION: false
+
+### Agent 领域能力配置
+
+#### 仅 AGENT_NORNS_ENABLE=true 时可配置非空值；
+
+##### 扩展 agent 目录；非空时读取其中的 meta.json 并根据元信息结合通用 Norns 角色生成领域专属的 Decider 和 Explorer SubAgent。
+AGENT_NORNS_EXTENDS_AGENTS_DIR: ""
+
+##### 完整自定义的 Norns 角色 Agent Markdown 目录；原样复制并按 frontmatter 的 name 加入 Coordinator 白名单，文件内容应遵循 Norns 协议。
+AGENT_NORNS_CUSTOM_AGENTS_DIR: ""
+
+##### 追加到临时 Norns Plugin 的自定义 Skill 目录。
+AGENT_NORNS_CUSTOM_SKILLS_DIR: ""
+
+#### 仅 AGENT_NORNS_ENABLE=false 时可配置非空值
+
+##### 复制临时 nornsd-custom Plugin 的普通自定义 Agent 目录。
+AGENT_CUSTOM_AGENTS_DIR: ""
+
+##### 复制临时 nornsd-custom Plugin 的普通自定义 Skill 目录。
+AGENT_CUSTOM_SKILLS_DIR: ""
+
+##### 复制到 Runtime plugins/ 后传给 Agent CLI 的现有 Plugin 目录；保持列表顺序，可以为空或包含多个目录。
+AGENT_CUSTOM_PLUGIN_DIRS: []
+  # - "/absolute/path/to/plguin1"
+  # - "/absolute/path/to/plguin2"
+
+#### 复用旧 Runtime 的插件（能力配置结果），此配置与 AGENT_NORNS_CUSTOM_* 和 AGENT_CUSTOM_* 互斥。
+
+##### 填写旧 .nornsd/subjects/<subject_id>/runtimes/<runtime_id>/ 的绝对路径。
+##### 此配置读取旧 launch.json 的插件顺序与 Main Agent，将旧 plugins/ 完整复制到新 Runtime 的 plugins/
+#### 无论是否使用 NORNS 模式均可使用；但与非空 AGENT_MAINAGENT_FILE、AGENT_NORNS_EXTENDS_AGENTS_DIR、全部 AGENT_NORNS_CUSTOM_*、AGENT_CUSTOM_* 互斥。
+#### 复用时忽略上面的探索并发、超时问询周期和人类干预设置；LLM 等非插件配置仍使用新配置。
+AGENT_REUSE_RUNTIME_DIR: ""
