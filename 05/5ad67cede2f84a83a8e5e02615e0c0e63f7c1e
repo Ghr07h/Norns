@@ -1,0 +1,16 @@
+container/README.md
+  h_32bccb164adb56 55,276-282
+container/redteam_for_benchmark/build.sh
+  h_32bccb164adb56 17,33,36,48,131-133,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "055ad67cede2f84a83a8e5e02615e0c0e63f7c1e",
+  "prompts": {},
+  "humans": {
+    "h_32bccb164adb56": {
+      "author": "Ghr07h <49585390+Ghr07h@users.noreply.github.com>"
+    }
+  }
+}
