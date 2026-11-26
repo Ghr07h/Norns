@@ -52,7 +52,7 @@ Benchmark 在 Runtime 为 waiting 时，通过 nornsd 的 Subject 信息取得�
 
 通用镜像复制整个项目 `domain/`；redteam 和 benchmark 镜像仅复制 `domain/redteam/`。三个目录各自保留完整 Dockerfile、入口和验证代码，不依赖 `container/` 下的公共运行文件。
 
-三个 `build.sh` 支持相同参数，`--backend` 默认为 `docker`，`--use-mirror` 和 `--use-ecs-mirror` 默认关闭：
+三个 `build.sh` 均支持以下参数，`--backend` 默认为 `docker`，`--use-mirror` 和 `--use-ecs-mirror` 默认关闭：
 
 - `--backend apple|docker`
 - `--image IMAGE`
@@ -272,6 +272,13 @@ container/redteam_for_benchmark/build.sh
 
 构建脚本支持与 redteam Server 相同的 `--backend`、`--image`、`--tag`、`--proxy`、
 `--use-mirror` 和 `--use-ecs-mirror` 参数。
+
+benchmark 构建脚本还支持 `--no-cache`（默认关闭）。启用后，Docker 和 Apple 后端均传入
+`--no-cache --pull`，禁用构建层缓存，并从远端检查、拉取基础镜像：
+
+```sh
+container/redteam_for_benchmark/build.sh --no-cache
+```
 
 需要上传到远端构建时，运行该目录的统一打包脚本：
 

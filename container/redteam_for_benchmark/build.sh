@@ -14,6 +14,7 @@
 #   --proxy host:port        国外资源下载使用的构建期代理。
 #   --use-mirror             使用阿里云 APT/PyPI/Maven 和 npmmirror，默认关闭。
 #   --use-ecs-mirror         使用阿里云 ECS 内网 APT/PyPI，默认关闭，并启用 --use-mirror。
+#   --no-cache               禁用构建缓存，并从远端拉取基础镜像，默认关闭。
 #
 # 前置：项目根目录已执行 ./release.sh --all-platforms --with-ext tsec 生成 release/linux-<arch> 二进制。
 
@@ -29,9 +30,10 @@ image_tag="nornsd-redteam-benchmark:latest"
 proxy=""
 use_mirror=0
 use_ecs_mirror=0
+no_cache=0
 
 usage() {
-  sed -n '2,17p' "$0"
+  sed -n '2,18p' "$0"
   exit "${1:-0}"
 }
 
@@ -43,6 +45,7 @@ while [ $# -gt 0 ]; do
     --proxy) proxy="${2:-}"; shift 2 ;;
     --use-mirror) use_mirror=1; shift ;;
     --use-ecs-mirror) use_mirror=1; use_ecs_mirror=1; shift ;;
+    --no-cache) no_cache=1; shift ;;
     -h|--help) usage 0 ;;
     *) echo "未知参数: $1" >&2; usage 2 ;;
   esac
@@ -125,6 +128,9 @@ build_args=(
   --build-arg "APT_SOURCE_BLOCK=$apt_source_block"
   --build-arg "MAVEN_MIRROR_URL=$maven_mirror_url"
 )
+if [ "$no_cache" = 1 ]; then
+  build_args+=(--no-cache --pull)
+fi
 if [ -n "$proxy" ]; then
   build_args+=(
     --build-arg "HTTP_PROXY=$http_proxy_url" --build-arg "http_proxy=$http_proxy_url"
@@ -142,6 +148,7 @@ echo "  tag     : $image_tag"
 echo "  release : release/linux-$release_arch"
 echo "  proxy   : ${proxy:-<none>}"
 echo "  mirror  : $([ "$use_mirror" = 1 ] && echo yes || echo no)"
+echo "  no-cache: $([ "$no_cache" = 1 ] && echo yes || echo no)"
 echo "  apt     : ${apt_mirror_base:-image default}"
 echo "  pypi    : ${pip_index_url:-pip default}"
 echo "  maven   : ${maven_mirror_url:-maven central}"
