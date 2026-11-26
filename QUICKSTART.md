@@ -141,7 +141,7 @@ Runtime 配置、插件与日志，然后启动 Claude Code。工作根目录由
 它会固定传入 `--dangerously-skip-permissions`，并为 Claude Code 子进程设置
 `IS_SANDBOX=1` 以兼容 root/sudo 环境，因此只应在可信且权限受限的工作目录中运行。
 
-### 批量服务与 Well
+### 5. 批量服务与 Well
 
 在项目根目录启动两个并发槽的 nornsd Server：
 
@@ -164,6 +164,24 @@ Well 是该 API 的桌面客户端。打开 Well 后添加 Server：
 - Token：与 `SERVICE_TOKEN` 相同
 
 Well 可以创建 Subject、提交 Runtime、查看队列和事件，以及显示 Norns Status、Trace 与 Visual View、查询 Cog/Exp 详情和下载归档。Status/Trace 默认以 Markdown 预览，也可切换 YAML/JSON；HTTP API 本身默认 YAML。构建和本地开发方式见 [well/README.md](well/README.md)。
+
+### 6. Well 手动构建
+
+Windows 端安装相关依赖工具链：
+
+```powershell
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Rustlang.Rustup -e
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+进入 `well` 目录并执行构建：
+
+```sh
+cd ./well
+npm ci --registry=https://registry.npmmirror.com
+npm run release
+```
 
 ### 领域知识
 
