@@ -148,6 +148,8 @@ Runtime 覆盖切换模式时，须同时清空模板中另一模式的资源字
 
 Linux/macOS 的内嵌 Norns Plugin 保留 POSIX sh/awk PreToolUse hook，防止 Claude Code 2.1.199 内嵌 ugrep 7.5.0 因多个 bounded repeat 正则编译耗尽内存；显式 /usr/bin/grep、内置 Grep 或 awk 不受该拦截影响。
 
+Linux/macOS 的 Norns Plugin 还通过独立的 sh/awk PreToolUse hook 检查 Bash 工具输入：对 norns 命令中同一行、同一个单引号或双引号字符串内成对的反引号，逐个替换为 `**`，再以 `updatedInput` 返回命令；其他字符及工具参数保留。引号和反引号不跨行配对，heredoc 正文保持原样。hook 的实现及注册均在 `plugin/cc/hooks/` 内，不调用 Norns CLI，也不执行被检查的命令；Windows 不发布此 hook。已有 Runtime 的 Plugin 副本及复用目录不会自动更新。
+
 托管 Runtime 启动即采样进程树 RSS，此后每 500ms 采样。单 Runtime 额度为系统内存基准 50%，Linux 容器有更小有限 cgroup 额度时采用该额度。超限终止对应进程树，记录 RUNTIME_MEMORY_LIMIT_EXCEEDED。下一 Norns Runtime 或显式恢复会话的普通 Runtime 保留原有内存恢复提示。
 
 ## View 与详情
